@@ -12,9 +12,15 @@ async function bootstrap() {
   app.set('trust proxy', true);
   app.use(express.json({ limit: '1mb' }));
 
-  // CORS middleware for frontend integration
+  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3001').split(',').map(origin => origin.trim());
+  
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', 'http://localhost:3001');
+    const requestOrigin = req.headers.origin;
+    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      res.header('Access-Control-Allow-Origin', requestOrigin);
+    } else if (!requestOrigin) {
+      res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
+    }
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-request-source, x-app-version, x-api-key, x-universal-router-version, x-viem-provider-enabled, x-uniquote-enabled' );
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     if (req.method === 'OPTIONS') {
