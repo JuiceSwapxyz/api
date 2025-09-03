@@ -9,7 +9,7 @@
   "scripts": {
     "compile-external-types": "npx typechain --target ethers-v5 --out-dir lib/types/ext 'lib/abis/**/*.json'",
     "compile-v3-contract-types": "npx typechain --target ethers-v5 --out-dir lib/types/v3 './node_modules/@uniswap/?(v3-core|v3-periphery)/artifacts/contracts/**/*.json'",
-    "build": "run-p compile-external-types compile-v3-contract-types && tsc",
+    "build": "run-p compile-external-types compile-v3-contract-types && tsc && cp -r lib dist/",
     "clean": "rm -rf dist cdk.out",
     "watch": "tsc -w",
     "test:unit": "jest test/jest/unit/ && ts-mocha -p tsconfig.cdk.json test/mocha/unit/**/*",
@@ -19,7 +19,10 @@
     "cdk": "cdk",
     "fix": "run-s fix:*",
     "fix:prettier": "prettier \"./**/*.ts\" --write",
-    "fix:lint": "eslint lib --ext .ts --fix"
+    "fix:lint": "eslint lib --ext .ts --fix",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/src/server.js",
+    "server": "npm run build && npm start"
   },
   "devDependencies": {
     "@jest/globals": "^29.5.0",
@@ -65,10 +68,13 @@
     "ts-jest": "^29.1.0",
     "ts-node": "^8.10.2",
     "typechain": "^5.0.0",
-    "typescript": "^4.2.3"
+    "typescript": "^4.2.3",
+    "@types/express": "^4.17.17",
+    "tsx": "^3.12.7"
   },
   "dependencies": {
     "@datastructures-js/priority-queue": "^6.3.1",
+    "express": "^4.18.2",
     "@hapi/joi": "^17.1.1",
     "@middy/core": "^2.4.1",
     "@middy/http-error-handler": "^2.4.1",
