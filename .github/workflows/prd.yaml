@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_TAGS: juiceswap/routing-api:latest
+  DOCKER_TAGS: dfxswiss/juiceswap-api:latest
   AZURE_RESOURCE_GROUP: rg-dfx-api-prd
   AZURE_CONTAINER_APP: ca-jsw-api-prd
   DEPLOY_INFO: ${{ github.ref_name }}-${{ github.sha }}
