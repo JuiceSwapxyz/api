@@ -153,6 +153,39 @@ export const DEFAULT_ROUTING_CONFIG_BY_CHAIN = (chainId: ChainId): AlphaRouterCo
         distributionPercent: 25,
         forceCrossProtocol: false,
       }
+    case ChainId.CITREA_TESTNET:
+      return {
+        // V3-only configuration for Citrea
+        v2PoolSelection: {
+          topN: 0,
+          topNDirectSwaps: 0,
+          topNTokenInOut: 0,
+          topNSecondHop: 0,
+          topNWithEachBaseToken: 0,
+          topNWithBaseToken: 0,
+        },
+        v3PoolSelection: {
+          topN: 2,
+          topNDirectSwaps: 2,
+          topNTokenInOut: 3,
+          topNSecondHop: 1,
+          topNWithEachBaseToken: 3,
+          topNWithBaseToken: 5,
+        },
+        v4PoolSelection: {
+          topN: 0,
+          topNDirectSwaps: 0,
+          topNTokenInOut: 0,
+          topNSecondHop: 0,
+          topNWithEachBaseToken: 0,
+          topNWithBaseToken: 0,
+        },
+        maxSwapsPerPath: 3,
+        minSplits: 1,
+        maxSplits: 3,
+        distributionPercent: 10,
+        forceCrossProtocol: false,
+      }
     case ChainId.ZKSYNC:
       return {
         v2PoolSelection: {

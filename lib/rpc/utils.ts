@@ -14,6 +14,8 @@ export function chainIdToNetworkName(networkId: ChainId): string {
       return 'base'
     case ChainId.SEPOLIA:
       return 'sepolia'
+    case ChainId.CITREA_TESTNET:
+      return 'citrea-testnet'
     default:
       return 'ethereum'
   }
@@ -40,6 +42,9 @@ export function generateProviderUrl(key: string, value: string): string {
     }
     case 'ALCHEMY_11155111': {
       return `https://eth-sepolia-fast.g.alchemy.com/v2/${tokens[0]}`
+    }
+    case 'CITREA_RPC_URL': {
+      return tokens[0] || 'https://rpc.testnet.citrea.xyz'
     }
   }
   throw new Error(`Unknown provider-chainId pair: ${key}`)
