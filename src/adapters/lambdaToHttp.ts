@@ -104,7 +104,8 @@ function generateWrapUnwrapResponse(body: any, isWrap: boolean): any {
       },
       gasUseEstimate: '50000',
       gasPrice: '1000000000',
-      swapper: recipient
+      swapper: recipient,
+      txFailureReasons: []
     },
     allQuotes: []
   }
