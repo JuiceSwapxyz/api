@@ -104,6 +104,10 @@ function generateWrapUnwrapResponse(body: any, isWrap: boolean): any {
       },
       gasUseEstimate: '50000',
       gasPrice: '1000000000',
+      blockNumber: '1000000',
+      gasFee: '50000000000000',
+      gasFeeUSD: '0.12',
+      quoteId: Date.now().toString(),
       swapper: recipient,
       txFailureReasons: []
     },
