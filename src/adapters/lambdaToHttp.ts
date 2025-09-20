@@ -1,8 +1,31 @@
 import type { APIGatewayProxyEvent, Context, APIGatewayProxyResult } from 'aws-lambda'
 import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
-import { WETH9 } from '@juiceswapxyz/sdk-core'
-import { ADDRESS_ZERO } from '@juiceswapxyz/v3-sdk'
+
+// Hardcoded constants to avoid SDK import issues
+const ADDRESS_ZERO = '0x0000000000000000000000000000000000000000'
+
+// Hardcoded WETH9 addresses for known chains
+const WETH9: { [chainId: number]: { address: string } } = {
+  1: { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' }, // Mainnet WETH
+  5115: { address: '0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0' }, // Citrea WcBTC
+  11155111: { address: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14' }, // Sepolia WETH
+}
+
+// Citrea Testnet Wrapped Token (hardcoded to avoid SDK issues)
+const CITREA_WRAPPED_TOKEN = {
+  chainId: 5115,
+  address: '0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0',
+  symbol: 'WcBTC'
+}
+
+// Helper to detect if an address is native currency
+function isNativeCurrency(address: string): boolean {
+  if (!address) return false
+  const addr = address.toLowerCase()
+  return addr === '0x0000000000000000000000000000000000000000' ||
+         addr === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+}
 
 function transformTradingApiRequest(body: any, query: any): any {
   let queryParams = { ...query }
@@ -12,8 +35,8 @@ function transformTradingApiRequest(body: any, query: any): any {
     const tokenIn = body.tokenIn || body.tokenInAddress
     const tokenOut = body.tokenOut || body.tokenOutAddress
 
-    queryParams.tokenInAddress = tokenIn ===  ADDRESS_ZERO? WETH9[body.tokenInChainId].address : tokenIn
-    queryParams.tokenOutAddress = tokenOut === ADDRESS_ZERO ? WETH9[body.tokenOutChainId].address : tokenOut
+    queryParams.tokenInAddress = tokenIn === ADDRESS_ZERO ? WETH9[body.tokenInChainId]?.address || tokenIn : tokenIn
+    queryParams.tokenOutAddress = tokenOut === ADDRESS_ZERO ? WETH9[body.tokenOutChainId]?.address || tokenOut : tokenOut
     queryParams.tokenInChainId = body.tokenInChainId
     queryParams.tokenOutChainId = body.tokenOutChainId
     queryParams.amount = body.amount
@@ -31,11 +54,76 @@ function transformTradingApiRequest(body: any, query: any): any {
   return queryParams
 }
 
+// Generate a minimal wrap/unwrap quote response
+function generateWrapUnwrapResponse(body: any, isWrap: boolean): any {
+  const amount = body.amount || '0'
+  const recipient = body.swapper || body.recipient || '0x0000000000000000000000000000000000000000'
+
+  // Simple calldata for wrap (deposit) or unwrap (withdraw)
+  // This is a simplified version - real implementation would encode properly
+  const methodId = isWrap ? '0xd0e30db0' : '0x2e1a7d4d' // deposit() or withdraw(uint256)
+  const calldata = isWrap
+    ? methodId // deposit() has no parameters
+    : methodId + amount.toString(16).padStart(64, '0') // withdraw(amount)
+
+  // Create fake tokens for the route
+  const cBTCToken = {
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    chainId: 5115,
+    symbol: 'cBTC',
+    decimals: 18,
+    name: 'Citrea BTC'
+  }
+
+  const WcBTCToken = {
+    address: CITREA_WRAPPED_TOKEN.address,
+    chainId: 5115,
+    symbol: 'WcBTC',
+    decimals: 18,
+    name: 'Wrapped Citrea BTC'
+  }
+
+
+  return {
+    routing: isWrap ? 'WRAP' : 'UNWRAP',
+    quote: {
+      input: {
+        token: isWrap ? cBTCToken : WcBTCToken,
+        amount: amount
+      },
+      output: {
+        token: isWrap ? WcBTCToken : cBTCToken,
+        amount: amount // 1:1 conversion
+      },
+      chainId: 5115,
+      tradeType: body.type === 'EXACT_OUTPUT' ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
+      methodParameters: {
+        calldata: calldata,
+        value: isWrap ? '0x' + BigInt(amount).toString(16) : '0x0',
+        to: CITREA_WRAPPED_TOKEN.address
+      },
+      gasUseEstimate: '50000',
+      gasPrice: '1000000000',
+      blockNumber: '1000000',
+      gasFee: '50000000000000',
+      gasFeeUSD: '0.12',
+      quoteId: Date.now().toString(),
+      swapper: recipient,
+      txFailureReasons: []
+    },
+    allQuotes: []
+  }
+}
+
 export function lambdaToExpress(
   handler: (event: APIGatewayProxyEvent, context: Context) => Promise<APIGatewayProxyResult>
 ) {
   return async (req: Request, res: Response) => {
     try {
+      // Note: Citrea cBTC/WcBTC operations are handled by the normal trading API flow
+      // No special wrap/unwrap handling needed for Citrea as per frontend implementation
+
+      // Normal flow for non-wrap/unwrap operations
       const queryParams = transformTradingApiRequest(req.body, req.query)
 
       // Minimal event object with only the fields actually used by handlers
