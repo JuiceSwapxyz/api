@@ -1,12 +1,12 @@
 import { Request, Response } from "express"
-import { AlphaRouter } from '@juiceswapxyz/smart-order-router'
-import { SwapOptionsSwapRouter02, SwapType } from '@juiceswapxyz/smart-order-router'
-import { CurrencyAmount, TradeType, Token, Percent, ChainId, Currency } from '@juiceswapxyz/sdk-core'
+import { AlphaRouter } from '@uniswap/smart-order-router'
+import { SwapOptionsSwapRouter02, SwapType } from '@uniswap/smart-order-router'
+import { CurrencyAmount, TradeType, Token, Percent, ChainId, Currency } from '@uniswap/sdk-core'
 import { ethers } from 'ethers'
 import JSBI from 'jsbi'
 import { GlobalRpcProviders } from '../../lib/rpc/GlobalRpcProviders'
 import Logger from 'bunyan'
-import { nativeOnChain } from '@juiceswapxyz/smart-order-router'
+import { nativeOnChain } from '@uniswap/smart-order-router'
 
 // Temporary: Define wrapped native tokens for chains
 // TODO: Import from SDK once build issues are resolved

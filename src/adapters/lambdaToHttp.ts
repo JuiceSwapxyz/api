@@ -1,7 +1,10 @@
 import type { APIGatewayProxyEvent, Context, APIGatewayProxyResult } from 'aws-lambda'
 import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
-import { ADDRESS_ZERO } from '@juiceswapxyz/v3-sdk'
+
+// Temporary: Define ADDRESS_ZERO constant
+// TODO: Import from SDK once build issues are resolved
+const ADDRESS_ZERO = '0x0000000000000000000000000000000000000000'
 
 // Temporary: Define wrapped native tokens for chains
 // TODO: Import WETH9 from SDK once build issues are resolved
@@ -20,8 +23,8 @@ function transformTradingApiRequest(body: any, query: any): any {
     const tokenIn = body.tokenIn || body.tokenInAddress
     const tokenOut = body.tokenOut || body.tokenOutAddress
 
-    queryParams.tokenInAddress = tokenIn ===  ADDRESS_ZERO? WETH9[body.tokenInChainId].address : tokenIn
-    queryParams.tokenOutAddress = tokenOut === ADDRESS_ZERO ? WETH9[body.tokenOutChainId].address : tokenOut
+    queryParams.tokenInAddress = tokenIn === ADDRESS_ZERO ? WRAPPED_NATIVE_TOKENS[body.tokenInChainId]?.address || tokenIn : tokenIn
+    queryParams.tokenOutAddress = tokenOut === ADDRESS_ZERO ? WRAPPED_NATIVE_TOKENS[body.tokenOutChainId]?.address || tokenOut : tokenOut
     queryParams.tokenInChainId = body.tokenInChainId
     queryParams.tokenOutChainId = body.tokenOutChainId
     queryParams.amount = body.amount
@@ -92,7 +95,7 @@ export function lambdaToExpress(
           const tokenOut = req.body.tokenOut || req.body.tokenOutAddress
           const isNativeIn = tokenIn === ADDRESS_ZERO || tokenIn === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
           const isNativeOut = tokenOut === ADDRESS_ZERO || tokenOut === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
-          const wrappedToken = WETH9[req.body.tokenInChainId]
+          const wrappedToken = WRAPPED_NATIVE_TOKENS[req.body.tokenInChainId]
 
           let routing = 'CLASSIC'
           if (wrappedToken) {
