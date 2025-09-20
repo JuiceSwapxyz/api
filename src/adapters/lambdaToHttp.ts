@@ -83,20 +83,6 @@ function generateWrapUnwrapResponse(body: any, isWrap: boolean): any {
     name: 'Wrapped Citrea BTC'
   }
 
-  // Create a fake pool that the frontend can parse
-  // This mimics a V3 pool structure with proper amountIn/amountOut
-  const fakePool = {
-    type: 'v3-pool',
-    address: CITREA_WRAPPED_TOKEN.address,
-    amountIn: amount,
-    amountOut: amount, // 1:1 conversion
-    fee: '0',
-    sqrtRatioX96: '79228162514264337593543950336', // 1:1 price
-    liquidity: '1000000000000000000',
-    tickCurrent: '0',
-    tokenIn: isWrap ? cBTCToken : WcBTCToken,
-    tokenOut: isWrap ? WcBTCToken : cBTCToken
-  }
 
   return {
     routing: isWrap ? 'WRAP' : 'UNWRAP',
