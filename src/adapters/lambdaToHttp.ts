@@ -78,13 +78,31 @@ export function lambdaToExpress(
         try {
           const routingApiResponse = JSON.parse(responseBody)
           if(req.body.swapper) routingApiResponse.swapper = req.body.swapper
+
+          // Check if this is a wrap/unwrap operation
+          const tokenIn = req.body.tokenIn || req.body.tokenInAddress
+          const tokenOut = req.body.tokenOut || req.body.tokenOutAddress
+          const isNativeIn = tokenIn === ADDRESS_ZERO || tokenIn === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+          const isNativeOut = tokenOut === ADDRESS_ZERO || tokenOut === '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+          const wrappedToken = WETH9[req.body.tokenInChainId]
+
+          let routing = 'CLASSIC'
+          if (wrappedToken) {
+            const wrappedAddress = wrappedToken.address.toLowerCase()
+            if (isNativeIn && tokenOut?.toLowerCase() === wrappedAddress) {
+              routing = 'WRAP'
+            } else if (tokenIn?.toLowerCase() === wrappedAddress && isNativeOut) {
+              routing = 'UNWRAP'
+            }
+          }
+
           // Wrap in URA format expected by frontend
           const uraResponse = {
-            routing: 'CLASSIC',
+            routing,
             quote: routingApiResponse,
             allQuotes: [
               {
-                routing: 'CLASSIC',
+                routing,
                 quote: routingApiResponse
               }
             ]

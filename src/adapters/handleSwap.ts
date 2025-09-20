@@ -1,7 +1,7 @@
 import { Request, Response } from "express"
 import { AlphaRouter } from '@juiceswapxyz/smart-order-router'
 import { SwapOptionsSwapRouter02, SwapType } from '@juiceswapxyz/smart-order-router'
-import { CurrencyAmount, TradeType, Token, Percent, ChainId, Currency } from '@juiceswapxyz/sdk-core'
+import { CurrencyAmount, TradeType, Token, Percent, ChainId, Currency, WETH9 } from '@juiceswapxyz/sdk-core'
 import { ethers } from 'ethers'
 import JSBI from 'jsbi'
 import { GlobalRpcProviders } from '../../lib/rpc/GlobalRpcProviders'
@@ -103,6 +103,62 @@ async function getGasPrices(provider: ethers.providers.JsonRpcProvider): Promise
   }
 }
 
+// Check if this is a wrap/unwrap operation
+function isWrapOrUnwrap(tokenInAddress: string, tokenOutAddress: string, chainId: number): 'wrap' | 'unwrap' | false {
+  const wrappedToken = WETH9[chainId]
+  if (!wrappedToken) return false
+
+  const wrappedAddress = wrappedToken.address.toLowerCase()
+  const tokenInLower = tokenInAddress.toLowerCase()
+  const tokenOutLower = tokenOutAddress.toLowerCase()
+
+  // Check for wrap (native -> wrapped)
+  if (isNativeCurrency(tokenInAddress) && tokenOutLower === wrappedAddress) {
+    return 'wrap'
+  }
+
+  // Check for unwrap (wrapped -> native)
+  if (tokenInLower === wrappedAddress && isNativeCurrency(tokenOutAddress)) {
+    return 'unwrap'
+  }
+
+  return false
+}
+
+// Generate calldata for wrap/unwrap operations
+function generateWrapUnwrapCalldata(
+  wrapType: 'wrap' | 'unwrap',
+  amount: string,
+  recipient: string,
+  chainId: number
+): { data: string; value: string; to: string } {
+  const wrappedToken = WETH9[chainId]
+  if (!wrappedToken) throw new Error(`No wrapped token found for chain ${chainId}`)
+
+  // Create interface for WETH9 contract
+  const wethInterface = new ethers.utils.Interface([
+    'function deposit() payable',
+    'function withdraw(uint256 amount)',
+  ])
+
+  if (wrapType === 'wrap') {
+    // For wrap, we call deposit() with ETH value
+    const calldata = wethInterface.encodeFunctionData('deposit', [])
+    return {
+      data: calldata,
+      to: wrappedToken.address,
+      value: '0x' + JSBI.BigInt(amount).toString(16),
+    }
+  } else {
+    // For unwrap, we call withdraw(amount)
+    const calldata = wethInterface.encodeFunctionData('withdraw', [amount])
+    return {
+      data: calldata,
+      to: wrappedToken.address,
+      value: '0x0',
+    }
+  }
+}
 
 export async function handleSwap(req: Request, res: Response): Promise<void> {
   try {
@@ -200,6 +256,31 @@ export async function handleSwap(req: Request, res: Response): Promise<void> {
     })
 
     const gasPrices = await getGasPrices(provider)
+
+    // Check if this is a wrap or unwrap operation
+    const wrapType = isWrapOrUnwrap(tokenInAddress, tokenOutAddress, chainId)
+
+    if (wrapType) {
+      // Handle wrap/unwrap directly without routing
+      try {
+        const wrapCalldata = generateWrapUnwrapCalldata(wrapType, amount, recipient, chainId)
+
+        const swapData: SwapResponse = {
+          data: wrapCalldata.data,
+          to: wrapCalldata.to,
+          value: wrapCalldata.value,
+          from: from,
+          maxFeePerGas: gasPrices.maxFeePerGas,
+          maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        }
+
+        res.json(swapData)
+        return
+      } catch (error) {
+        console.error("Error generating wrap/unwrap calldata:", error)
+        // Fall back to regular routing
+      }
+    }
 
     const currencyIn = createCurrency(tokenInAddress, tokenInChainId, tokenInDecimals)
     const currencyOut = createCurrency(tokenOutAddress, tokenOutChainId, tokenOutDecimals)
