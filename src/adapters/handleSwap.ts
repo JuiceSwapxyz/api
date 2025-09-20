@@ -1,12 +1,19 @@
 import { Request, Response } from "express"
 import { AlphaRouter } from '@juiceswapxyz/smart-order-router'
 import { SwapOptionsSwapRouter02, SwapType } from '@juiceswapxyz/smart-order-router'
-import { CurrencyAmount, TradeType, Token, Percent, ChainId, Currency, WETH9 } from '@juiceswapxyz/sdk-core'
+import { CurrencyAmount, TradeType, Token, Percent, ChainId, Currency } from '@juiceswapxyz/sdk-core'
 import { ethers } from 'ethers'
 import JSBI from 'jsbi'
 import { GlobalRpcProviders } from '../../lib/rpc/GlobalRpcProviders'
 import Logger from 'bunyan'
 import { nativeOnChain } from '@juiceswapxyz/smart-order-router'
+
+// Temporary: Define wrapped native tokens for chains
+// TODO: Import from SDK once build issues are resolved
+const WRAPPED_NATIVE_TOKENS: { [chainId: number]: { address: string; symbol: string } } = {
+  5115: { address: '0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0', symbol: 'WcBTC' }, // Citrea Testnet
+  // Add other chains as needed
+}
 
 // V3 Swap Router addresses for different chains
 const V3_SWAP_ROUTER_ADDRESSES = {
@@ -105,7 +112,7 @@ async function getGasPrices(provider: ethers.providers.JsonRpcProvider): Promise
 
 // Check if this is a wrap/unwrap operation
 function isWrapOrUnwrap(tokenInAddress: string, tokenOutAddress: string, chainId: number): 'wrap' | 'unwrap' | false {
-  const wrappedToken = WETH9[chainId]
+  const wrappedToken = WRAPPED_NATIVE_TOKENS[chainId]
   if (!wrappedToken) return false
 
   const wrappedAddress = wrappedToken.address.toLowerCase()
@@ -132,7 +139,7 @@ function generateWrapUnwrapCalldata(
   recipient: string,
   chainId: number
 ): { data: string; value: string; to: string } {
-  const wrappedToken = WETH9[chainId]
+  const wrappedToken = WRAPPED_NATIVE_TOKENS[chainId]
   if (!wrappedToken) throw new Error(`No wrapped token found for chain ${chainId}`)
 
   // Create interface for WETH9 contract

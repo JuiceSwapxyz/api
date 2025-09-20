@@ -1,8 +1,16 @@
 import type { APIGatewayProxyEvent, Context, APIGatewayProxyResult } from 'aws-lambda'
 import type { Request, Response } from 'express'
 import { randomUUID } from 'crypto'
-import { WETH9 } from '@juiceswapxyz/sdk-core'
 import { ADDRESS_ZERO } from '@juiceswapxyz/v3-sdk'
+
+// Temporary: Define wrapped native tokens for chains
+// TODO: Import WETH9 from SDK once build issues are resolved
+const WRAPPED_NATIVE_TOKENS: { [chainId: number]: { address: string; symbol: string } } = {
+  1: { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH' }, // Mainnet
+  5115: { address: '0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0', symbol: 'WcBTC' }, // Citrea Testnet
+  11155111: { address: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', symbol: 'WETH' }, // Sepolia
+  // Add other chains as needed
+}
 
 function transformTradingApiRequest(body: any, query: any): any {
   let queryParams = { ...query }
