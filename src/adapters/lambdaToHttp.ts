@@ -12,21 +12,6 @@ const WETH9: { [chainId: number]: { address: string } } = {
   11155111: { address: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14' }, // Sepolia WETH
 }
 
-// Citrea Testnet Wrapped Token (hardcoded to avoid SDK issues)
-const CITREA_WRAPPED_TOKEN = {
-  chainId: 5115,
-  address: '0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0',
-  symbol: 'WcBTC'
-}
-
-// Helper to detect if an address is native currency
-function isNativeCurrency(address: string): boolean {
-  if (!address) return false
-  const addr = address.toLowerCase()
-  return addr === '0x0000000000000000000000000000000000000000' ||
-         addr === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
-}
-
 function transformTradingApiRequest(body: any, query: any): any {
   let queryParams = { ...query }
 
@@ -41,7 +26,17 @@ function transformTradingApiRequest(body: any, query: any): any {
     queryParams.tokenOutChainId = body.tokenOutChainId
     queryParams.amount = body.amount
     queryParams.type = body.type === 'EXACT_OUTPUT' ? 'exactOut' : body.type === 'EXACT_INPUT' ? 'exactIn' : body.type
+
+    // Add required fields for handleSwap
+    queryParams.recipient = body.swapper || body.recipient || '0x0000000000000000000000000000000000000000'
+    queryParams.slippageTolerance = body.slippageTolerance || '0.5'
+    queryParams.tokenInDecimals = body.tokenInDecimals || 18
+    queryParams.tokenOutDecimals = body.tokenOutDecimals || 18
+    queryParams.chainId = body.tokenInChainId
+    queryParams.from = body.swapper || body.recipient || '0x0000000000000000000000000000000000000000'
+
     if (body.swapper) queryParams.swapper = body.swapper
+    if (body.deadline) queryParams.deadline = body.deadline
     if (body.protocols) {
       // Filter to only supported routing API protocols
       const supportedProtocols = body.protocols
@@ -54,66 +49,6 @@ function transformTradingApiRequest(body: any, query: any): any {
   return queryParams
 }
 
-// Generate a minimal wrap/unwrap quote response
-function generateWrapUnwrapResponse(body: any, isWrap: boolean): any {
-  const amount = body.amount || '0'
-  const recipient = body.swapper || body.recipient || '0x0000000000000000000000000000000000000000'
-
-  // Simple calldata for wrap (deposit) or unwrap (withdraw)
-  // This is a simplified version - real implementation would encode properly
-  const methodId = isWrap ? '0xd0e30db0' : '0x2e1a7d4d' // deposit() or withdraw(uint256)
-  const calldata = isWrap
-    ? methodId // deposit() has no parameters
-    : methodId + amount.toString(16).padStart(64, '0') // withdraw(amount)
-
-  // Create fake tokens for the route
-  const cBTCToken = {
-    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-    chainId: 5115,
-    symbol: 'cBTC',
-    decimals: 18,
-    name: 'Citrea BTC'
-  }
-
-  const WcBTCToken = {
-    address: CITREA_WRAPPED_TOKEN.address,
-    chainId: 5115,
-    symbol: 'WcBTC',
-    decimals: 18,
-    name: 'Wrapped Citrea BTC'
-  }
-
-
-  return {
-    routing: isWrap ? 'WRAP' : 'UNWRAP',
-    quote: {
-      input: {
-        token: isWrap ? cBTCToken : WcBTCToken,
-        amount: amount
-      },
-      output: {
-        token: isWrap ? WcBTCToken : cBTCToken,
-        amount: amount // 1:1 conversion
-      },
-      chainId: 5115,
-      tradeType: body.type === 'EXACT_OUTPUT' ? 'EXACT_OUTPUT' : 'EXACT_INPUT',
-      methodParameters: {
-        calldata: calldata,
-        value: isWrap ? '0x' + BigInt(amount).toString(16) : '0x0',
-        to: CITREA_WRAPPED_TOKEN.address
-      },
-      gasUseEstimate: '50000',
-      gasPrice: '1000000000',
-      blockNumber: '1000000',
-      gasFee: '50000000000000',
-      gasFeeUSD: '0.12',
-      quoteId: Date.now().toString(),
-      swapper: recipient,
-      txFailureReasons: []
-    },
-    allQuotes: []
-  }
-}
 
 export function lambdaToExpress(
   handler: (event: APIGatewayProxyEvent, context: Context) => Promise<APIGatewayProxyResult>
