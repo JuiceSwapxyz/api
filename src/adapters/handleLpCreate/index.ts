@@ -51,13 +51,12 @@ export async function handleLpCreate(req: Request, res: Response): Promise<void>
       walletAddress,
       chainId,
       independentAmount,
-      independentToken,            // "TOKEN_0" | "TOKEN_1"
+      independentToken,
       initialDependentAmount,
-      initialPrice,                // token1 per 1 token0 (string)
-      position,                    // { pool: { token0, token1, fee, tickSpacing? }, tickLower, tickUpper }
+      initialPrice,
+      position,
     }: LpCreateRequestBody = req.body
 
-    // Validate common required fields for both LP Create 1 and LP Create 2
     if (
       !walletAddress ||
       !chainId ||
@@ -138,21 +137,16 @@ export async function handleLpCreate(req: Request, res: Response): Promise<void>
 
     const independentIsToken0 = independentToken === "TOKEN_0"
 
-    // For LP Create 2 (existing pool), we need to calculate the dependent amount
     let amount0Raw: string, amount1Raw: string
 
     if (isNewPool) {
-      // LP Create 1: Use provided amounts
       amount0Raw = independentIsToken0 ? independentAmount : initialDependentAmount!
       amount1Raw = independentIsToken0 ? initialDependentAmount! : independentAmount
     } else {
-      // LP Create 2: Calculate dependent amount using Position.fromAmount0/fromAmount1
-      // This uses the current pool state to determine the required amounts
 
       let positionCalc: Position
 
       if (independentIsToken0) {
-        // Independent token is token0, calculate position from amount0
         positionCalc = Position.fromAmount0({
           pool: poolInstance,
           tickLower,
@@ -164,7 +158,6 @@ export async function handleLpCreate(req: Request, res: Response): Promise<void>
         amount0Raw = independentAmount
         amount1Raw = positionCalc.amount1.quotient.toString()
       } else {
-        // Independent token is token1, calculate position from amount1  
         positionCalc = Position.fromAmount1({
           pool: poolInstance,
           tickLower,
@@ -218,8 +211,7 @@ export async function handleLpCreate(req: Request, res: Response): Promise<void>
     const totalValueHex = totalValueBN.toHexString()
     const feeData = await provider.getFeeData()
 
-    // Estimate gas with fallback
-    let gasEstimate = ethers.BigNumber.from("500000") // fallback
+    let gasEstimate = ethers.BigNumber.from("300000")
     try {
       gasEstimate = await provider.estimateGas({
         to: positionManagerAddress,
@@ -231,9 +223,11 @@ export async function handleLpCreate(req: Request, res: Response): Promise<void>
       console.warn("Gas estimation failed, using fallback")
     }
 
-    const gasLimit = gasEstimate.mul(130).div(100) // +30% buffer
-    const maxFeePerGas = feeData.maxFeePerGas || ethers.utils.parseUnits("1", "gwei")
-    const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.utils.parseUnits("0.1", "gwei")
+    const gasLimit = gasEstimate.mul(110).div(100)
+    
+    const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits("0.00000136", "gwei")
+    const maxPriorityFeePerGas = ethers.utils.parseUnits("1", "gwei")
+    const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas)
 
     const gasFee = gasLimit.mul(maxFeePerGas)
 
@@ -242,7 +236,7 @@ export async function handleLpCreate(req: Request, res: Response): Promise<void>
       create: {
         to: positionManagerAddress,
         from: walletAddress,
-        data: multicallData,                 // single blob: create+init+mint
+        data: multicallData,
         value: totalValueHex,
         maxFeePerGas: maxFeePerGas.toString(),
         maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
