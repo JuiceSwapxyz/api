@@ -692,22 +692,4 @@ export const chainProtocols = [
       v4SubgraphUrlOverride(ChainId.BNB)
     ),
   },
-  // Citrea Testnet - V3 with static pools (no subgraph available yet)
-  // This configuration ensures Citrea is in chainProtocols, preventing the
-  // "Chain protocol not found" error. It will fall back to StaticV3SubgraphProvider
-  // with our predefined pools from citreaStaticPools.ts
-  {
-    protocol: Protocol.V3,
-    chainId: ChainId.CITREA_TESTNET,
-    timeout: 90000,
-    provider: new V3SubgraphProvider(
-      ChainId.CITREA_TESTNET,
-      3,
-      90000,
-      true,
-      v3TrackedEthThreshold,
-      v3UntrackedUsdThreshold,
-      undefined // No subgraph URL - will use static pools
-    ),
-  },
 ]

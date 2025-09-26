@@ -27,7 +27,7 @@ const CITREA_TOKENS = {
 
   USDC: new Token(
     ChainId.CITREA_TESTNET,
-    '0x36c16EAc6b0ba6C50F494914fF015fcA95B7835F',
+    '0x36c16eaC6B0Ba6c50f494914ff015fCa95B7835F',
     6,
     'USDC',
     'USDC'
@@ -43,7 +43,7 @@ const CITREA_TOKENS = {
 
   TFC: new Token(
     ChainId.CITREA_TESTNET,
-    '0x14Adf6B87096ef750A956756BA191fC6bE94E473',
+    '0x14ADf6B87096Ef750a956756BA191fc6BE94e473',
     18,
     'TFC',
     'TaprootFreakCoin'
