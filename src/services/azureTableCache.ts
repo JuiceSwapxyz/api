@@ -55,7 +55,7 @@ export class AzureTableCache {
       await this.client.createTable();
 
       console.log('[AzureCache] Connected to Azure Table Storage');
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AzureCache] Failed to initialize Azure client:', error);
       console.log('[AzureCache] Falling back to in-memory cache');
     }
@@ -130,27 +130,34 @@ export class AzureTableCache {
     try {
       // Try Azure Table Storage first
       if (this.client) {
-        const entity = await this.client.getEntity<RouteEntity>(partitionKey, rowKey);
+        try {
+          const entity = await this.client.getEntity<RouteEntity>(partitionKey, rowKey);
 
-        if (entity) {
-          const now = Math.floor(Date.now() / 1000);
-          const age = now - Math.floor(entity.lastAccessed.getTime() / 1000);
+          if (entity) {
+            const now = Math.floor(Date.now() / 1000);
+            const age = now - Math.floor(entity.lastAccessed.getTime() / 1000);
 
-          if (age < entity.ttl) {
-            // Update hit count and last accessed
-            await this.client.updateEntity({
-              partitionKey,
-              rowKey,
-              hitCount: entity.hitCount + 1,
-              lastAccessed: new Date()
-            }, 'Merge');
+            if (age < entity.ttl) {
+              // Update hit count and last accessed
+              await this.client.updateEntity({
+                partitionKey,
+                rowKey,
+                hitCount: entity.hitCount + 1,
+                lastAccessed: new Date()
+              }, 'Merge');
 
-            console.log(`[AzureCache] HIT - ${cacheKey} (age: ${age}s, hits: ${entity.hitCount + 1})`);
-            return JSON.parse(entity.routeData);
-          } else {
-            // Expired, delete entity
-            await this.client.deleteEntity(partitionKey, rowKey);
-            console.log(`[AzureCache] EXPIRED - ${cacheKey} (age: ${age}s)`);
+              console.log(`[AzureCache] HIT - ${cacheKey} (age: ${age}s, hits: ${entity.hitCount + 1})`);
+              return JSON.parse(entity.routeData);
+            } else {
+              // Expired, delete entity
+              await this.client.deleteEntity(partitionKey, rowKey);
+              console.log(`[AzureCache] EXPIRED - ${cacheKey} (age: ${age}s)`);
+            }
+          }
+        } catch (getError: any) {
+          // Entity not found or other error
+          if (getError.statusCode !== 404) {
+            console.error(`[AzureCache] Error getting entity ${cacheKey}:`, getError);
           }
         }
       }
@@ -174,7 +181,7 @@ export class AzureTableCache {
       console.log(`[AzureCache] MISS - ${cacheKey}`);
       return null;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[AzureCache] Error getting ${cacheKey}:`, error);
       return null;
     }
@@ -220,7 +227,7 @@ export class AzureTableCache {
         console.log(`[AzureCache] FALLBACK STORED - ${cacheKey}`);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[AzureCache] Error storing ${cacheKey}:`, error);
     }
   }
@@ -261,9 +268,7 @@ export class AzureTableCache {
     if (this.client) {
       try {
         // Get sample of entities to calculate stats
-        const entities = this.client.listEntities<RouteEntity>({
-          select: ['hitCount', 'lastAccessed', 'ttl']
-        });
+        const entities = this.client.listEntities<RouteEntity>();
 
         let totalHits = 0;
         let entityCount = 0;
@@ -289,8 +294,8 @@ export class AzureTableCache {
           oldestEntry: entityCount > 0 ? new Date(oldestAccess).toISOString() : null
         };
 
-      } catch (error) {
-        stats.azureError = error.message;
+      } catch (error: any) {
+        stats.azureError = error?.message || 'Unknown error';
       }
     }
 
@@ -316,7 +321,7 @@ export class AzureTableCache {
       this.fallbackCache.clear();
       console.log('[AzureCache] Fallback cache cleared');
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AzureCache] Error clearing cache:', error);
     }
   }
@@ -345,7 +350,7 @@ export class AzureTableCache {
         console.log(`[AzureCache] Cleanup removed ${deletedCount} expired entries`);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AzureCache] Error during cleanup:', error);
     }
   }
