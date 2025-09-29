@@ -94,6 +94,7 @@ import {
 import { NEW_CACHED_ROUTES_ROLLOUT_PERCENT } from '../util/newCachedRoutesRolloutPercent'
 import { TENDERLY_NEW_ENDPOINT_ROLLOUT_PERCENT } from '../util/tenderlyNewEndpointRolloutPercent'
 import { CitreaStaticV3SubgraphProvider } from './router-entities/citrea-static-v3-subgraph-provider'
+import { CitreaCachingV3PoolProvider } from './router-entities/citrea-caching-v3-pool-provider'
 
 export const SUPPORTED_CHAINS: ChainId[] = [
   ChainId.MAINNET,
@@ -182,6 +183,9 @@ export abstract class InjectorSOR<Router, QueryParams> extends Injector<
         CACHING_ROUTING_LAMBDA_FUNCTION_NAME,
       } = process.env
 
+      // Check deployment platform once, outside the loop
+      const isAzureDeployment = process.env.DEPLOYMENT_PLATFORM === 'AZURE'
+
       const dependenciesByChain: {
         [chainId in ChainId]?: ContainerDependencies
       } = {}
@@ -247,23 +251,41 @@ export abstract class InjectorSOR<Router, QueryParams> extends Injector<
             new NodeJSCache(new NodeCache({ stdTTL: 180, useClones: false }))
           )
 
-          const noCacheV3PoolProvider = new V3PoolProvider(chainId, multicall2Provider)
-          const inMemoryCachingV3PoolProvider = new CachingV3PoolProvider(
-            chainId,
-            noCacheV3PoolProvider,
-            new NodeJSCache(new NodeCache({ stdTTL: 180, useClones: false }))
-          )
-          const dynamoCachingV3PoolProvider = new DynamoDBCachingV3PoolProvider(
-            chainId,
-            noCacheV3PoolProvider,
-            'V3PoolsCachingDB'
-          )
+          let v3PoolProvider: IV3PoolProvider
 
-          const v3PoolProvider = new TrafficSwitchV3PoolProvider({
-            currentPoolProvider: inMemoryCachingV3PoolProvider,
-            targetPoolProvider: dynamoCachingV3PoolProvider,
-            sourceOfTruthPoolProvider: noCacheV3PoolProvider,
-          })
+          if (chainId === ChainId.CITREA_TESTNET) {
+            // Use aggressive caching for Citrea to minimize RPC calls
+            console.log('[Injector] Using CitreaCachingV3PoolProvider for chain', chainId)
+            v3PoolProvider = new CitreaCachingV3PoolProvider(chainId, multicall2Provider)
+          } else if (isAzureDeployment) {
+            // On Azure, skip DynamoDB entirely to avoid connection timeouts
+            console.log('[Injector] Azure deployment detected - using in-memory cache only')
+            const noCacheV3PoolProvider = new V3PoolProvider(chainId, multicall2Provider)
+            v3PoolProvider = new CachingV3PoolProvider(
+              chainId,
+              noCacheV3PoolProvider,
+              new NodeJSCache(new NodeCache({ stdTTL: 180, useClones: false }))
+            )
+          } else {
+            // AWS deployment - use full stack with DynamoDB
+            const noCacheV3PoolProvider = new V3PoolProvider(chainId, multicall2Provider)
+            const inMemoryCachingV3PoolProvider = new CachingV3PoolProvider(
+              chainId,
+              noCacheV3PoolProvider,
+              new NodeJSCache(new NodeCache({ stdTTL: 180, useClones: false }))
+            )
+            const dynamoCachingV3PoolProvider = new DynamoDBCachingV3PoolProvider(
+              chainId,
+              noCacheV3PoolProvider,
+              'V3PoolsCachingDB'
+            )
+
+            v3PoolProvider = new TrafficSwitchV3PoolProvider({
+              currentPoolProvider: inMemoryCachingV3PoolProvider,
+              targetPoolProvider: dynamoCachingV3PoolProvider,
+              sourceOfTruthPoolProvider: noCacheV3PoolProvider,
+            })
+          }
 
           const onChainTokenFeeFetcher = new OnChainTokenFeeFetcher(chainId, provider)
           const graphQLTokenFeeFetcher = new GraphQLTokenFeeFetcher(
@@ -490,7 +512,8 @@ export abstract class InjectorSOR<Router, QueryParams> extends Injector<
               ? CACHING_ROUTING_LAMBDA_FUNCTION_NAME
               : AWS_LAMBDA_FUNCTION_NAME!
 
-          if (CACHED_ROUTES_TABLE_NAME && CACHED_ROUTES_TABLE_NAME !== '') {
+          // Skip DynamoDB route caching on Azure to avoid connection timeouts
+          if (!isAzureDeployment && CACHED_ROUTES_TABLE_NAME && CACHED_ROUTES_TABLE_NAME !== '') {
             routeCachingProvider = new DynamoRouteCachingProvider({
               routesTableName: ROUTES_TABLE_NAME!,
               routesCachingRequestFlagTableName: ROUTES_CACHING_REQUEST_FLAG_TABLE_NAME!,

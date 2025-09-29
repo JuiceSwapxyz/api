@@ -71,7 +71,16 @@ export class QuoteHandlerInjector extends InjectorSOR<
 
     metricsLogger.setNamespace('Uniswap')
     metricsLogger.setDimensions({ Service: 'RoutingAPI' })
-    const metric = new AWSMetricsLogger(metricsLogger)
+
+    // Use no-op metrics on Azure to avoid AWS CloudWatch connection attempts
+    const metric = process.env.DEPLOYMENT_PLATFORM === 'AZURE'
+      ? {
+          putDimensions: () => {},
+          putMetric: () => {},
+          setProperty: () => {},
+        }
+      : new AWSMetricsLogger(metricsLogger)
+
     setGlobalMetric(metric)
 
     // Today API is restricted such that both tokens must be on the same chain.
