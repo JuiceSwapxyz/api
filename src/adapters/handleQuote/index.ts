@@ -20,7 +20,8 @@ export async function handleQuote(req: Request, res: Response): Promise<void> {
         // Add cache header for monitoring
         res.setHeader('X-Quote-Cache', 'HIT');
         res.setHeader('X-Cache-Stats', JSON.stringify(quoteCache.getStats()));
-        return res.json(cachedQuote);
+        res.json(cachedQuote);
+        return;
     }
 
     // Cache miss - add header
