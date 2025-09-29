@@ -215,8 +215,9 @@ export abstract class InjectorSOR<Router, QueryParams> extends Injector<
           }
 
           let provider: StaticJsonRpcProvider
-          if (GlobalRpcProviders.getGlobalUniRpcProviders(log).has(chainId)) {
-            // Use RPC gateway.
+          // Force Citrea to use TrackedJsonRpcProvider for RPC tracking
+          if (GlobalRpcProviders.getGlobalUniRpcProviders(log).has(chainId) && chainId !== 5115) {
+            // Use RPC gateway for non-Citrea chains.
             provider = GlobalRpcProviders.getGlobalUniRpcProviders(log).get(chainId)!
             ;(provider as UniJsonRpcProvider).shouldEvaluate = false
           } else {
