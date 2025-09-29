@@ -1,8 +1,7 @@
 import { ChainId, Token } from '@juiceswapxyz/sdk-core'
 import { FeeAmount, Pool } from '@juiceswapxyz/v3-sdk'
-import { PoolAccessor, V3PoolProvider } from '@juiceswapxyz/smart-order-router'
-import type { IV3PoolProvider } from '@juiceswapxyz/smart-order-router'
-import type { ProviderConfig } from '@juiceswapxyz/smart-order-router'
+import { IV3PoolProvider, V3PoolAccessor, V3PoolProvider } from '@juiceswapxyz/smart-order-router'
+import { ProviderConfig } from '@juiceswapxyz/smart-order-router/build/main/providers/provider'
 
 interface CachedPoolState {
   pool: Pool
@@ -22,10 +21,7 @@ export class CitreaCachingV3PoolProvider implements IV3PoolProvider {
     this.baseProvider = new V3PoolProvider(chainId, multicallProvider)
   }
 
-  async getPools(
-    tokenPairs: [Token, Token, FeeAmount][],
-    providerConfig?: ProviderConfig
-  ): Promise<PoolAccessor> {
+  async getPools(tokenPairs: [Token, Token, FeeAmount][], providerConfig?: ProviderConfig): Promise<V3PoolAccessor> {
     const uncachedPairs: [Token, Token, FeeAmount][] = []
     const cachedPools = new Map<string, Pool>()
     const now = Date.now()
@@ -35,7 +31,7 @@ export class CitreaCachingV3PoolProvider implements IV3PoolProvider {
       const cacheKey = this.getCacheKey(tokenA, tokenB, feeAmount)
       const cached = this.poolStateCache.get(cacheKey)
 
-      if (cached && (now - cached.timestamp) < this.CACHE_TTL) {
+      if (cached && now - cached.timestamp < this.CACHE_TTL) {
         cachedPools.set(cacheKey, cached.pool)
         console.log(`[CitreaPoolCache] HIT for ${tokenA.symbol}/${tokenB.symbol}/${feeAmount}`)
       } else {
@@ -44,7 +40,7 @@ export class CitreaCachingV3PoolProvider implements IV3PoolProvider {
     }
 
     // Fetch only uncached pools
-    let freshPools: PoolAccessor | undefined
+    let freshPools: V3PoolAccessor | undefined
     if (uncachedPairs.length > 0) {
       console.log(`[CitreaPoolCache] Fetching ${uncachedPairs.length} pools from RPC`)
       freshPools = await this.baseProvider.getPools(uncachedPairs, providerConfig)
@@ -88,7 +84,7 @@ export class CitreaCachingV3PoolProvider implements IV3PoolProvider {
           uniquePools.set(key, pool)
         }
         return Array.from(uniquePools.values())
-      }
+      },
     }
   }
 
@@ -97,11 +93,11 @@ export class CitreaCachingV3PoolProvider implements IV3PoolProvider {
     return `${token0.address}-${token1.address}-${feeAmount}`
   }
 
-  async getPoolAddress(
+  getPoolAddress(
     tokenA: Token,
     tokenB: Token,
     feeAmount: FeeAmount
-  ): Promise<{ poolAddress: string; token0: Token; token1: Token }> {
+  ): { poolAddress: string; token0: Token; token1: Token } {
     return this.baseProvider.getPoolAddress(tokenA, tokenB, feeAmount)
   }
 }

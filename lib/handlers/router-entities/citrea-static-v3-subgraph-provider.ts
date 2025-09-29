@@ -13,10 +13,7 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
     this.v3PoolProvider = poolProvider
   }
 
-  public async getPools(
-    tokenIn?: Token,
-    tokenOut?: Token,
-  ): Promise<V3SubgraphPool[]> {
+  public async getPools(tokenIn?: Token, tokenOut?: Token): Promise<V3SubgraphPool[]> {
     if (!tokenIn || !tokenOut) {
       return this.getStaticPools()
     }
@@ -25,7 +22,7 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
     const tokenOutAddress = tokenOut.address.toLowerCase()
 
     const staticPools = this.getStaticPools()
-    const staticMatches = staticPools.filter(pool => {
+    const staticMatches = staticPools.filter((pool) => {
       const hasTokenIn = pool.token0.id === tokenInAddress || pool.token1.id === tokenInAddress
       const hasTokenOut = pool.token0.id === tokenOutAddress || pool.token1.id === tokenOutAddress
       return hasTokenIn && hasTokenOut
@@ -50,10 +47,11 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
   }
 
   private getStaticPools(): V3SubgraphPool[] {
-    return CITREA_STATIC_POOLS.map(pool => {
-      const [token0, token1] = pool.token0.address.toLowerCase() < pool.token1.address.toLowerCase()
-        ? [pool.token0, pool.token1]
-        : [pool.token1, pool.token0]
+    return CITREA_STATIC_POOLS.map((pool) => {
+      const [token0, token1] =
+        pool.token0.address.toLowerCase() < pool.token1.address.toLowerCase()
+          ? [pool.token0, pool.token1]
+          : [pool.token1, pool.token0]
 
       return {
         id: `${token0.address.toLowerCase()}-${token1.address.toLowerCase()}-${pool.fee}`,
@@ -82,7 +80,7 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
 
   private async discoverPools(tokenIn: Token, tokenOut: Token): Promise<V3SubgraphPool[]> {
     const FEE_TIERS = [FeeAmount.LOW, FeeAmount.MEDIUM, FeeAmount.HIGH]
-    const tokenPairs: [Token, Token, FeeAmount][] = FEE_TIERS.map(fee => [tokenIn, tokenOut, fee])
+    const tokenPairs: [Token, Token, FeeAmount][] = FEE_TIERS.map((fee) => [tokenIn, tokenOut, fee])
 
     const poolAccessor = await this.v3PoolProvider.getPools(tokenPairs)
     const pools: V3SubgraphPool[] = []
@@ -119,9 +117,10 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
   }
 
   private getCacheKey(tokenIn: Token, tokenOut: Token): string {
-    const [addr0, addr1] = tokenIn.address.toLowerCase() < tokenOut.address.toLowerCase()
-      ? [tokenIn.address.toLowerCase(), tokenOut.address.toLowerCase()]
-      : [tokenOut.address.toLowerCase(), tokenIn.address.toLowerCase()]
+    const [addr0, addr1] =
+      tokenIn.address.toLowerCase() < tokenOut.address.toLowerCase()
+        ? [tokenIn.address.toLowerCase(), tokenOut.address.toLowerCase()]
+        : [tokenOut.address.toLowerCase(), tokenIn.address.toLowerCase()]
     return `${addr0}-${addr1}`
   }
 }
