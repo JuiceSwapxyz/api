@@ -62,7 +62,7 @@ import { DynamoRouteCachingProvider } from './router-entities/route-caching/dyna
 import { DynamoDBCachingV3PoolProvider } from './pools/pool-caching/v3/dynamo-caching-pool-provider'
 import { TrafficSwitchV3PoolProvider } from './pools/provider-migration/v3/traffic-switch-v3-pool-provider'
 import { DefaultEVMClient } from './evm/EVMClient'
-import { InstrumentedEVMProvider } from './evm/provider/InstrumentedEVMProvider'
+import { TrackedJsonRpcProvider } from './evm/provider/TrackedJsonRpcProvider'
 import { createLocalTokenListProvider } from './router-entities/local-token-list-provider'
 import { deriveProviderName } from './evm/provider/ProviderName'
 import { V2DynamoCache } from './pools/pool-caching/v2/v2-dynamo-cache'
@@ -222,12 +222,13 @@ export abstract class InjectorSOR<Router, QueryParams> extends Injector<
           } else {
             provider = new DefaultEVMClient({
               allProviders: [
-                new InstrumentedEVMProvider({
+                new TrackedJsonRpcProvider({
                   url: {
                     url: url,
                     timeout,
                   },
                   network: chainId,
+                  chainId: chainId,
                   name: deriveProviderName(url),
                 }),
               ],

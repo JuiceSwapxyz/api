@@ -69,6 +69,18 @@ async function bootstrap() {
     });
   });
 
+  // RPC tracking stats endpoint
+  app.get('/rpc-stats', (_req, res) => {
+    try {
+      const { getRpcCallTracker } = require('../lib/handlers/evm/provider/RpcCallTracker');
+      const tracker = getRpcCallTracker();
+      const stats = tracker.getStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: 'RPC tracking not available' });
+    }
+  });
+
   const port = Number(process.env.PORT ?? 3000);
   const server = app.listen(port, () => {
     console.log(`routing-api listening on :${port}`);
