@@ -5,7 +5,7 @@
  * high traffic from campaign participants.
  */
 
-import { quoteCache } from './quoteCache';
+// import { quoteCache } from './quoteCache';
 
 interface CampaignPool {
   address: string;
@@ -91,17 +91,14 @@ export class CitreaCampaignOptimizer {
 
     for (const pool of this.campaignPools) {
       for (const amount of commonAmounts) {
-        const mockParams = {
-          tokenInChainId: this.CITREA_CHAIN_ID,
-          tokenOutChainId: this.CITREA_CHAIN_ID,
-          tokenIn: pool.tokenIn,
-          tokenOut: pool.tokenOut,
-          amount: amount,
-          type: 'EXACT_INPUT'
-        };
-
         // Note: In production, you would actually fetch these quotes
-        // to pre-populate the cache
+        // to pre-populate the cache with these parameters:
+        // tokenInChainId: this.CITREA_CHAIN_ID,
+        // tokenOutChainId: this.CITREA_CHAIN_ID,
+        // tokenIn: pool.tokenIn,
+        // tokenOut: pool.tokenOut,
+        // amount: amount,
+        // type: 'EXACT_INPUT'
         console.log(`[CitreaOptimizer] Would pre-warm: ${pool.description} with amount ${amount}`);
       }
     }

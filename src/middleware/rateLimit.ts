@@ -121,6 +121,7 @@ export class RateLimiter {
 
     // Track response to potentially not count cached hits
     if (this.config.skipSuccessfulRequests) {
+      const self = this;
       const originalSend = res.send;
       res.send = function(data: any) {
         // Check if response indicates a cache hit
@@ -129,10 +130,10 @@ export class RateLimiter {
           record!.count = Math.max(0, record!.count - 1);
           record!.cachedHits++;
           (req as any).rateLimit.current = record!.count;
-          (req as any).rateLimit.remaining = Math.max(0, this.config.maxRequestsPerIP - record!.count);
+          (req as any).rateLimit.remaining = Math.max(0, self.config.maxRequestsPerIP - record!.count);
         }
         return originalSend.call(this, data);
-      }.bind(this);
+      };
     }
 
     next();
@@ -193,7 +194,8 @@ export class RateLimiter {
     const cutoff = now - this.config.windowMs;
     let removed = 0;
 
-    for (const [ip, record] of this.requests.entries()) {
+    const requestEntries = Array.from(this.requests.entries());
+    for (const [ip, record] of requestEntries) {
       if (record.lastRequest < cutoff) {
         this.requests.delete(ip);
         removed++;
@@ -216,7 +218,8 @@ export class RateLimiter {
     let totalCachedHits = 0;
     let topIPs: Array<{ ip: string; count: number; cachedHits: number }> = [];
 
-    for (const [ip, record] of this.requests.entries()) {
+    const requestEntries = Array.from(this.requests.entries());
+    for (const [ip, record] of requestEntries) {
       totalCachedHits += record.cachedHits;
       topIPs.push({
         ip,

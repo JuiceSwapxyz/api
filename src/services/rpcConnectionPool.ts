@@ -5,10 +5,10 @@
  * under high load conditions like the Citrea bApps Campaign.
  */
 
-import { ethers } from 'ethers';
+import { providers } from 'ethers';
 
 interface PooledProvider {
-  provider: ethers.JsonRpcProvider;
+  provider: providers.JsonRpcProvider;
   activeRequests: number;
   lastUsed: number;
 }
@@ -41,7 +41,7 @@ export class RpcConnectionPool {
   /**
    * Get a provider from the pool or create a new one
    */
-  async getProvider(rpcUrl: string): Promise<ethers.JsonRpcProvider> {
+  async getProvider(rpcUrl: string): Promise<providers.JsonRpcProvider> {
     if (!this.pools.has(rpcUrl)) {
       this.pools.set(rpcUrl, []);
     }
@@ -55,10 +55,10 @@ export class RpcConnectionPool {
 
     if (!availableProvider && pool.length < this.config.maxConnectionsPerProvider) {
       // Create new connection
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const provider = new providers.JsonRpcProvider(rpcUrl);
 
       // Set max listeners to prevent warnings
-      provider._events.setMaxListeners(50);
+      // Note: In ethers v5, we cannot directly set max listeners
 
       availableProvider = {
         provider,
@@ -88,7 +88,7 @@ export class RpcConnectionPool {
   /**
    * Wrap provider to track request completion
    */
-  private wrapProvider(pooledProvider: PooledProvider, rpcUrl: string): ethers.JsonRpcProvider {
+  private wrapProvider(pooledProvider: PooledProvider, _rpcUrl: string): providers.JsonRpcProvider {
     const originalProvider = pooledProvider.provider;
 
     // Create a proxy to intercept calls
@@ -99,7 +99,7 @@ export class RpcConnectionPool {
         // Intercept async methods
         if (typeof value === 'function') {
           return (...args: any[]) => {
-            const result = value.apply(target, args);
+            const result = (value as any).apply(target, args);
 
             // If it's a promise, track completion
             if (result instanceof Promise) {
@@ -114,7 +114,7 @@ export class RpcConnectionPool {
 
         return value;
       }
-    }) as ethers.JsonRpcProvider;
+    }) as providers.JsonRpcProvider;
   }
 
   /**
@@ -145,7 +145,8 @@ export class RpcConnectionPool {
     const now = Date.now();
     let totalRemoved = 0;
 
-    for (const [rpcUrl, pool] of this.pools.entries()) {
+    const poolEntries = Array.from(this.pools.entries());
+    for (const [rpcUrl, pool] of poolEntries) {
       const initialSize = pool.length;
 
       // Remove stale connections
@@ -154,8 +155,7 @@ export class RpcConnectionPool {
         const isIdle = p.activeRequests === 0;
 
         if (isStale && isIdle) {
-          // Clean up provider
-          p.provider.destroy();
+          // Note: ethers v5 providers don't have destroy method
           return false;
         }
 
@@ -190,7 +190,8 @@ export class RpcConnectionPool {
       totalActiveRequests: 0
     };
 
-    for (const [rpcUrl, pool] of this.pools.entries()) {
+    const poolEntries = Array.from(this.pools.entries());
+    for (const [rpcUrl, pool] of poolEntries) {
       const poolStats = {
         connections: pool.length,
         activeRequests: pool.reduce((sum, p) => sum + p.activeRequests, 0),
@@ -217,10 +218,11 @@ export class RpcConnectionPool {
     }
 
     // Close all connections
-    for (const pool of this.pools.values()) {
-      for (const p of pool) {
-        p.provider.destroy();
-      }
+    const poolValues = Array.from(this.pools.values());
+    for (const pool of poolValues) {
+      // Note: ethers v5 providers don't have destroy method
+      // Connections will be cleaned up automatically
+      pool.length = 0;
     }
 
     this.pools.clear();
