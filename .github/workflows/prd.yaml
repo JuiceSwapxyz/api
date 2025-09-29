@@ -44,7 +44,7 @@ jobs:
         uses: azure/CLI@v2
         with:
           inlineScript: |
-            az containerapp update --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_CONTAINER_APP }} --image ${{ env.DOCKER_TAGS }} --set-env-vars DEPLOY_INFO=${{ env.DEPLOY_INFO }}
+            az containerapp update --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_CONTAINER_APP }} --image ${{ env.DOCKER_TAGS }} --set-env-vars DEPLOY_INFO=${{ env.DEPLOY_INFO }} DEPLOYMENT_PLATFORM=AZURE
 
       - name: Logout from Azure
         run: az logout

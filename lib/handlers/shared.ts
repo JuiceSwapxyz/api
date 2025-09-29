@@ -153,6 +153,41 @@ export const DEFAULT_ROUTING_CONFIG_BY_CHAIN = (chainId: ChainId): AlphaRouterCo
         distributionPercent: 25,
         forceCrossProtocol: false,
       }
+    case ChainId.CITREA_TESTNET:
+      // Highly optimized for Citrea campaign with minimal RPC calls
+      return {
+        v2PoolSelection: {
+          topN: 1,
+          topNDirectSwaps: 1,
+          topNTokenInOut: 1,
+          topNSecondHop: 0,
+          topNWithEachBaseToken: 1,
+          topNWithBaseToken: 1,
+        },
+        v3PoolSelection: {
+          topN: 1,  // Only check the best pool
+          topNDirectSwaps: 1,  // Only direct swaps for campaign
+          topNTokenInOut: 1,  // Minimal pool exploration
+          topNSecondHop: 1,  // Allow 1 hop for multi-step routes
+          topNWithEachBaseToken: 1,
+          topNWithBaseToken: 2,  // WCBTC is likely base token
+        },
+        v4PoolSelection: {
+          topN: 0,  // No V4 on Citrea
+          topNDirectSwaps: 0,
+          topNTokenInOut: 0,
+          topNSecondHop: 0,
+          topNWithEachBaseToken: 0,
+          topNWithBaseToken: 0,
+        },
+        maxSwapsPerPath: 2,  // Max 2 hops for simple routes
+        minSplits: 1,  // No split routes
+        maxSplits: 1,  // No split routes to reduce complexity
+        distributionPercent: 100,  // All in one route
+        forceCrossProtocol: false,
+        useCachedRoutes: true,  // Always use cache
+        optimisticCachedRoutes: true,  // Optimistic for testnet
+      }
     case ChainId.ZKSYNC:
       return {
         v2PoolSelection: {

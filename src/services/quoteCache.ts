@@ -36,14 +36,14 @@ export class QuoteCache {
 
   // Configuration
   private readonly DEFAULT_TTL = 300_000; // 300 seconds for production
-  private readonly CITREA_TTL = 60_000; // 60 seconds for Citrea (less volatile)
-  private readonly MAX_CACHE_SIZE = 1000;
+  private readonly CITREA_TTL = 1800_000; // 30 minutes for Citrea (stable testnet, campaign optimization)
+  private readonly MAX_CACHE_SIZE = 10000; // Increased for high-volume campaign traffic
   private readonly CLEANUP_INTERVAL = 60_000; // Run cleanup every minute
 
   constructor() {
     // Start periodic cleanup
     setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
-    console.log('[QuoteCache] Initialized with TTL: 30s default, 60s for Citrea');
+    console.log('[QuoteCache] Initialized with TTL: 5min default, 30min for Citrea');
   }
 
   /**

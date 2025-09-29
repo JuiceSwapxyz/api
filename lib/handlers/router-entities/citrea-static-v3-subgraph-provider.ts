@@ -71,7 +71,8 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
           name: token1.name,
           decimals: token1.decimals.toString(),
         },
-        sqrtPrice: '0',
+        // Use realistic default values to avoid fetching on-chain
+        sqrtPrice: '79228162514264337593543950336', // ~1:1 price
         tick: '0',
         tvlETH: 0,
         tvlUSD: 0,
