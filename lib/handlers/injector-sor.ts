@@ -223,7 +223,7 @@ export abstract class InjectorSOR<Router, QueryParams> extends Injector<
           } else {
             provider = new DefaultEVMClient({
               allProviders: [
-                new TrackedJsonRpcProvider({
+                TrackedJsonRpcProvider.getOrCreate({
                   url: {
                     url: url,
                     timeout,

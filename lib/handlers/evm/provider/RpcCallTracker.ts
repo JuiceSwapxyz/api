@@ -30,7 +30,7 @@ export interface HourlyReport {
   topMethods: Array<{method: string, count: number, percentage: number}>
   errorRate: number
   avgLatency: number
-  callsByMethod: Map<string, RpcCallStats>
+  callsByMethod: { [method: string]: RpcCallStats }
   warnings: string[]
 }
 
@@ -232,6 +232,12 @@ export class RpcCallTracker {
       warnings.push(`${topMethods[0].method} accounts for ${topMethods[0].percentage.toFixed(1)}% of all calls`)
     }
 
+    // Convert Map to plain object for JSON serialization
+    const callsByMethodObj: { [key: string]: RpcCallStats } = {}
+    callsByMethod.forEach((value, key) => {
+      callsByMethodObj[key] = value
+    })
+
     return {
       timestamp: now,
       totalCalls,
@@ -239,7 +245,7 @@ export class RpcCallTracker {
       topMethods,
       errorRate,
       avgLatency,
-      callsByMethod,
+      callsByMethod: callsByMethodObj,
       warnings
     }
   }
@@ -286,7 +292,7 @@ export class RpcCallTracker {
     console.log(`╚════════════════════════════════════════════════════════════════╝`)
 
     // Log detailed stats for problematic methods
-    report.callsByMethod.forEach((stats, method) => {
+    Object.entries(report.callsByMethod).forEach(([method, stats]) => {
       if (stats.failureCount > stats.successCount || stats.avgLatencyMs > 1000) {
         console.log(`[RpcCallTracker] Problem detected with ${method}:`)
         console.log(`  - Success rate: ${((stats.successCount / stats.totalCalls) * 100).toFixed(1)}%`)
@@ -302,7 +308,7 @@ export class RpcCallTracker {
   getMethodStats(method: string): RpcCallStats | undefined {
     this.cleanOldHistory()
     const report = this.getStats()
-    return report.callsByMethod.get(method)
+    return report.callsByMethod[method]
   }
 
   /**

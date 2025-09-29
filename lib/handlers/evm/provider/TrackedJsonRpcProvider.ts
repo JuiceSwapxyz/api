@@ -6,6 +6,9 @@ import { getRpcCallTracker } from './RpcCallTracker'
 // Environment-based debug logging
 const DEBUG_RPC = process.env.DEBUG_RPC === 'true'
 
+// Singleton cache for providers to preserve block caching across requests
+const providerCache = new Map<string, TrackedJsonRpcProvider>()
+
 export interface TrackedJsonRpcProviderConfig {
   url?: ConnectionInfo | string
   network?: Networkish
@@ -182,5 +185,21 @@ export class TrackedJsonRpcProvider extends StaticJsonRpcProvider {
     }
 
     return provider
+  }
+
+  /**
+   * Get or create a singleton provider for a given chain
+   */
+  static getOrCreate(config: TrackedJsonRpcProviderConfig): TrackedJsonRpcProvider {
+    const cacheKey = `${config.chainId || 'unknown'}_${config.name || 'default'}`
+
+    if (!providerCache.has(cacheKey)) {
+      if (DEBUG_RPC) {
+        console.log(`[TrackedJsonRpcProvider] Creating new provider for ${cacheKey}`)
+      }
+      providerCache.set(cacheKey, new TrackedJsonRpcProvider(config))
+    }
+
+    return providerCache.get(cacheKey)!
   }
 }
