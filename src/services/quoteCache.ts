@@ -74,7 +74,7 @@ export class QuoteCache {
    * Check if this is a Citrea testnet quote
    */
   private isCitreaQuote(params: any): boolean {
-    const CITREA_TESTNET_CHAIN_ID = 5003; // Citrea testnet chain ID
+    const CITREA_TESTNET_CHAIN_ID = 5115; // Citrea testnet chain ID - CORRECTED
     return params.tokenInChainId === CITREA_TESTNET_CHAIN_ID ||
            params.tokenOutChainId === CITREA_TESTNET_CHAIN_ID;
   }
