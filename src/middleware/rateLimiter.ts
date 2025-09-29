@@ -23,31 +23,12 @@ function getClientIp(req: Request): string {
 }
 
 /**
- * Check if request has a valid connected wallet
- * Requests without wallet or with placeholder address get stricter limits
- */
-function hasConnectedWallet(req: Request): boolean {
-  const swapper = req.body?.swapper;
-  const UNCONNECTED_ADDRESS = '0xAAAA44272dc658575Ba38f43C438447dDED45358';
-
-  return swapper &&
-         typeof swapper === 'string' &&
-         swapper !== UNCONNECTED_ADDRESS &&
-         swapper.match(/^0x[a-fA-F0-9]{40}$/); // Valid Ethereum address
-}
-
-/**
  * Rate limiter for quote endpoint
- * - 60 requests/minute for requests with connected wallet
- * - 10 requests/minute for requests without wallet (likely bots)
+ * IP-based rate limiting: 10 requests/minute per IP
  */
 export const quoteLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute window
-
-  // Dynamic limit based on whether wallet is connected
-  max: (req) => {
-    return hasConnectedWallet(req) ? 60 : 10;
-  },
+  max: 10, // 10 requests per minute per IP
 
   // Use custom key generator to properly extract IP
   keyGenerator: getClientIp,
@@ -59,15 +40,14 @@ export const quoteLimiter = rateLimit({
   // Custom error handler
   handler: (req: Request, res: Response) => {
     const ip = getClientIp(req);
-    const hasWallet = hasConnectedWallet(req);
 
-    console.log(`[Rate Limit] Blocked request from IP: ${ip}, hasWallet: ${hasWallet}`);
+    console.log(`[Rate Limit] Blocked request from IP: ${ip}`);
 
     res.status(429).json({
       error: 'Too many requests',
       message: 'You have exceeded the rate limit. Please try again later.',
       retryAfter: 60,
-      hint: hasWallet ? 'Rate limit: 60 requests/minute' : 'Rate limit: 10 requests/minute (connect wallet for higher limit)'
+      hint: 'Rate limit: 10 requests/minute per IP'
     });
   },
 
