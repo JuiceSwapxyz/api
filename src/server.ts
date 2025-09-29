@@ -81,6 +81,28 @@ async function bootstrap() {
     }
   });
 
+  // Quote request tracking stats
+  app.get('/quote-stats', (_req, res) => {
+    try {
+      const { quoteRequestTracker } = require('./services/quoteRequestTracker');
+      const stats = quoteRequestTracker.getStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: 'Quote tracking not available' });
+    }
+  });
+
+  // Suspicious activity detection
+  app.get('/suspicious-activity', (_req, res) => {
+    try {
+      const { quoteRequestTracker } = require('./services/quoteRequestTracker');
+      const suspicious = quoteRequestTracker.getSuspiciousActivity();
+      res.json(suspicious);
+    } catch (error) {
+      res.status(500).json({ error: 'Tracking not available' });
+    }
+  });
+
   const port = Number(process.env.PORT ?? 3000);
   const server = app.listen(port, () => {
     console.log(`routing-api listening on :${port}`);

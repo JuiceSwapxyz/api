@@ -4,8 +4,10 @@ import { QuoteRequestBody } from "./types";
 import { handleWrappedQuote } from "./wrapppedQuote";
 import { getTokenAddress } from "../../utils/erc20";
 import { quoteCache } from "../../services/quoteCache";
+import { quoteRequestTracker } from "../../services/quoteRequestTracker";
 
 export async function handleQuote(req: Request, res: Response): Promise<void> {
+    const startTime = Date.now();
     const quoteParams: QuoteRequestBody = req.body;
     const currencyIn = quoteParams.tokenIn || quoteParams.tokenInAddress;
     const currencyOut = quoteParams.tokenOut || quoteParams.tokenOutAddress;
@@ -40,9 +42,14 @@ export async function handleQuote(req: Request, res: Response): Promise<void> {
         return handleWrappedQuote(quoteQuery, res);
     }
 
-    // Store original send function to intercept response
+    // Store original send function to intercept response and track
     const originalSend = res.json.bind(res);
     res.json = function(data: any) {
+        // Track request
+        const responseTime = Date.now() - startTime;
+        const success = !data?.error && data?.state !== 'NOT_FOUND';
+        quoteRequestTracker.trackRequest(req, success, responseTime);
+
         // Cache successful responses
         if (quoteCache.shouldCache(quoteParams, data)) {
             quoteCache.set(quoteParams, data);
