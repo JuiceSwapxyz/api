@@ -35,15 +35,14 @@ export class CitreaStaticV3SubgraphProvider extends StaticV3SubgraphProvider {
     const tokenOutAddress = tokenOut.address.toLowerCase();
 
     const staticPools = this.getStaticPools();
-    // Return all pools if either token appears - enables multi-hop route discovery
-    const hasRelevantPools = staticPools.some((pool) => {
+    const staticMatches = staticPools.filter((pool) => {
       const hasTokenIn = pool.token0.id === tokenInAddress || pool.token1.id === tokenInAddress;
       const hasTokenOut = pool.token0.id === tokenOutAddress || pool.token1.id === tokenOutAddress;
-      return hasTokenIn || hasTokenOut;
+      return hasTokenIn && hasTokenOut;
     });
 
-    if (hasRelevantPools) {
-      return staticPools;
+    if (staticMatches.length > 0) {
+      return staticMatches;
     }
 
     const cacheKey = this.getCacheKey(tokenIn, tokenOut);
