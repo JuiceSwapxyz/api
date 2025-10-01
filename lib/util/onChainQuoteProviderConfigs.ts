@@ -131,7 +131,7 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
     },
     [ChainId.CITREA_TESTNET]: {
       multicallChunk: 1,
-      gasLimitPerCall: 1_500_000,
+      gasLimitPerCall: 500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
@@ -224,7 +224,7 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
     },
     [ChainId.CITREA_TESTNET]: {
       multicallChunk: 1,
-      gasLimitPerCall: 1_500_000,
+      gasLimitPerCall: 500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
@@ -318,7 +318,7 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
     },
     [ChainId.CITREA_TESTNET]: {
       multicallChunk: 1,
-      gasLimitPerCall: 1_500_000,
+      gasLimitPerCall: 500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
@@ -406,7 +406,7 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
     },
     [ChainId.CITREA_TESTNET]: {
       multicallChunk: 1,
-      gasLimitPerCall: 1_500_000,
+      gasLimitPerCall: 500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
@@ -856,6 +856,10 @@ export const GAS_ERROR_FAILURE_OVERRIDES: { [chainId: number]: FailureOverrides 
     gasLimitOverride: 3_000_000,
     multicallChunk: 45,
   },
+  [ChainId.CITREA_TESTNET]: {
+    gasLimitOverride: 3_000_000,
+    multicallChunk: 1,
+  },
 }
 
 export const SUCCESS_RATE_FAILURE_OVERRIDES: { [chainId: number]: FailureOverrides } = {
@@ -907,6 +911,10 @@ export const SUCCESS_RATE_FAILURE_OVERRIDES: { [chainId: number]: FailureOverrid
   [ChainId.SONEIUM]: {
     gasLimitOverride: 3_000_000,
     multicallChunk: 45,
+  },
+  [ChainId.CITREA_TESTNET]: {
+    gasLimitOverride: 3_000_000,
+    multicallChunk: 1,
   },
 }
 
