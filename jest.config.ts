@@ -4,7 +4,7 @@ const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   verbose: true,
-  roots: ['./test'],
+  passWithNoTests: true,
   transform: {
     // Use swc to speed up ts-jest's sluggish compilation times.
     // Using this cuts the initial time to compile from 6-12 seconds to
