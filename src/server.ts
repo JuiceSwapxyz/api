@@ -62,8 +62,8 @@ async function bootstrap() {
       if (corsOrigins.includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
-      // Check if it's a juiceswap.com subdomain
-      else if (/^https?:\/\/([\w-]+\.)?juiceswap\.com(:\d+)?$/.test(origin)) {
+      // Check if it's a juiceswap.com or juiceswap.xyz subdomain (supports multi-level subdomains)
+      else if (/^https?:\/\/([\w-]+\.)*juiceswap\.(com|xyz)(:\d+)?$/.test(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
     } else {
@@ -73,7 +73,7 @@ async function bootstrap() {
 
     res.header(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-request-id, x-api-key'
+      'Content-Type, Authorization, x-request-source, x-app-version, x-api-key, x-universal-router-version, x-viem-provider-enabled, x-uniquote-enabled'
     );
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 

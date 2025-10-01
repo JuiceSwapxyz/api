@@ -37,6 +37,9 @@ RUN npm ci --omit=dev && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy config files (needed for JSON imports that reference ../config/)
+COPY --from=builder /app/config ./config
+
 # Change ownership to nodejs user
 RUN chown -R nodejs:nodejs /app
 
