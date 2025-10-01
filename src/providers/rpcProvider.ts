@@ -12,42 +12,71 @@ export interface ChainConfig {
   rpcUrl: string;
 }
 
+// Build Alchemy RPC URL from API key
+function buildAlchemyUrl(chainId: ChainId): string {
+  const alchemyKey = process.env[`ALCHEMY_${chainId}`];
+  if (!alchemyKey) return '';
+
+  // Citrea uses public RPC (ALCHEMY_5115=none in config)
+  if (alchemyKey === 'none' || chainId === ChainId.CITREA_TESTNET) {
+    return 'https://rpc.testnet.citrea.xyz';
+  }
+
+  // Build Alchemy URL based on chain
+  switch (chainId) {
+    case ChainId.MAINNET:
+      return `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+    case ChainId.OPTIMISM:
+      return `https://opt-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+    case ChainId.POLYGON:
+      return `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+    case ChainId.BASE:
+      return `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+    case ChainId.ARBITRUM_ONE:
+      return `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+    case ChainId.SEPOLIA:
+      return `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`;
+    default:
+      return '';
+  }
+}
+
 // Supported chains configuration
 const CHAIN_CONFIGS: ChainConfig[] = [
   {
     chainId: ChainId.MAINNET,
     name: 'Ethereum Mainnet',
-    rpcUrl: process.env.RPC_1 || '',
+    rpcUrl: buildAlchemyUrl(ChainId.MAINNET),
   },
   {
     chainId: ChainId.OPTIMISM,
     name: 'Optimism',
-    rpcUrl: process.env.RPC_10 || '',
+    rpcUrl: buildAlchemyUrl(ChainId.OPTIMISM),
   },
   {
     chainId: ChainId.POLYGON,
     name: 'Polygon',
-    rpcUrl: process.env.RPC_137 || '',
+    rpcUrl: buildAlchemyUrl(ChainId.POLYGON),
   },
   {
     chainId: ChainId.BASE,
     name: 'Base',
-    rpcUrl: process.env.RPC_8453 || '',
+    rpcUrl: buildAlchemyUrl(ChainId.BASE),
   },
   {
     chainId: ChainId.ARBITRUM_ONE,
     name: 'Arbitrum',
-    rpcUrl: process.env.RPC_42161 || '',
+    rpcUrl: buildAlchemyUrl(ChainId.ARBITRUM_ONE),
   },
   {
     chainId: ChainId.SEPOLIA,
     name: 'Sepolia Testnet',
-    rpcUrl: process.env.RPC_11155111 || '',
+    rpcUrl: buildAlchemyUrl(ChainId.SEPOLIA),
   },
   {
     chainId: ChainId.CITREA_TESTNET,
     name: 'Citrea Testnet',
-    rpcUrl: process.env.RPC_5115 || 'https://rpc.testnet.citrea.xyz',
+    rpcUrl: buildAlchemyUrl(ChainId.CITREA_TESTNET),
   },
 ];
 
