@@ -1,81 +1,51 @@
 import rateLimit from 'express-rate-limit';
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
-/**
- * Extract IP address from request, considering proxy headers
- */
-function getClientIp(req: Request): string {
-  // Try x-forwarded-for header first (for proxies/load balancers)
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    const ips = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-    return ips.split(',')[0].trim();
-  }
+// Skip rate limiting in development and test environments
+// This matches AWS Lambda behavior (no app-level rate limiting)
+const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 
-  // Try x-real-ip header
-  const realIp = req.headers['x-real-ip'];
-  if (realIp) {
-    return Array.isArray(realIp) ? realIp[0] : realIp;
-  }
+// Pass-through middleware for development
+const noOpLimiter = (_req: Request, _res: Response, next: NextFunction) => next();
 
-  // Fall back to req.ip or connection remote address
-  return req.ip || req.socket.remoteAddress || 'unknown';
-}
-
-/**
- * Rate limiter for quote endpoint
- * IP-based rate limiting: 30 requests/10 minutes per IP
- */
-export const quoteLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minute window
-  max: 30, // 30 requests per 10 minutes per IP
-
-  // Use custom key generator to properly extract IP
-  keyGenerator: getClientIp,
-
-  // Return rate limit info in headers
+// Quote endpoint rate limiter (stricter)
+export const quoteLimiter = isDevelopment ? noOpLimiter : rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: parseInt(process.env.RATE_LIMIT_QUOTE_PER_MINUTE || '30'),
+  message: {
+    error: 'Too many requests',
+    detail: 'You have exceeded the quote rate limit. Please try again later.',
+  },
   standardHeaders: true,
   legacyHeaders: false,
-
-  // Custom error handler
-  handler: (req: Request, res: Response) => {
-    const ip = getClientIp(req);
-
-    console.log(`[Rate Limit] Blocked request from IP: ${ip}`);
-
-    res.status(429).json({
-      error: 'Too many requests',
-      message: 'You have exceeded the rate limit. Please try again later.',
-      retryAfter: 600,
-      hint: 'Rate limit: 30 requests per 10 minutes per IP'
-    });
+  keyGenerator: (req) => {
+    // Rate limit by IP address
+    const forwarded = req.headers['x-forwarded-for'] as string;
+    const ip = forwarded ? forwarded.split(',')[0] : req.ip;
+    return ip || 'unknown';
   },
-
-  // Skip rate limiting for successful responses (optional - can be removed if too lenient)
-  skipSuccessfulRequests: false,
-
-  // Skip failed requests from counting (optional)
-  skipFailedRequests: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/healthz' || req.path === '/readyz';
+  },
 });
 
-/**
- * More lenient rate limiter for other endpoints (swap, etc.)
- * 100 requests per minute
- */
-export const generalLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 100,
-  keyGenerator: getClientIp,
+// General endpoint rate limiter (more lenient)
+export const generalLimiter = isDevelopment ? noOpLimiter : rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: parseInt(process.env.RATE_LIMIT_GENERAL_PER_MINUTE || '100'),
+  message: {
+    error: 'Too many requests',
+    detail: 'You have exceeded the rate limit. Please try again later.',
+  },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req: Request, res: Response) => {
-    const ip = getClientIp(req);
-    console.log(`[Rate Limit] Blocked general request from IP: ${ip}`);
-
-    res.status(429).json({
-      error: 'Too many requests',
-      message: 'You have exceeded the rate limit. Please try again later.',
-      retryAfter: 60
-    });
+  keyGenerator: (req) => {
+    const forwarded = req.headers['x-forwarded-for'] as string;
+    const ip = forwarded ? forwarded.split(',')[0] : req.ip;
+    return ip || 'unknown';
+  },
+  skip: (req) => {
+    return req.path === '/healthz' || req.path === '/readyz';
   },
 });
