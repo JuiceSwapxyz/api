@@ -53,6 +53,7 @@ export interface SwapParams extends QuoteParams {
 export class RouterService {
   private routers: Map<ChainId, AlphaRouter>;
   private providers: Map<ChainId, providers.StaticJsonRpcProvider>;
+  private tokenProviders: Map<ChainId, any>;
   private logger: Logger;
 
   private constructor(
@@ -62,6 +63,7 @@ export class RouterService {
     this.providers = rpcProviders;
     this.logger = logger;
     this.routers = new Map();
+    this.tokenProviders = new Map();
   }
 
   static async create(
@@ -103,6 +105,9 @@ export class RouterService {
         );
       }
 
+      // Store token provider for token lookup
+      this.tokenProviders.set(chainId, tokenProvider);
+
       // Initialize V3 pool provider only - no V2 needed
       const v3PoolProvider = new V3PoolProvider(chainId, multicallProvider);
 
@@ -126,6 +131,54 @@ export class RouterService {
         ...(v3SubgraphProvider && { v3SubgraphProvider }),
       }));
     }
+  }
+
+  /**
+   * Get token information (decimals, symbol, name) from token lists or on-chain
+   * Matches develop branch CurrencyLookup behavior
+   */
+  async getTokenInfo(address: string, chainId: ChainId): Promise<{
+    decimals: number;
+    symbol?: string;
+    name?: string;
+  }> {
+    // Check if native currency
+    const NATIVE_ADDRESSES = [
+      '0x0000000000000000000000000000000000000000',
+      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+    ];
+
+    if (NATIVE_ADDRESSES.some(addr => addr.toLowerCase() === address.toLowerCase())) {
+      const nativeToken = nativeOnChain(chainId);
+      return {
+        decimals: nativeToken.decimals,
+        symbol: nativeToken.symbol,
+        name: nativeToken.name,
+      };
+    }
+
+    // Get token from token provider
+    const tokenProvider = this.tokenProviders.get(chainId);
+    if (!tokenProvider) {
+      throw new Error(`No token provider available for chain ${chainId}`);
+    }
+
+    try {
+      // Token list providers have getTokenByAddress method
+      const token = await tokenProvider.getTokenByAddress(address);
+      if (token) {
+        this.logger.debug({ address, chainId, decimals: token.decimals }, 'Found token in token list');
+        return {
+          decimals: token.decimals,
+          symbol: token.symbol,
+          name: token.name,
+        };
+      }
+    } catch (error) {
+      this.logger.warn({ error, address, chainId }, 'Failed to lookup token');
+    }
+
+    throw new Error(`Token not found: ${address} on chain ${chainId}`);
   }
 
   private createCurrency(

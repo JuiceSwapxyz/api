@@ -77,8 +77,8 @@ export interface QuoteRequestBody {
   tokenOutAddress?: string;
   tokenInChainId: number;
   tokenOutChainId: number;
-  tokenInDecimals: number;
-  tokenOutDecimals: number;
+  tokenInDecimals?: number;  // Optional - will be fetched from token lists if not provided
+  tokenOutDecimals?: number;  // Optional - will be fetched from token lists if not provided
   amount: string;
   type?: 'EXACT_INPUT' | 'EXACT_OUTPUT';
   swapper?: string;
@@ -109,10 +109,10 @@ export function createQuoteHandler(
       const body: QuoteRequestBody = req.body;
 
       // Validate required fields
-      if (!body.amount || body.tokenInDecimals === undefined || body.tokenOutDecimals === undefined) {
+      if (!body.amount) {
         res.status(400).json({
           error: 'Missing required fields',
-          detail: 'amount, tokenInDecimals, and tokenOutDecimals are required',
+          detail: 'amount is required',
         });
         return;
       }
@@ -147,6 +147,32 @@ export function createQuoteHandler(
           detail: `Chain ID ${chainId} is not supported`,
         });
         return;
+      }
+
+      // Fetch token decimals from token lists if not provided (matches develop behavior)
+      let tokenInDecimals = body.tokenInDecimals;
+      let tokenOutDecimals = body.tokenOutDecimals;
+
+      if (tokenInDecimals === undefined || tokenOutDecimals === undefined) {
+        try {
+          if (tokenInDecimals === undefined) {
+            const tokenInInfo = await routerService.getTokenInfo(tokenIn, chainId);
+            tokenInDecimals = tokenInInfo.decimals;
+            log.debug({ tokenIn, decimals: tokenInDecimals }, 'Fetched tokenIn decimals from token list');
+          }
+
+          if (tokenOutDecimals === undefined) {
+            const tokenOutInfo = await routerService.getTokenInfo(tokenOut, chainId);
+            tokenOutDecimals = tokenOutInfo.decimals;
+            log.debug({ tokenOut, decimals: tokenOutDecimals }, 'Fetched tokenOut decimals from token list');
+          }
+        } catch (error: any) {
+          res.status(400).json({
+            error: 'Token lookup failed',
+            detail: error.message || 'Could not find token information. Please provide tokenInDecimals and tokenOutDecimals.',
+          });
+          return;
+        }
       }
 
       // Check cache first
@@ -220,8 +246,8 @@ export function createQuoteHandler(
       const route = await routerService.getQuote({
         tokenIn,
         tokenOut,
-        tokenInDecimals: body.tokenInDecimals,
-        tokenOutDecimals: body.tokenOutDecimals,
+        tokenInDecimals,
+        tokenOutDecimals,
         amount: body.amount,
         chainId,
         type: body.type === 'EXACT_OUTPUT' ? 'exactOut' : 'exactIn',
@@ -247,9 +273,9 @@ export function createQuoteHandler(
       const quoteId = generateQuoteId();
 
       // Calculate decimal representations
-      const inputAmountDecimals = formatDecimals(body.amount, body.tokenInDecimals);
-      const quoteDecimals = formatDecimals(route.quote.toExact(), body.tokenOutDecimals);
-      const quoteGasAdjustedDecimals = formatDecimals(route.quoteGasAdjusted.toExact(), body.tokenOutDecimals);
+      const inputAmountDecimals = formatDecimals(body.amount, tokenInDecimals);
+      const quoteDecimals = formatDecimals(route.quote.toExact(), tokenOutDecimals);
+      const quoteGasAdjustedDecimals = formatDecimals(route.quoteGasAdjusted.toExact(), tokenOutDecimals);
 
       // Calculate gas estimates in output token terms
       const gasUseEstimateQuote = route.estimatedGasUsedUSD.toExact();
@@ -284,8 +310,8 @@ export function createQuoteHandler(
 
           const poolParams = {
             chainId,
-            tokenInDecimals: body.tokenInDecimals,
-            tokenOutDecimals: body.tokenOutDecimals,
+            tokenInDecimals,
+            tokenOutDecimals,
             tokenIn,
             tokenOut,
             amount: body.amount,
