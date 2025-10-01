@@ -24,34 +24,69 @@ function getClientIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
-// Quote endpoint rate limiter (stricter)
+/**
+ * Rate limiter for quote endpoint
+ * IP-based rate limiting: 2000 requests per minute per IP (matches develop's 20000/10min)
+ * Disabled in development/test environments for better DX
+ */
 export const quoteLimiter = isDevelopment ? noOpLimiter : rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute window
-  max: parseInt(process.env.RATE_LIMIT_QUOTE_PER_MINUTE || '1000'),
-  message: {
-    error: 'Too many requests',
-    detail: 'You have exceeded the quote rate limit. Please try again later.',
-  },
+  max: parseInt(process.env.RATE_LIMIT_QUOTE_PER_MINUTE || '2000'),
+
+  // Use custom key generator to properly extract IP
+  keyGenerator: getClientIp,
+
+  // Return rate limit info in headers
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp,
+
+  // Custom error handler with IP logging
+  handler: (req: Request, res: Response) => {
+    const ip = getClientIp(req);
+    console.log(`[Rate Limit] Blocked quote request from IP: ${ip}`);
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'You have exceeded the quote rate limit. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+
+  // Skip rate limiting for health checks
   skip: (req) => {
-    // Skip rate limiting for health checks
     return req.path === '/healthz' || req.path === '/readyz';
   },
 });
 
-// General endpoint rate limiter (more lenient)
+/**
+ * More lenient rate limiter for other endpoints (swap, lp/approve, lp/create)
+ * IP-based rate limiting: 10000 requests per minute per IP
+ * Disabled in development/test environments for better DX
+ */
 export const generalLimiter = isDevelopment ? noOpLimiter : rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute window
   max: parseInt(process.env.RATE_LIMIT_GENERAL_PER_MINUTE || '10000'),
-  message: {
-    error: 'Too many requests',
-    detail: 'You have exceeded the rate limit. Please try again later.',
-  },
+
+  // Use custom key generator to properly extract IP
+  keyGenerator: getClientIp,
+
+  // Return rate limit info in headers
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: getClientIp,
+
+  // Custom error handler with IP logging
+  handler: (req: Request, res: Response) => {
+    const ip = getClientIp(req);
+    console.log(`[Rate Limit] Blocked general request from IP: ${ip}`);
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'You have exceeded the rate limit. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+
+  // Skip rate limiting for health checks
   skip: (req) => {
     return req.path === '/healthz' || req.path === '/readyz';
   },
