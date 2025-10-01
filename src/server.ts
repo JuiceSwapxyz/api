@@ -1,48 +1,82 @@
 import 'dotenv/config';
-import express from 'express';
-import { handleSwap } from './adapters/handleSwap';
-import { handleSwaps } from './adapters/handleSwaps';
-import { handleQuote } from './adapters/handleQuote';
-import { handleLpApprove } from './adapters/handleLpApprove';
-import { handleLpCreate } from './adapters/handleLpCreate';
-import { handleSwappableTokens } from './adapters/handleSwappableTokens';
+import express, { Request, Response } from 'express';
+import Logger from 'bunyan';
+import { RouterService } from './core/RouterService';
+import { initializeProviders, verifyProviders } from './providers/rpcProvider';
+import { createQuoteHandler } from './endpoints/quote';
+import { createSwapHandler } from './endpoints/swap';
+import { createSwappableTokensHandler } from './endpoints/swappableTokens';
+import { createSwapsHandler } from './endpoints/swaps';
+import { createLpApproveHandler } from './endpoints/lpApprove';
+import { createLpCreateHandler } from './endpoints/lpCreate';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { getApolloMiddleware } from './adapters/handleGraphQL';
+import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
 
+// Initialize logger
+const logger = Logger.createLogger({
+  name: 'juiceswap-routing-api',
+  level: (process.env.LOG_LEVEL as Logger.LogLevel) || 'info',
+  serializers: Logger.stdSerializers,
+});
 
 async function bootstrap() {
+  logger.info('Starting JuiceSwap Clean Routing API...');
+
+  // Initialize RPC providers
+  const providers = initializeProviders(logger);
+
+  // Verify provider connectivity
+  await verifyProviders(providers, logger);
+
+  // Initialize router service with Ponder integration
+  const routerService = await RouterService.create(providers, logger);
+
+  // Initialize GraphQL resolvers
+  initializeResolvers(routerService, logger);
+
+  // Create Express app
   const app = express();
 
-  // Minimal middleware for MVP
+  // Trust proxy for rate limiting
   app.set('trust proxy', true);
+
+  // Body parsing middleware
   app.use(express.json({ limit: '1mb' }));
 
-  const knownOrigins = [
-    'https://bapp.juiceswap.com/',
-    'https://dev.bapp.juiceswap.com/',
+  // CORS configuration
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || [
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
+    'https://app.juiceswap.com',
+    'https://dev.app.juiceswap.com',
   ];
 
-  const envOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim()) : [];
-  const allowedOrigins = [...new Set([...knownOrigins, ...envOrigins])];
-
   app.use((req, res, next) => {
-    const requestOrigin = req.headers.origin;
+    const origin = req.headers.origin;
 
-    // Check if origin is from juiceswap.com domain
-    const isJuiceSwapDomain = requestOrigin && /^https?:\/\/([\w-]+\.)?juiceswap\.com(:\d+)?$/.test(requestOrigin);
-
-    if (isJuiceSwapDomain) {
-      res.header('Access-Control-Allow-Origin', requestOrigin);
-    } else if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
-      res.header('Access-Control-Allow-Origin', requestOrigin);
-    } else if (!requestOrigin) {
-      res.header('Access-Control-Allow-Origin', allowedOrigins[0]);
+    // Check if origin is allowed
+    if (origin) {
+      // Check exact match
+      if (corsOrigins.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+      }
+      // Check if it's a juiceswap.com subdomain
+      else if (/^https?:\/\/([\w-]+\.)?juiceswap\.com(:\d+)?$/.test(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+      }
+    } else {
+      // No origin header (e.g., server-to-server request)
+      res.header('Access-Control-Allow-Origin', corsOrigins[0]);
     }
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-request-source, x-app-version, x-api-key, x-universal-router-version, x-viem-provider-enabled, x-uniquote-enabled' );
+
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-request-id, x-api-key'
+    );
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+
     if (req.method === 'OPTIONS') {
       res.sendStatus(200);
     } else {
@@ -50,73 +84,147 @@ async function bootstrap() {
     }
   });
 
-  // Route mapping - handlers remain completely unchanged
-  // Quote endpoint gets strict rate limiting (10-60 req/min based on wallet)
-  app.post('/v1/quote', quoteLimiter, handleQuote);
+  // Request logging middleware
+  app.use((req, res, next) => {
+    const requestId = req.headers['x-request-id'] as string ||
+                     `${req.method}-${Date.now()}`;
+    req.headers['x-request-id'] = requestId;
 
-  // Other endpoints get more lenient rate limiting (100 req/min)
+    logger.info({
+      requestId,
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    }, 'Incoming request');
+
+    // Log response
+    const originalSend = res.send;
+    res.send = function(data) {
+      logger.info({
+        requestId,
+        statusCode: res.statusCode,
+        responseTime: res.getHeader('X-Response-Time'),
+      }, 'Request completed');
+      return originalSend.call(this, data);
+    };
+
+    next();
+  });
+
+  // Create endpoint handlers
+  const handleQuote = createQuoteHandler(routerService, logger);
+  const handleSwap = createSwapHandler(routerService, logger);
+  const handleSwappableTokens = createSwappableTokensHandler(logger);
+  const handleSwaps = createSwapsHandler(routerService, logger);
+  const handleLpApprove = createLpApproveHandler(routerService, logger);
+  const handleLpCreate = createLpCreateHandler(routerService, logger);
+
+  // API Routes
+  app.post('/v1/quote', quoteLimiter, handleQuote);
   app.post('/v1/swap', generalLimiter, handleSwap);
 
-  app.get('/v1/swaps', handleSwaps);
+  // Swappable tokens endpoint (returns supported tokens)
+  app.get('/v1/swappable_tokens', handleSwappableTokens);
 
+  // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, handleLpApprove);
-
   app.post('/v1/lp/create', generalLimiter, handleLpCreate);
 
-  // Swappable tokens endpoint
-  app.get('/v1/swappable_tokens', handleSwappableTokens);
+  // Swaps transaction status endpoint
+  app.get('/v1/swaps', handleSwaps);
 
   // GraphQL endpoint
   app.use('/v1/graphql', await getApolloMiddleware());
 
-  // Health endpoints
-  app.get('/healthz', (_req, res) => res.status(200).send('ok'));
-  app.get('/readyz', (_req, res) => res.status(200).send('ready'));
+  // Health check endpoints
+  app.get('/healthz', (_req: Request, res: Response) => {
+    res.status(200).send('ok');
+  });
 
-  // Version endpoint
-  app.get('/version', (_req, res) => {
-    const path = require('path');
-    const fs = require('fs');
-
-    try {
-      // In dev: __dirname = /path/to/src -> need ../package.json
-      // In prod: __dirname = /path/to/dist/src -> need ../../package.json
-      // Try both paths
-      let packageJsonPath = path.join(__dirname, '..', 'package.json');
-
-      if (!fs.existsSync(packageJsonPath)) {
-        packageJsonPath = path.join(__dirname, '..', '..', 'package.json');
-      }
-
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-
-      // Try to get git commit hash
-      let gitCommit = 'unknown';
-      try {
-        const { execSync } = require('child_process');
-        gitCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
-      } catch (e) {
-        // Git not available or not a git repo
-      }
-
-      res.json({
-        version: packageJson.version,
-        name: packageJson.name,
-        commit: gitCommit
-      });
-    } catch (error) {
-      res.status(500).json({ error: 'Could not read version info' });
+  app.get('/readyz', async (_req: Request, res: Response) => {
+    // Check if at least one provider is working
+    const chains = routerService.getSupportedChains();
+    if (chains.length > 0) {
+      res.status(200).send('ready');
+    } else {
+      res.status(503).send('not ready');
     }
   });
 
-  const port = Number(process.env.PORT ?? 3000);
-  const server = app.listen(port, () => {
-    console.log(`routing-api listening on :${port}`);
+  // Version endpoint
+  app.get('/version', (_req: Request, res: Response) => {
+    const packageJson = require('../package.json');
+    res.json({
+      name: packageJson.name,
+      version: packageJson.version,
+      node: process.version,
+      environment: process.env.NODE_ENV || 'development',
+    });
+  });
+
+  // Metrics endpoint (basic)
+  app.get('/metrics', (_req: Request, res: Response) => {
+    res.json({
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      chains: routerService.getSupportedChains(),
+    });
+  });
+
+  // 404 handler
+  app.use((req: Request, res: Response) => {
+    logger.warn({ path: req.path, method: req.method }, 'Route not found');
+    res.status(404).json({
+      error: 'Not found',
+      detail: `The endpoint ${req.method} ${req.path} does not exist`,
+    });
+  });
+
+  // Error handler
+  app.use((err: any, req: Request, res: Response, _next: any) => {
+    logger.error({ error: err, path: req.path }, 'Unhandled error');
+    res.status(500).json({
+      error: 'Internal server error',
+      detail: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+    });
+  });
+
+  // Start server
+  const port = parseInt(process.env.PORT || '3000');
+  const server = app.listen(port, '0.0.0.0', () => {
+    logger.info({ port }, `JuiceSwap Routing API listening on port ${port}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`Supported chains: ${routerService.getSupportedChains().join(', ')}`);
   });
 
   // Graceful shutdown
-  process.on('SIGTERM', () => server.close(() => process.exit(0)));
-  process.on('SIGINT', () => server.close(() => process.exit(0)));
+  const shutdown = async (signal: string) => {
+    logger.info(`Received ${signal}, starting graceful shutdown...`);
+
+    server.close(() => {
+      logger.info('HTTP server closed');
+      process.exit(0);
+    });
+
+    // Force shutdown after 10 seconds
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-bootstrap();
+// Start the application
+bootstrap().catch((error) => {
+  console.error('Failed to start application:', error);
+  logger.fatal({
+    error: error.message,
+    stack: error.stack,
+    name: error.name
+  }, 'Failed to start application');
+  process.exit(1);
+});

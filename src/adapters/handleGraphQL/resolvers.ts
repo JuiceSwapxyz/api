@@ -1,6 +1,17 @@
 import { Request, Response } from 'express';
-import { handleQuote } from '../handleQuote';
-import { handleSwaps } from '../handleSwaps';
+import { createQuoteHandler } from '../../endpoints/quote';
+import { createSwapsHandler } from '../../endpoints/swaps';
+import Logger from 'bunyan';
+
+// Import router service and logger from global scope
+// These will be injected when the resolver is created
+let quoteHandler: any;
+let swapsHandler: any;
+
+export function initializeResolvers(routerService: any, logger: Logger) {
+  quoteHandler = createQuoteHandler(routerService, logger);
+  swapsHandler = createSwapsHandler(routerService, logger);
+}
 
 // Helper to convert Express handlers to GraphQL resolvers
 const createMockResponse = (): { res: Response; getResponse: () => Promise<any> } => {
@@ -64,7 +75,7 @@ export const resolvers = {
         },
       } as unknown as Request;
 
-      await handleSwaps(req, res);
+      await swapsHandler(req, res);
 
       return await getResponse();
     },
@@ -87,7 +98,7 @@ export const resolvers = {
         headers: {},
       } as unknown as Request;
 
-      await handleQuote(req, res);
+      await quoteHandler(req, res);
 
       return await getResponse();
     },
