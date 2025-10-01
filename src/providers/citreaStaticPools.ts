@@ -121,6 +121,50 @@ export const CITREA_STATIC_POOLS = [
     fee: FeeAmount.MEDIUM,
     liquidity: '35000000000000000000000',
   },
+  {
+    token0: CITREA_TOKENS.CUSD,
+    token1: CITREA_TOKENS.USDC,
+    fee: FeeAmount.LOW,
+    liquidity: '38000000000000000000000',
+  },
+
+  // Additional token pair pools for better routing coverage
+  {
+    token0: CITREA_TOKENS.CTR,
+    token1: CITREA_TOKENS.USDC,
+    fee: FeeAmount.MEDIUM,
+    liquidity: '25000000000000000000000',
+  },
+  {
+    token0: CITREA_TOKENS.KCDU,
+    token1: CITREA_TOKENS.USDC,
+    fee: FeeAmount.MEDIUM,
+    liquidity: '18000000000000000000000',
+  },
+  {
+    token0: CITREA_TOKENS.MTK,
+    token1: CITREA_TOKENS.USDC,
+    fee: FeeAmount.MEDIUM,
+    liquidity: '15000000000000000000000',
+  },
+  {
+    token0: CITREA_TOKENS.MTK,
+    token1: CITREA_TOKENS.NUSD,
+    fee: FeeAmount.MEDIUM,
+    liquidity: '12000000000000000000000',
+  },
+  {
+    token0: CITREA_TOKENS.CTR,
+    token1: CITREA_TOKENS.MTK,
+    fee: FeeAmount.HIGH,
+    liquidity: '10000000000000000000000',
+  },
+  {
+    token0: CITREA_TOKENS.CUSD,
+    token1: CITREA_TOKENS.TFC,
+    fee: FeeAmount.MEDIUM,
+    liquidity: '28000000000000000000000',
+  },
 ];
 
 export { CITREA_TOKENS };

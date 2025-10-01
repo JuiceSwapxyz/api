@@ -254,10 +254,26 @@ export class RouterService {
     };
 
     // Configure routing to enable multi-hop routes
+    // Matches main branch DEFAULT_ROUTING_CONFIG_BY_CHAIN defaults
     const routingConfig: Partial<AlphaRouterConfig> = {
       protocols,
-      maxSwapsPerPath: 3, // Allow up to 3 hops
-      maxSplits: 3, // Allow route splitting for better pricing
+      v3PoolSelection: {
+        topN: 2,
+        topNDirectSwaps: 2,
+        topNTokenInOut: 3,
+        topNSecondHop: 1,
+        topNWithEachBaseToken: 3,
+        topNWithBaseToken: 5,
+      },
+      maxSwapsPerPath: 3,
+      minSplits: 1,
+      maxSplits: 7,
+      distributionPercent: 5,
+      forceCrossProtocol: false,
+      // Citrea: Disable optimistic cached routes to avoid RPC gas limit errors
+      // The RPC node has a 10M gas limit per eth_call, and optimistic cached routes
+      // can trigger multicalls with 40+ quotes that exceed this limit
+      ...(chainId === ChainId.CITREA_TESTNET ? { optimisticCachedRoutes: false } : {}),
     };
 
     try {
