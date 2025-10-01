@@ -135,6 +135,7 @@ async function handleWrapUnwrap(
     if (!chainId) missingFields.push('chainId');
 
     if (missingFields.length > 0) {
+      log.debug({ missingFields }, 'Validation failed: missing required fields for wrap/unwrap');
       res.status(400).json({
         error: 'Missing required fields',
         detail: `The following fields are required: ${missingFields.join(', ')}`,
@@ -148,6 +149,7 @@ async function handleWrapUnwrap(
 
     // Validate operation type
     if (type !== 'WRAP' && type !== 'UNWRAP') {
+      log.debug({ type }, 'Validation failed: invalid wrap operation type');
       res.status(400).json({
         error: 'Invalid operation type',
         detail: 'Type must be WRAP or UNWRAP',
@@ -303,6 +305,7 @@ async function handleClassicSwap(
     if (!body.from) missingFields.push('from');
 
     if (missingFields.length > 0) {
+      log.debug({ missingFields }, 'Validation failed: missing required fields for classic swap');
       res.status(400).json({
         error: 'Missing required fields',
         detail: `The following fields are required: ${missingFields.join(', ')}`,
@@ -318,6 +321,7 @@ async function handleClassicSwap(
 
     // Check if chain is supported
     if (!routerService.isChainSupported(chainId)) {
+      log.debug({ chainId }, 'Validation failed: unsupported chain for swap');
       res.status(400).json({
         error: 'Unsupported chain',
         detail: `Chain ID ${chainId} is not supported`,

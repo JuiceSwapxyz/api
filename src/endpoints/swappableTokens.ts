@@ -19,6 +19,7 @@ export function createSwappableTokensHandler(logger: Logger) {
       const { tokenIn, tokenInChainId } = req.query;
 
       if (!tokenInChainId) {
+        log.debug('Validation failed: missing tokenInChainId parameter');
         res.status(400).json({ message: 'Missing tokenInChainId parameter' });
         return;
       }

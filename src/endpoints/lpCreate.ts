@@ -99,6 +99,7 @@ export function createLpCreateHandler(routerService: RouterService, logger: Logg
         position?.tickLower === undefined ||
         position?.tickUpper === undefined
       ) {
+        log.debug({ walletAddress, chainId, independentAmount, independentToken, position }, 'Validation failed: missing required fields for LP create');
         res.status(400).json({ message: 'Missing required fields', error: 'MissingRequiredFields' });
         return;
       }
@@ -106,6 +107,7 @@ export function createLpCreateHandler(routerService: RouterService, logger: Logg
       const isNewPool = initialPrice && initialDependentAmount;
       const isExistingPool = !initialPrice && !initialDependentAmount;
       if (!isNewPool && !isExistingPool) {
+        log.debug({ initialPrice, initialDependentAmount }, 'Validation failed: invalid LP create input');
         res
           .status(400)
           .json({
@@ -117,6 +119,7 @@ export function createLpCreateHandler(routerService: RouterService, logger: Logg
 
       const provider = routerService.getProvider(chainId);
       if (!provider) {
+        log.debug({ chainId }, 'Validation failed: invalid chainId for LP create');
         res.status(400).json({ message: 'Invalid chainId', error: 'InvalidChainId' });
         return;
       }

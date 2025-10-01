@@ -79,6 +79,7 @@ export function createQuoteHandler(
 
       // Validate required fields
       if (!body.amount) {
+        log.debug({ body }, 'Validation failed: missing amount');
         res.status(400).json({
           error: 'Missing required fields',
           detail: 'amount is required',
@@ -91,6 +92,7 @@ export function createQuoteHandler(
       const tokenOut = body.tokenOut || body.tokenOutAddress;
 
       if (!tokenIn || !tokenOut) {
+        log.debug({ body }, 'Validation failed: missing token addresses');
         res.status(400).json({
           error: 'Missing token addresses',
           detail: 'tokenIn/tokenInAddress and tokenOut/tokenOutAddress are required',
@@ -100,6 +102,10 @@ export function createQuoteHandler(
 
       // Check if both tokens are on the same chain (current limitation)
       if (body.tokenInChainId !== body.tokenOutChainId) {
+        log.debug({
+          tokenInChainId: body.tokenInChainId,
+          tokenOutChainId: body.tokenOutChainId,
+        }, 'Validation failed: cross-chain swaps not supported');
         res.status(400).json({
           error: 'Cross-chain swaps not supported',
           detail: 'tokenInChainId and tokenOutChainId must be the same',
@@ -111,6 +117,7 @@ export function createQuoteHandler(
 
       // Check if chain is supported
       if (!routerService.isChainSupported(chainId)) {
+        log.debug({ chainId }, 'Validation failed: unsupported chain');
         res.status(400).json({
           error: 'Unsupported chain',
           detail: `Chain ID ${chainId} is not supported`,
@@ -194,6 +201,16 @@ export function createQuoteHandler(
         };
 
         quoteCache.set(body, wrapResponse);
+
+        log.info({
+          tokenIn,
+          tokenOut,
+          amount: body.amount,
+          routing: 'WRAP',
+          responseTime: Date.now() - startTime,
+        }, 'Wrap quote generated');
+
+        res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
         res.json(wrapResponse);
         return;
       }

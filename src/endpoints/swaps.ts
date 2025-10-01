@@ -26,12 +26,14 @@ export function createSwapsHandler(routerService: RouterService, logger: Logger)
     const { txHashes, chainId } = req.query;
 
     if (!txHashes || !chainId) {
+      log.debug({ txHashes, chainId }, 'Validation failed: missing txHashes or chainId');
       res.status(400).json({ message: 'Missing txHashes or chainId' });
       return;
     }
 
     const txHashesArray = txHashes.toString().split(',');
     if (txHashesArray.length === 0) {
+      log.debug({ txHashes }, 'Validation failed: invalid txHashes (empty array)');
       res.status(400).json({ message: 'Invalid txHashes' });
       return;
     }
@@ -92,6 +94,17 @@ export function createSwapsHandler(routerService: RouterService, logger: Logger)
           ...swap
         }))
       };
+
+      // Log summary of transaction status checks
+      const statusCounts = swapResults.reduce((acc, swap) => {
+        acc[swap.status] = (acc[swap.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      log.info({
+        txCount: txHashesArray.length,
+        statusCounts,
+      }, 'Transaction status check completed');
 
       res.status(200).json(swaps);
     } catch (error: any) {

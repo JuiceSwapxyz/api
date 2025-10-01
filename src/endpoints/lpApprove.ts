@@ -23,6 +23,7 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
       const { walletAddress, chainId, token0, token1, amount0, amount1 }: LpApproveRequestBody = req.body;
 
       if (!walletAddress || !chainId || !token0 || !token1 || !amount0 || !amount1) {
+        log.debug({ walletAddress, chainId, token0, token1, amount0, amount1 }, 'Validation failed: missing required fields');
         res.status(400).json({
           message: 'Missing required fields',
           error: 'MissingRequiredFields'
@@ -32,6 +33,7 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
 
       const provider = routerService.getProvider(chainId);
       if (!provider) {
+        log.debug({ chainId }, 'Validation failed: invalid chainId for LP approve');
         res.status(400).json({
           message: 'Invalid chainId',
           error: 'InvalidChainId'
