@@ -55,14 +55,14 @@ docker run -p 3000:3000 --env-file .env juiceswap-api
 
 - `POST /v1/quote` - Get swap quote ✅
 - `POST /v1/swap` - Get swap transaction data ✅
-- `GET /v1/swappable_tokens` - Get supported tokens ⚠️ *Static list only (Ponder integration pending)*
+- `GET /v1/swappable_tokens` - Get supported tokens ✅
 - `POST /v1/lp/approve` - Approve liquidity pool tokens ✅
 - `POST /v1/lp/create` - Create liquidity pool position ✅
 - `GET /v1/swaps` - Check swap transaction status ✅
 
-### GraphQL (Coming Soon)
+### GraphQL
 
-- `POST /v1/graphql` - ⚠️ **Placeholder only** - Apollo GraphQL server implementation pending
+- `POST /v1/graphql` - Apollo GraphQL server for quotes and swaps ✅
 
 ### Utility Endpoints
 
@@ -73,20 +73,16 @@ docker run -p 3000:3000 --env-file .env juiceswap-api
 
 ### Migration Notes
 
-This Node.js implementation provides core routing functionality with some intentional simplifications:
+This Node.js implementation achieves **full parity** with the AWS Lambda version:
 
-**Working (Full Parity):**
+**✅ Complete Feature Set:**
 - ✅ Swap routing and quoting
 - ✅ Transaction building
 - ✅ Liquidity pool operations
 - ✅ Transaction status tracking
 - ✅ Health and metrics endpoints
-
-**Simplified (To Be Restored):**
-- ⚠️ GraphQL endpoint returns placeholder (was functional Apollo server)
-- ⚠️ `swappable_tokens` uses static list (was dynamic via Ponder integration)
-
-These features are tracked for future implementation to achieve 100% parity with the AWS Lambda version.
+- ✅ GraphQL endpoint (Apollo Server with full schema)
+- ✅ Dynamic token list (Ponder API integration for Citrea chains)
 
 ## Architecture
 
@@ -133,6 +129,9 @@ RPC_10=https://opt-mainnet.g.alchemy.com/v2/YOUR_KEY
 # Cache
 CACHE_TTL_SECONDS=30
 CACHE_MAX_SIZE=1000
+
+# Ponder API (for Citrea token list)
+PONDER_URL=https://ponder.juiceswap.com
 
 # Rate Limiting
 RATE_LIMIT_QUOTE_PER_MINUTE=30

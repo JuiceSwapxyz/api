@@ -27,6 +27,7 @@ import { providers } from 'ethers';
 import Logger from 'bunyan';
 import JSBI from 'jsbi';
 import { CitreaStaticV3SubgraphProvider } from '../providers/CitreaStaticV3SubgraphProvider';
+import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
 
 export interface QuoteParams {
   tokenIn: string;
@@ -54,16 +55,27 @@ export class RouterService {
   private providers: Map<ChainId, providers.StaticJsonRpcProvider>;
   private logger: Logger;
 
-  constructor(
+  private constructor(
     rpcProviders: Map<ChainId, providers.StaticJsonRpcProvider>,
     logger: Logger
   ) {
     this.providers = rpcProviders;
     this.logger = logger;
     this.routers = new Map();
+  }
 
+  static async create(
+    rpcProviders: Map<ChainId, providers.StaticJsonRpcProvider>,
+    logger: Logger
+  ): Promise<RouterService> {
+    const instance = new RouterService(rpcProviders, logger);
+    await instance.initialize();
+    return instance;
+  }
+
+  private async initialize(): Promise<void> {
     // Initialize routers for each chain with essential providers
-    for (const [chainId, provider] of rpcProviders.entries()) {
+    for (const [chainId, provider] of this.providers.entries()) {
       // Initialize multicall provider for efficient batching
       const multicallProvider = new UniswapMulticallProvider(
         chainId,
@@ -71,19 +83,25 @@ export class RouterService {
         375000
       );
 
-      // Initialize basic token provider
-      const baseTokenProvider = new TokenProvider(chainId, multicallProvider);
+      // Initialize token provider with Ponder integration for Citrea
+      let tokenProvider;
+      if (chainId === ChainId.CITREA_TESTNET) {
+        tokenProvider = await createLocalTokenListProvider(chainId);
+      } else {
+        // Initialize basic token provider for non-Citrea chains
+        const baseTokenProvider = new TokenProvider(chainId, multicallProvider);
 
-      // Use caching wrapper with fallback
-      const tokenCache = new NodeJSCache<Token>(
-        new NodeCache({ stdTTL: 3600, checkperiod: 600 })
-      );
-      const tokenProvider = new CachingTokenProviderWithFallback(
-        chainId,
-        tokenCache,
-        baseTokenProvider,
-        baseTokenProvider
-      );
+        // Use caching wrapper with fallback
+        const tokenCache = new NodeJSCache<Token>(
+          new NodeCache({ stdTTL: 3600, checkperiod: 600 })
+        );
+        tokenProvider = new CachingTokenProviderWithFallback(
+          chainId,
+          tokenCache,
+          baseTokenProvider,
+          baseTokenProvider
+        );
+      }
 
       // Initialize V3 pool provider only - no V2 needed
       const v3PoolProvider = new V3PoolProvider(chainId, multicallProvider);

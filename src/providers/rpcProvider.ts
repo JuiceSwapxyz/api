@@ -47,7 +47,7 @@ const CHAIN_CONFIGS: ChainConfig[] = [
   {
     chainId: ChainId.CITREA_TESTNET,
     name: 'Citrea Testnet',
-    rpcUrl: process.env.RPC_5115 || 'https://rpc.citrea.xyz',
+    rpcUrl: process.env.RPC_5115 || 'https://rpc.testnet.citrea.xyz',
   },
 ];
 

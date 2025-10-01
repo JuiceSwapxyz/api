@@ -10,6 +10,8 @@ import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
+import { getApolloMiddleware } from './adapters/handleGraphQL';
+import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -27,8 +29,11 @@ async function bootstrap() {
   // Verify provider connectivity
   await verifyProviders(providers, logger);
 
-  // Initialize router service
-  const routerService = new RouterService(providers, logger);
+  // Initialize router service with Ponder integration
+  const routerService = await RouterService.create(providers, logger);
+
+  // Initialize GraphQL resolvers
+  initializeResolvers(routerService, logger);
 
   // Create Express app
   const app = express();
@@ -127,16 +132,8 @@ async function bootstrap() {
   // Swaps transaction status endpoint
   app.get('/v1/swaps', handleSwaps);
 
-  // GraphQL endpoint (placeholder)
-  // TODO: Restore Apollo GraphQL server from AWS implementation
-  // Previous implementation had full Apollo server with resolvers for quote/swap
-  // See commit ce0d42f for reference implementation
-  app.post('/v1/graphql', async (_req: Request, res: Response) => {
-    res.status(501).json({
-      error: 'Not implemented',
-      detail: 'GraphQL endpoint is not yet implemented',
-    });
-  });
+  // GraphQL endpoint
+  app.use('/v1/graphql', await getApolloMiddleware());
 
   // Health check endpoints
   app.get('/healthz', (_req: Request, res: Response) => {
