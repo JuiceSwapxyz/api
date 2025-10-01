@@ -12,7 +12,6 @@ import {
   EIP1559GasPriceProvider,
   nativeOnChain,
 } from '@juiceswapxyz/smart-order-router';
-import { isNativeCurrency } from '@juiceswapxyz/universal-router-sdk';
 import NodeCache from 'node-cache';
 import {
   ChainId,
@@ -54,6 +53,7 @@ export class RouterService {
   private routers: Map<ChainId, AlphaRouter>;
   private providers: Map<ChainId, providers.StaticJsonRpcProvider>;
   private tokenProviders: Map<ChainId, any>;
+  private v3PoolProviders: Map<ChainId, V3PoolProvider>;
   private logger: Logger;
 
   private constructor(
@@ -64,6 +64,7 @@ export class RouterService {
     this.logger = logger;
     this.routers = new Map();
     this.tokenProviders = new Map();
+    this.v3PoolProviders = new Map();
   }
 
   static async create(
@@ -110,6 +111,9 @@ export class RouterService {
 
       // Initialize V3 pool provider only - no V2 needed
       const v3PoolProvider = new V3PoolProvider(chainId, multicallProvider);
+
+      // Store v3PoolProvider for pool address computation
+      this.v3PoolProviders.set(chainId, v3PoolProvider);
 
       // Gas price provider
       const gasPriceProvider = new EIP1559GasPriceProvider(provider);
@@ -228,17 +232,10 @@ export class RouterService {
       throw new Error(`No router available for chain ${chainId}`);
     }
 
-    // Simple native token replacement for routing
-    const routingTokenIn = isNativeCurrency(tokenIn)
-      ? nativeOnChain(chainId).wrapped.address
-      : tokenIn;
-
-    const routingTokenOut = isNativeCurrency(tokenOut)
-      ? nativeOnChain(chainId).wrapped.address
-      : tokenOut;
-
-    const currencyIn = this.createCurrency(routingTokenIn, chainId, tokenInDecimals);
-    const currencyOut = this.createCurrency(routingTokenOut, chainId, tokenOutDecimals);
+    // Create currencies using original addresses to properly handle native currency
+    // The router will automatically handle native <-> wrapped token conversions
+    const currencyIn = this.createCurrency(tokenIn, chainId, tokenInDecimals);
+    const currencyOut = this.createCurrency(tokenOut, chainId, tokenOutDecimals);
 
     const currencyAmount = CurrencyAmount.fromRawAmount(
       currencyIn,
@@ -361,5 +358,9 @@ export class RouterService {
 
   getProvider(chainId: ChainId): providers.StaticJsonRpcProvider | undefined {
     return this.providers.get(chainId);
+  }
+
+  getV3PoolProvider(chainId: ChainId): V3PoolProvider | undefined {
+    return this.v3PoolProviders.get(chainId);
   }
 }

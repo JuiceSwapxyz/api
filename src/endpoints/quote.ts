@@ -15,59 +15,26 @@ function formatDecimals(amount: string, decimals: number): string {
 }
 
 function generateQuoteId(): string {
-  return Math.random().toString(36).substring(2, 7);
+  return Math.random().toString(36).substring(2, 13);
 }
 
-function generateRouteString(route: any[]): string {
-  if (!route || route.length === 0) return '';
+function generateRouteString(formattedRoute: any[]): string {
+  if (!formattedRoute || formattedRoute.length === 0) return '';
 
-  // For simple single-hop routes
-  if (route.length === 1 && route[0].length === 1) {
-    const pool = route[0][0];
+  // For simple single-route with single pool
+  if (formattedRoute.length === 1 && formattedRoute[0].length === 1) {
+    const pool = formattedRoute[0][0];
     const feePercent = pool.fee ? (Number(pool.fee) / 10000).toFixed(1) : '0.3';
     return `[V3] 100.00% = ${pool.tokenIn?.symbol || 'TOKEN'} -- ${feePercent}% [${pool.address}]${pool.tokenOut?.symbol || 'TOKEN'}`;
   }
 
-  // For multi-hop routes, build more complex string
+  // For multi-hop or multi-route, build more complex string
   return '[V3] Multi-hop route';
 }
 
 function calculatePriceImpact(_route: any): string {
   // Simple price impact calculation - can be enhanced
   return '0.30';
-}
-
-function formatPoolForResponse(pool: any, params: {
-  chainId: number;
-  tokenInDecimals: number;
-  tokenOutDecimals: number;
-  tokenIn: string;
-  tokenOut: string;
-  amount: string;
-  quoteAmount: string;
-}) {
-  return {
-    type: 'v3-pool',
-    address: pool.address,
-    tokenIn: {
-      chainId: params.chainId,
-      decimals: params.tokenInDecimals.toString(),
-      address: pool.tokenIn?.address || params.tokenIn,
-      symbol: pool.tokenIn?.symbol || 'TOKEN'
-    },
-    tokenOut: {
-      chainId: params.chainId,
-      decimals: params.tokenOutDecimals.toString(),
-      address: pool.tokenOut?.address || params.tokenOut,
-      symbol: pool.tokenOut?.symbol || 'TOKEN'
-    },
-    fee: pool.fee || '3000',
-    liquidity: pool.liquidity?.toString() || '0',
-    sqrtRatioX96: pool.sqrtRatioX96?.toString() || '0',
-    tickCurrent: pool.tickCurrent?.toString() || '0',
-    amountIn: params.amount,
-    amountOut: params.quoteAmount
-  };
 }
 
 export interface QuoteRequestBody {
@@ -87,7 +54,9 @@ export interface QuoteRequestBody {
 }
 
 export interface QuoteResponse {
-  routing: 'CLASSIC';
+  requestId: string;
+  routing: 'CLASSIC' | 'WRAP';
+  permitData: any | null;
   quote: any;
   allQuotes?: Array<{
     routing: 'CLASSIC';
@@ -199,8 +168,10 @@ export function createQuoteHandler(
 
       if (isWrapOperation) {
         // Return AWS-compatible WRAP response
-        const wrapResponse = {
+        const wrapResponse: QuoteResponse = {
+          requestId: generateQuoteId(),
           routing: 'WRAP',
+          permitData: null,
           quote: {
             chainId: chainId,
             swapper: body.swapper || '0x0000000000000000000000000000000000000000',
@@ -227,19 +198,13 @@ export function createQuoteHandler(
         return;
       }
 
-      // Parse protocols - V3 and V4 only, no V2
+      // Parse protocols - V3 only (V4 not yet supported in route building)
       let protocols: Protocol[] | undefined = undefined;
       if (body.protocols) {
         protocols = body.protocols
           .map(p => p.toUpperCase())
-          .filter(p => ['V3', 'V4'].includes(p))
-          .map(p => {
-            switch (p) {
-              case 'V3': return Protocol.V3;
-              case 'V4': return Protocol.V4;
-              default: return Protocol.V3;
-            }
-          });
+          .filter(p => p === 'V3')
+          .map(_ => Protocol.V3);
       }
 
       // Get quote from router
@@ -274,27 +239,94 @@ export function createQuoteHandler(
 
       // Calculate decimal representations
       const inputAmountDecimals = formatDecimals(body.amount, tokenInDecimals);
-      const quoteDecimals = formatDecimals(route.quote.toExact(), tokenOutDecimals);
-      const quoteGasAdjustedDecimals = formatDecimals(route.quoteGasAdjusted.toExact(), tokenOutDecimals);
+      const quoteDecimals = route.quote.toExact();
+      const quoteGasAdjustedDecimals = route.quoteGasAdjusted.toExact();
 
       // Calculate gas estimates in output token terms
-      const gasUseEstimateQuote = route.estimatedGasUsedUSD.toExact();
-      const gasUseEstimateQuoteDecimals = gasUseEstimateQuote;
-
-      // Generate route string
-      const routeString = generateRouteString(route.route);
+      const gasUseEstimateQuote = route.estimatedGasUsedQuoteToken.quotient.toString();
+      const gasUseEstimateQuoteDecimals = route.estimatedGasUsedQuoteToken.toExact();
 
       // Calculate price impact
       const priceImpact = calculatePriceImpact(route);
+
+      // Build route response
+      const routes = route.route;
+      const routeResponse: any[] = [];
+
+      // Get v3PoolProvider for address computation (matching develop branch)
+      const v3PoolProvider = routerService.getV3PoolProvider(chainId);
+
+      if (routes && routes.length > 0) {
+        // Each route has: route.pools, route.tokenPath, amount, quote
+        for (const subRoute of routes) {
+          const pools = (subRoute.route as any)?.pools || [];
+          const tokenPath = (subRoute.route as any)?.tokenPath || [];
+          const curRoute: any[] = [];
+
+          for (let i = 0; i < pools.length; i++) {
+            const pool = pools[i];
+            const tokenIn = tokenPath[i];
+            const tokenOut = tokenPath[i + 1];
+
+            // Calculate edge amounts for first and last pools
+            let amountIn = undefined;
+            if (i === 0) {
+              amountIn = body.type === 'EXACT_OUTPUT'
+                ? subRoute.quote.quotient.toString()
+                : subRoute.amount.quotient.toString();
+            }
+
+            let amountOut = undefined;
+            if (i === pools.length - 1) {
+              amountOut = body.type === 'EXACT_OUTPUT'
+                ? subRoute.amount.quotient.toString()
+                : subRoute.quote.quotient.toString();
+            }
+
+            // Calculate pool address using v3PoolProvider (matching develop branch)
+            const poolAddress = v3PoolProvider && pool.token0 && pool.token1 && pool.fee
+              ? v3PoolProvider.getPoolAddress(pool.token0, pool.token1, pool.fee).poolAddress
+              : 'unknown';
+
+            curRoute.push({
+              type: 'v3-pool',
+              address: poolAddress,
+              tokenIn: {
+                chainId: tokenIn.chainId,
+                decimals: tokenIn.decimals.toString(),
+                address: tokenIn.wrapped?.address || tokenIn.address,
+                symbol: tokenIn.symbol || 'TOKEN',
+              },
+              tokenOut: {
+                chainId: tokenOut.chainId,
+                decimals: tokenOut.decimals.toString(),
+                address: tokenOut.wrapped?.address || tokenOut.address,
+                symbol: tokenOut.symbol || 'TOKEN',
+              },
+              fee: pool.fee?.toString() || '3000',
+              liquidity: pool.liquidity?.toString() || '0',
+              sqrtRatioX96: pool.sqrtRatioX96?.toString() || '0',
+              tickCurrent: pool.tickCurrent?.toString() || '0',
+              amountIn,
+              amountOut,
+            });
+          }
+
+          routeResponse.push(curRoute);
+        }
+      }
+
+      // Generate route string from formatted route
+      const routeString = generateRouteString(routeResponse);
 
       // Format response to match AWS format exactly
       const formattedQuote = {
         blockNumber: route.blockNumber?.toString(),
         amount: body.amount,
         amountDecimals: inputAmountDecimals,
-        quote: route.quote.toExact(),
+        quote: route.quote.quotient.toString(),
         quoteDecimals: quoteDecimals,
-        quoteGasAdjusted: route.quoteGasAdjusted.toExact(),
+        quoteGasAdjusted: route.quoteGasAdjusted.quotient.toString(),
         quoteGasAdjustedDecimals: quoteGasAdjustedDecimals,
         gasUseEstimateQuote: gasUseEstimateQuote,
         gasUseEstimateQuoteDecimals: gasUseEstimateQuoteDecimals,
@@ -303,28 +335,7 @@ export function createQuoteHandler(
         simulationStatus: route.simulationStatus || 'UNATTEMPTED',
         simulationError: false,
         gasPriceWei: route.gasPriceWei.toString(),
-        route: (() => {
-          // Handle RouteWithValidQuote structure from AlphaRouter
-          const routes = route.route;
-          if (!routes || routes.length === 0) return [[]];
-
-          const poolParams = {
-            chainId,
-            tokenInDecimals,
-            tokenOutDecimals,
-            tokenIn,
-            tokenOut,
-            amount: body.amount,
-            quoteAmount: route.quote.toExact()
-          };
-
-          // routes is RouteWithValidQuote[], each has route.pools property
-          return routes.map((routeWithQuote: any) => {
-            // Extract pools from the route object
-            const routePools = routeWithQuote.route?.pools || [];
-            return routePools.map((pool: any) => formatPoolForResponse(pool, poolParams));
-          });
-        })(),
+        route: routeResponse,
         routeString: routeString,
         quoteId: quoteId,
         hitsCachedRoutes: hitsCachedRoutes,
@@ -333,7 +344,9 @@ export function createQuoteHandler(
       };
 
       const response: QuoteResponse = {
+        requestId: quoteId,
         routing: 'CLASSIC',
+        permitData: null,
         quote: formattedQuote,
         allQuotes: [{ routing: 'CLASSIC', quote: formattedQuote }],
       };
