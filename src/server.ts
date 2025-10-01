@@ -47,6 +47,8 @@ async function bootstrap() {
   // CORS configuration
   const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || [
     'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
     'https://app.juiceswap.com',
     'https://dev.app.juiceswap.com',
   ];
