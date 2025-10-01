@@ -130,8 +130,8 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
       quoteMinSuccessRate: 0.15,
     },
     [ChainId.CITREA_TESTNET]: {
-      multicallChunk: 50,
-      gasLimitPerCall: 150_000,
+      multicallChunk: 1,
+      gasLimitPerCall: 1_500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
@@ -223,8 +223,8 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
       quoteMinSuccessRate: 0.15,
     },
     [ChainId.CITREA_TESTNET]: {
-      multicallChunk: 50,
-      gasLimitPerCall: 150_000,
+      multicallChunk: 1,
+      gasLimitPerCall: 1_500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
@@ -317,8 +317,8 @@ export const OPTIMISTIC_CACHED_ROUTES_BATCH_PARAMS: { [protocol in Protocol]: { 
       quoteMinSuccessRate: 0.15,
     },
     [ChainId.CITREA_TESTNET]: {
-      multicallChunk: 50,
-      gasLimitPerCall: 150_000,
+      multicallChunk: 1,
+      gasLimitPerCall: 1_500_000,
       quoteMinSuccessRate: 0.1,
     },
     [ChainId.ZKSYNC]: {
