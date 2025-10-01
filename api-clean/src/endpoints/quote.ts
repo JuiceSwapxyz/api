@@ -5,6 +5,7 @@ import { nativeOnChain } from '@juiceswapxyz/smart-order-router';
 import { isNativeCurrency } from '@juiceswapxyz/universal-router-sdk';
 import { RouterService } from '../core/RouterService';
 import { quoteCache } from '../cache/quoteCache';
+import { getRPCMonitor } from '../utils/rpcMonitor';
 import Logger from 'bunyan';
 
 // Helper functions for AWS-compatible response formatting
@@ -160,6 +161,10 @@ export function createQuoteHandler(
 
       res.setHeader('X-Quote-Cache', 'MISS');
 
+      // Start RPC call tracking for this request
+      const rpcMonitor = getRPCMonitor();
+      rpcMonitor?.startRequest(requestId);
+
       // Handle native <-> wrapped token operations (cBTC <-> WCBTC)
       const wrappedAddress = nativeOnChain(chainId).wrapped.address;
       const isWrapOperation =
@@ -224,6 +229,10 @@ export function createQuoteHandler(
         protocols,
         enableUniversalRouter: body.enableUniversalRouter,
       });
+
+      // Log RPC call statistics
+      const rpcCallCount = rpcMonitor?.endRequest(requestId) || 0;
+      rpcMonitor?.logRequest(requestId, 'POST /v1/quote', rpcCallCount);
 
       if (!route) {
         res.status(404).json({

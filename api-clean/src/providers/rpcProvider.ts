@@ -2,6 +2,7 @@ import { providers } from 'ethers';
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import Logger from 'bunyan';
 import * as dotenv from 'dotenv';
+import { initializeRPCMonitor } from '../utils/rpcMonitor';
 
 dotenv.config();
 
@@ -53,6 +54,9 @@ const CHAIN_CONFIGS: ChainConfig[] = [
 export function initializeProviders(logger: Logger): Map<ChainId, providers.StaticJsonRpcProvider> {
   const providerMap = new Map<ChainId, providers.StaticJsonRpcProvider>();
 
+  // Initialize RPC monitor for tracking calls
+  const rpcMonitor = initializeRPCMonitor(logger);
+
   for (const config of CHAIN_CONFIGS) {
     if (!config.rpcUrl) {
       logger.warn(`No RPC URL configured for ${config.name} (Chain ID: ${config.chainId})`);
@@ -70,6 +74,9 @@ export function initializeProviders(logger: Logger): Map<ChainId, providers.Stat
 
       // Set polling interval for better performance
       provider.pollingInterval = 12000;
+
+      // Attach RPC monitor to track calls
+      rpcMonitor.attachToProvider(provider, config.chainId);
 
       providerMap.set(config.chainId, provider);
       logger.info(`Initialized provider for ${config.name} (Chain ID: ${config.chainId})`);
