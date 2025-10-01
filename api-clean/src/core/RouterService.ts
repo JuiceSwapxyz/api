@@ -287,4 +287,8 @@ export class RouterService {
   isChainSupported(chainId: ChainId): boolean {
     return this.routers.has(chainId);
   }
+
+  getProvider(chainId: ChainId): providers.StaticJsonRpcProvider | undefined {
+    return this.providers.get(chainId);
+  }
 }

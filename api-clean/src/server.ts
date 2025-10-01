@@ -5,6 +5,10 @@ import { RouterService } from './core/RouterService';
 import { initializeProviders, verifyProviders } from './providers/rpcProvider';
 import { createQuoteHandler } from './endpoints/quote';
 import { createSwapHandler } from './endpoints/swap';
+import { createSwappableTokensHandler } from './endpoints/swappableTokens';
+import { createSwapsHandler } from './endpoints/swaps';
+import { createLpApproveHandler } from './endpoints/lpApprove';
+import { createLpCreateHandler } from './endpoints/lpCreate';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 
 // Initialize logger
@@ -104,53 +108,24 @@ async function bootstrap() {
   // Create endpoint handlers
   const handleQuote = createQuoteHandler(routerService, logger);
   const handleSwap = createSwapHandler(routerService, logger);
+  const handleSwappableTokens = createSwappableTokensHandler(logger);
+  const handleSwaps = createSwapsHandler(routerService, logger);
+  const handleLpApprove = createLpApproveHandler(routerService, logger);
+  const handleLpCreate = createLpCreateHandler(routerService, logger);
 
   // API Routes
   app.post('/v1/quote', quoteLimiter, handleQuote);
   app.post('/v1/swap', generalLimiter, handleSwap);
 
   // Swappable tokens endpoint (returns supported tokens)
-  app.get('/v1/swappable_tokens', async (req: Request, res: Response) => {
-    const chainId = parseInt(req.query.chainId as string || '1');
+  app.get('/v1/swappable_tokens', handleSwappableTokens);
 
-    // For now, return a basic token list
-    // In production, this would fetch from a token list provider
-    res.json({
-      tokens: [
-        {
-          chainId,
-          address: '0x0000000000000000000000000000000000000000',
-          decimals: 18,
-          symbol: 'ETH',
-          name: 'Ether',
-        },
-        // Add more tokens as needed
-      ],
-    });
-  });
+  // LP endpoints
+  app.post('/v1/lp/approve', generalLimiter, handleLpApprove);
+  app.post('/v1/lp/create', generalLimiter, handleLpCreate);
 
-  // LP endpoints (placeholder for now)
-  app.post('/v1/lp/approve', generalLimiter, async (_req: Request, res: Response) => {
-    res.status(501).json({
-      error: 'Not implemented',
-      detail: 'LP approve endpoint is not yet implemented',
-    });
-  });
-
-  app.post('/v1/lp/create', generalLimiter, async (_req: Request, res: Response) => {
-    res.status(501).json({
-      error: 'Not implemented',
-      detail: 'LP create endpoint is not yet implemented',
-    });
-  });
-
-  // Swaps history endpoint (placeholder)
-  app.get('/v1/swaps', async (_req: Request, res: Response) => {
-    res.json({
-      swaps: [],
-      total: 0,
-    });
-  });
+  // Swaps transaction status endpoint
+  app.get('/v1/swaps', handleSwaps);
 
   // GraphQL endpoint (placeholder)
   app.post('/v1/graphql', async (_req: Request, res: Response) => {
