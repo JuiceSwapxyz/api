@@ -44,7 +44,7 @@ export const quoteLimiter = isDevelopment ? noOpLimiter : rateLimit({
 // General endpoint rate limiter (more lenient)
 export const generalLimiter = isDevelopment ? noOpLimiter : rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute window
-  max: parseInt(process.env.RATE_LIMIT_GENERAL_PER_MINUTE || '100'),
+  max: parseInt(process.env.RATE_LIMIT_GENERAL_PER_MINUTE || '10000'),
   message: {
     error: 'Too many requests',
     detail: 'You have exceeded the rate limit. Please try again later.',
