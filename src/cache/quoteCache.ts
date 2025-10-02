@@ -10,6 +10,8 @@
  * - Prevents rate limiting and RPC node overload
  */
 
+import Logger from 'bunyan';
+
 interface CachedQuote {
   data: any;
   timestamp: number;
@@ -33,6 +35,7 @@ export class QuoteCache {
     cacheSize: 0,
     avgHitRate: 0,
   };
+  private logger?: Logger;
 
   // Configuration
   private readonly DEFAULT_TTL = 300_000; // 300 seconds for production
@@ -40,10 +43,20 @@ export class QuoteCache {
   private readonly MAX_CACHE_SIZE = 1000;
   private readonly CLEANUP_INTERVAL = 60_000; // Run cleanup every minute
 
-  constructor() {
+  constructor(logger?: Logger) {
+    this.logger = logger;
     // Start periodic cleanup
     setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
-    console.log('[QuoteCache] Initialized with TTL: 30s default, 60s for Citrea');
+    if (this.logger) {
+      this.logger.debug('[QuoteCache] Initialized with TTL: 30s default, 60s for Citrea');
+    }
+  }
+
+  /**
+   * Set logger after construction (for singleton pattern)
+   */
+  setLogger(logger: Logger): void {
+    this.logger = logger;
   }
 
   /**
@@ -98,7 +111,7 @@ export class QuoteCache {
     if (!cached) {
       this.stats.misses++;
       this.updateHitRate();
-      console.log(`[QuoteCache] MISS - Key: ${key.substring(0, 50)}...`);
+      this.logger?.debug(`[QuoteCache] MISS - Key: ${key.substring(0, 50)}...`);
       return null;
     }
 
@@ -110,7 +123,7 @@ export class QuoteCache {
       this.cache.delete(key);
       this.stats.misses++;
       this.updateHitRate();
-      console.log(`[QuoteCache] EXPIRED - Key: ${key.substring(0, 50)}... (age: ${age}ms)`);
+      this.logger?.debug(`[QuoteCache] EXPIRED - Key: ${key.substring(0, 50)}... (age: ${age}ms)`);
       return null;
     }
 
@@ -119,7 +132,7 @@ export class QuoteCache {
     this.stats.hits++;
     this.updateHitRate();
 
-    console.log(`[QuoteCache] HIT - Key: ${key.substring(0, 50)}... (age: ${age}ms, hits: ${cached.hitCount})`);
+    this.logger?.debug(`[QuoteCache] HIT - Key: ${key.substring(0, 50)}... (age: ${age}ms, hits: ${cached.hitCount})`);
 
     return cached.data;
   }
@@ -143,7 +156,7 @@ export class QuoteCache {
 
     this.stats.cacheSize = this.cache.size;
 
-    console.log(`[QuoteCache] STORED - Key: ${key.substring(0, 50)}... (size: ${this.cache.size})`);
+    this.logger?.debug(`[QuoteCache] STORED - Key: ${key.substring(0, 50)}... (size: ${this.cache.size})`);
   }
 
   /**
@@ -162,7 +175,7 @@ export class QuoteCache {
     }
 
     if (removed > 0) {
-      console.log(`[QuoteCache] Cleanup removed ${removed} expired entries`);
+      this.logger?.debug(`[QuoteCache] Cleanup removed ${removed} expired entries`);
     }
 
     this.stats.cacheSize = this.cache.size;
@@ -184,7 +197,7 @@ export class QuoteCache {
 
     if (oldestKey) {
       this.cache.delete(oldestKey);
-      console.log(`[QuoteCache] Evicted oldest entry: ${oldestKey.substring(0, 50)}...`);
+      this.logger?.debug(`[QuoteCache] Evicted oldest entry: ${oldestKey.substring(0, 50)}...`);
     }
   }
 
@@ -210,7 +223,7 @@ export class QuoteCache {
   clear(): void {
     this.cache.clear();
     this.stats.cacheSize = 0;
-    console.log('[QuoteCache] Cache cleared');
+    this.logger?.debug('[QuoteCache] Cache cleared');
   }
 
   /**
