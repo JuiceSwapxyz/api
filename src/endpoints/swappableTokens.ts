@@ -53,7 +53,7 @@ export function createSwappableTokensHandler(logger: Logger) {
         }))
       });
 
-      log.info({ chainId, tokenCount: tokens.length }, 'Returned swappable tokens');
+      log.debug({ chainId, tokenCount: tokens.length }, 'Returned swappable tokens');
 
     } catch (error: any) {
       log.error({ error }, 'Error in handleSwappableTokens');

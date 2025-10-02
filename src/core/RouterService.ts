@@ -277,7 +277,7 @@ export class RouterService {
     };
 
     try {
-      this.logger.info({
+      this.logger.debug({
         chainId,
         tokenIn,
         tokenOut,
@@ -294,7 +294,7 @@ export class RouterService {
       );
 
       if (route) {
-        this.logger.info({
+        this.logger.debug({
           quote: route.quote.toExact(),
           gasEstimate: route.estimatedGasUsed.toString(),
           routes: route.route.length,

@@ -89,7 +89,7 @@ export class RPCMonitor {
   logRequest(requestId: string, endpoint: string, callCount: number): void {
     if (!this.enabled || callCount === 0) return;
 
-    this.logger.info(
+    this.logger.debug(
       `[RPC Monitor] ${endpoint} (${requestId}) - ${callCount} RPC calls`
     );
   }

@@ -101,7 +101,7 @@ export function createSwapsHandler(routerService: RouterService, logger: Logger)
         return acc;
       }, {} as Record<string, number>);
 
-      log.info({
+      log.debug({
         txCount: txHashesArray.length,
         statusCounts,
       }, 'Transaction status check completed');

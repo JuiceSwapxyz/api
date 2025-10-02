@@ -288,7 +288,7 @@ export function createLpCreateHandler(routerService: RouterService, logger: Logg
 
       res.status(200).json(response);
 
-      log.info({ chainId, walletAddress }, 'LP create request completed');
+      log.debug({ chainId, walletAddress }, 'LP create request completed');
 
     } catch (error: any) {
       log.error({ error }, 'Error in handleLpCreate');

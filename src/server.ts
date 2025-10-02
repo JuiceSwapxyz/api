@@ -12,6 +12,7 @@ import { createLpCreateHandler } from './endpoints/lpCreate';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { getApolloMiddleware } from './adapters/handleGraphQL';
 import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
+import { quoteCache } from './cache/quoteCache';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -22,6 +23,9 @@ const logger = Logger.createLogger({
 
 async function bootstrap() {
   logger.info('Starting JuiceSwap Clean Routing API...');
+
+  // Initialize quote cache with logger
+  quoteCache.setLogger(logger);
 
   // Initialize RPC providers
   const providers = initializeProviders(logger);
@@ -90,7 +94,7 @@ async function bootstrap() {
                      `${req.method}-${Date.now()}`;
     req.headers['x-request-id'] = requestId;
 
-    logger.info({
+    logger.debug({
       requestId,
       method: req.method,
       path: req.path,
@@ -101,7 +105,7 @@ async function bootstrap() {
     // Log response
     const originalSend = res.send;
     res.send = function(data) {
-      logger.info({
+      logger.debug({
         requestId,
         statusCode: res.statusCode,
         responseTime: res.getHeader('X-Response-Time'),
