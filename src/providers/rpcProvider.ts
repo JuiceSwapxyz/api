@@ -19,10 +19,10 @@ function buildAlchemyUrl(chainId: ChainId): string {
 
   // Citrea uses custom Azure RPC node
   if (alchemyKey === 'none' || chainId === ChainId.CITREA_TESTNET) {
-    if (!process.env.DFX_NODE_URL) {
-      throw new Error('DFX_NODE_URL environment variable is required for Citrea');
+    if (!process.env.CITREA_RPC_URL) {
+      throw new Error('CITREA_RPC_URL environment variable is required for Citrea');
     }
-    return process.env.DFX_NODE_URL;
+    return process.env.CITREA_RPC_URL;
   }
 
   // Build Alchemy URL based on chain
