@@ -16,7 +16,7 @@ export async function getJuiceswapLatestTokens() {
     const response = await axios.get<HttpTokenResponse>(`${url}/tokens/all`, {
       timeout: 2000,
     });
-    log.info(`Got juiceswap latest tokens from ${url} with ${response.data.tokens.length} tokens`);
+    log.debug(`Got juiceswap latest tokens from ${url} with ${response.data.tokens.length} tokens`);
     return response.data.tokens.map((token) => ({
       ...token,
       chainId: 5115,

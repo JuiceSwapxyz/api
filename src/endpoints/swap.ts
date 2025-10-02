@@ -271,7 +271,7 @@ async function handleWrapUnwrap(
       ],
     };
 
-    log.info({ type, amount, wrappedTokenAddress }, 'Wrap/unwrap transaction prepared');
+    log.debug({ type, amount, wrappedTokenAddress }, 'Wrap/unwrap transaction prepared');
     res.json(response);
   } catch (error) {
     log.error({ error }, 'Error in handleWrapUnwrap');
@@ -411,7 +411,7 @@ async function handleClassicSwap(
       maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
     };
 
-    log.info(
+    log.debug(
       {
         tokenIn: validatedTokenIn,
         tokenOut: validatedTokenOut,

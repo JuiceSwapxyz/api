@@ -156,7 +156,7 @@ export function createQuoteHandler(
       if (cachedQuote) {
         res.setHeader('X-Quote-Cache', 'HIT');
         res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
-        log.info({ cacheHit: true, responseTime: Date.now() - startTime }, 'Quote served from cache');
+        log.debug({ cacheHit: true, responseTime: Date.now() - startTime }, 'Quote served from cache');
         res.json(cachedQuote);
         return;
       }
@@ -202,7 +202,7 @@ export function createQuoteHandler(
 
         quoteCache.set(body, wrapResponse);
 
-        log.info({
+        log.debug({
           tokenIn,
           tokenOut,
           amount: body.amount,
@@ -376,7 +376,7 @@ export function createQuoteHandler(
       // Set response headers
       res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
 
-      log.info({
+      log.debug({
         responseTime: Date.now() - startTime,
         quote: route.quote.toExact(),
         gasEstimate: route.estimatedGasUsed.toString(),

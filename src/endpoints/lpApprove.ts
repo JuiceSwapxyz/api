@@ -69,7 +69,7 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
         gasFeeToken0Approval: token0Approval?.gasLimit || '0'
       });
 
-      log.info({ chainId, walletAddress }, 'LP approve request completed');
+      log.debug({ chainId, walletAddress }, 'LP approve request completed');
 
     } catch (error: any) {
       log.error({ error }, 'Error in handleLpApprove');
