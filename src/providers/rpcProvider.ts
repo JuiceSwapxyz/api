@@ -17,9 +17,12 @@ function buildAlchemyUrl(chainId: ChainId): string {
   const alchemyKey = process.env[`ALCHEMY_${chainId}`];
   if (!alchemyKey) return '';
 
-  // Citrea uses custom Azure RPC node (matches develop branch)
+  // Citrea uses custom Azure RPC node
   if (alchemyKey === 'none' || chainId === ChainId.CITREA_TESTNET) {
-    return 'http://vm-dfx-node-prd.westeurope.cloudapp.azure.com:8085';
+    if (!process.env.CITREA_RPC_URL) {
+      throw new Error('CITREA_RPC_URL environment variable is required for Citrea');
+    }
+    return process.env.CITREA_RPC_URL;
   }
 
   // Build Alchemy URL based on chain
