@@ -44,7 +44,7 @@ jobs:
         uses: azure/CLI@v2
         with:
           inlineScript: |
-            az containerapp update --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_CONTAINER_APP }} --image ${{ env.DOCKER_TAGS }} --set-env-vars DEPLOY_INFO=${{ env.DEPLOY_INFO }}
+            az containerapp update --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --name ${{ env.AZURE_CONTAINER_APP }} --image ${{ env.DOCKER_TAGS }} --set-env-vars DEPLOY_INFO=${{ env.DEPLOY_INFO }} DFX_NODE_URL=http://vm-dfx-node-dev.westeurope.cloudapp.azure.com:8085
 
       - name: Logout from Azure
         run: az logout
