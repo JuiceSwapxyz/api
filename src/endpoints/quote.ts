@@ -157,7 +157,21 @@ export function createQuoteHandler(
         res.setHeader('X-Quote-Cache', 'HIT');
         res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
         log.debug({ cacheHit: true, responseTime: Date.now() - startTime }, 'Quote served from cache');
-        res.json(cachedQuote);
+        const requestId = generateQuoteId();
+        
+        const formattedQuoteCached = {
+          ...cachedQuote.quote,
+          swapper: body.swapper,
+        };
+
+        res.json({
+          requestId: requestId,
+          routing: 'CLASSIC',
+          permitData: null,
+          quote: formattedQuoteCached,
+          allQuotes: [{ routing: 'CLASSIC', quote: formattedQuoteCached }],
+        });
+        
         return;
       }
 
