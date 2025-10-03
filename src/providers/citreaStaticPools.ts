@@ -121,12 +121,6 @@ export const CITREA_STATIC_POOLS = [
     fee: FeeAmount.MEDIUM,
     liquidity: '35000000000000000000000',
   },
-  {
-    token0: CITREA_TOKENS.CUSD,
-    token1: CITREA_TOKENS.USDC,
-    fee: FeeAmount.LOW,
-    liquidity: '38000000000000000000000',
-  },
 
   // Additional token pair pools for better routing coverage
   {
