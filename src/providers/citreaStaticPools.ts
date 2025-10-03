@@ -54,18 +54,6 @@ export const CITREA_STATIC_POOLS = [
   {
     token0: CITREA_TOKENS.USDC,
     token1: CITREA_TOKENS.WCBTC,
-    fee: FeeAmount.LOWEST,
-    liquidity: '80000000000000000000000',
-  },
-  {
-    token0: CITREA_TOKENS.USDC,
-    token1: CITREA_TOKENS.WCBTC,
-    fee: FeeAmount.LOW,
-    liquidity: '70000000000000000000000',
-  },
-  {
-    token0: CITREA_TOKENS.USDC,
-    token1: CITREA_TOKENS.WCBTC,
     fee: FeeAmount.MEDIUM,
     liquidity: '60000000000000000000000',
   },
