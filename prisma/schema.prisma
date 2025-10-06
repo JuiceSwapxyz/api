@@ -1,0 +1,40 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Zentrale User Address Registry
+model User {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  address         String   @unique
+
+  // Relations
+  ogCampaign      OgCampaignUser?
+}
+
+// OG Campaign spezifische Daten
+model OgCampaignUser {
+  id                String    @id @default(uuid())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id])
+
+  // Swap Tasks (Ponder hat die Details)
+  swapsCompleted    Int       @default(0)
+
+  // Social Tasks
+  twitterVerifiedAt DateTime?
+  twitterUserId     String?
+  discordVerifiedAt DateTime?
+  discordUserId     String?
+
+  @@index([userId])
+}

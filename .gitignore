@@ -11,3 +11,5 @@ lib/types
 cache
 .idea
 .claude/settings.local.json
+
+/src/generated/prisma
