@@ -6,6 +6,7 @@ import { isNativeCurrency } from '@juiceswapxyz/universal-router-sdk';
 import { RouterService } from '../core/RouterService';
 import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
+import { trackUser } from '../services/userTracking';
 import Logger from 'bunyan';
 
 // Helper functions for AWS-compatible response formatting
@@ -76,6 +77,8 @@ export function createQuoteHandler(
 
     try {
       const body: QuoteRequestBody = req.body;
+
+      trackUser(body.swapper, log);
 
       // Validate required fields
       if (!body.amount) {
