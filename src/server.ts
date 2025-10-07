@@ -13,6 +13,7 @@ import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { getApolloMiddleware } from './adapters/handleGraphQL';
 import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
 import { quoteCache } from './cache/quoteCache';
+import { prisma } from './db/prisma';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -168,11 +169,17 @@ async function bootstrap() {
   });
 
   // Metrics endpoint (basic)
-  app.get('/metrics', (_req: Request, res: Response) => {
+  app.get('/metrics', async (_req: Request, res: Response) => {
+    let userCount = await prisma.user.count().catch((error) => {
+      logger.warn({ error }, 'Failed to fetch user count for metrics');
+      return -1;
+    });
+
     res.json({
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       chains: routerService.getSupportedChains(),
+      userCount,
     });
   });
 
