@@ -6,7 +6,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Copy Prisma schema (needed for postinstall)
+COPY prisma ./prisma
+
+# Install dependencies (postinstall will run prisma generate)
 RUN npm ci
 
 # Copy source code
@@ -30,7 +33,11 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy package files
 COPY package*.json ./
 
+# Copy Prisma schema (needed for postinstall prisma generate)
+COPY --from=builder /app/prisma ./prisma
+
 # Install production dependencies (includes prisma for migrations)
+# postinstall will run: prisma generate
 RUN npm ci --omit=dev && \
     npm cache clean --force
 
@@ -40,11 +47,8 @@ COPY --from=builder /app/dist ./dist
 # Copy config files (needed for JSON imports that reference ../config/)
 COPY --from=builder /app/config ./config
 
-# Copy generated Prisma client from builder stage
+# Copy generated Prisma client from builder stage (as backup)
 COPY --from=builder /app/src/generated ./src/generated
-
-# Copy Prisma schema and migrations for production database migrations
-COPY --from=builder /app/prisma ./prisma
 
 # Copy entrypoint script for automated migrations
 COPY entrypoint.sh /app/entrypoint.sh
