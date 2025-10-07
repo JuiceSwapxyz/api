@@ -11,10 +11,6 @@ export async function trackUser(
   logger: Logger
 ): Promise<void> {
   try {
-    if (process.env.OG_CAMPAIGN_ENABLED !== 'true') {
-      return;
-    }
-
     if (!address) {
       return;
     }
