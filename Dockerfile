@@ -40,6 +40,9 @@ COPY --from=builder /app/dist ./dist
 # Copy config files (needed for JSON imports that reference ../config/)
 COPY --from=builder /app/config ./config
 
+# Copy generated Prisma client from builder stage
+COPY --from=builder /app/src/generated ./src/generated
+
 # Change ownership to nodejs user
 RUN chown -R nodejs:nodejs /app
 

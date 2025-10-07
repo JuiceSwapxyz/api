@@ -10,27 +10,23 @@ CREATE TABLE "User" (
 
 -- CreateTable
 CREATE TABLE "OgCampaignUser" (
-    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "userId" TEXT NOT NULL,
     "swapsCompleted" INTEGER NOT NULL DEFAULT 0,
     "twitterVerifiedAt" TIMESTAMP(3),
     "twitterUserId" TEXT,
     "discordVerifiedAt" TIMESTAMP(3),
     "discordUserId" TEXT,
 
-    CONSTRAINT "OgCampaignUser_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "OgCampaignUser_pkey" PRIMARY KEY ("userId")
 );
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_address_key" ON "User"("address");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "OgCampaignUser_userId_key" ON "OgCampaignUser"("userId");
-
--- CreateIndex
-CREATE INDEX "OgCampaignUser_userId_idx" ON "OgCampaignUser"("userId");
+CREATE INDEX "User_address_idx" ON "User"("address");
 
 -- AddForeignKey
-ALTER TABLE "OgCampaignUser" ADD CONSTRAINT "OgCampaignUser_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "OgCampaignUser" ADD CONSTRAINT "OgCampaignUser_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

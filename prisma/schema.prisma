@@ -8,7 +8,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Zentrale User Address Registry
+// Central registry for wallet addresses
 model User {
   id              String   @id @default(uuid())
   createdAt       DateTime @default(now())
@@ -17,24 +17,25 @@ model User {
 
   // Relations
   ogCampaign      OgCampaignUser?
+
+  @@index([address])
 }
 
-// OG Campaign spezifische Daten
+// OG Campaign participation tracking
+// Stores campaign progress for users who opt in
 model OgCampaignUser {
-  id                String    @id @default(uuid())
+  userId            String    @id
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-  userId            String    @unique
-  user              User      @relation(fields: [userId], references: [id])
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Swap Tasks (Ponder hat die Details)
+  // Swap task tracking
+  // Actual swap details are stored in Ponder indexer
   swapsCompleted    Int       @default(0)
 
-  // Social Tasks
+  // Social verification - Twitter and Discord account linking
   twitterVerifiedAt DateTime?
   twitterUserId     String?
   discordVerifiedAt DateTime?
   discordUserId     String?
-
-  @@index([userId])
 }
