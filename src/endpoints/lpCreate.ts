@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { RouterService } from '../core/RouterService';
+import { trackUser } from '../services/userTracking';
 import Logger from 'bunyan';
 import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES } from '@juiceswapxyz/sdk-core';
 import {
@@ -86,6 +87,8 @@ export function createLpCreateHandler(routerService: RouterService, logger: Logg
         initialPrice,
         position,
       }: LpCreateRequestBody = req.body;
+
+      trackUser(walletAddress, log);
 
       if (
         !walletAddress ||

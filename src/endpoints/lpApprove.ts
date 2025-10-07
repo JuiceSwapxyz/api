@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { RouterService } from '../core/RouterService';
+import { trackUser } from '../services/userTracking';
 import Logger from 'bunyan';
 import { getApproveTxForToken } from '../utils/erc20';
 import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES } from '@juiceswapxyz/sdk-core';
@@ -21,6 +22,8 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
 
     try {
       const { walletAddress, chainId, token0, token1, amount0, amount1 }: LpApproveRequestBody = req.body;
+
+      trackUser(walletAddress, log);
 
       if (!walletAddress || !chainId || !token0 || !token1 || !amount0 || !amount1) {
         log.debug({ walletAddress, chainId, token0, token1, amount0, amount1 }, 'Validation failed: missing required fields');
