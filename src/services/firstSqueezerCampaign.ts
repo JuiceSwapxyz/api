@@ -1,6 +1,7 @@
 import { prisma } from '../db/prisma';
 import Logger from 'bunyan';
 import { ethers } from 'ethers';
+import axios from 'axios';
 
 export interface CampaignProgress {
   walletAddress: string;
@@ -30,9 +31,61 @@ export interface CampaignCondition {
 
 export class FirstSqueezerCampaignService {
   private logger: Logger;
+  private ponderApiUrl: string;
 
   constructor(logger: Logger) {
     this.logger = logger;
+    this.ponderApiUrl = process.env.PONDER_API_URL || 'https://ponder.juiceswap.com';
+  }
+
+  /**
+   * Check if user has completed all 3 bApps campaign tasks via Ponder indexer
+   * Returns completion status and the date of the last completed task
+   */
+  private async checkPonderBappsCompletion(
+    walletAddress: string,
+    chainId: number
+  ): Promise<{ isCompleted: boolean; completedAt?: Date }> {
+    try {
+      const response = await axios.post(
+        `${this.ponderApiUrl}/campaign/progress`,
+        {
+          walletAddress,
+          chainId,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 5000, // 5 second timeout
+        }
+      );
+
+      const data = response.data;
+      const isCompleted = data.completedTasks === 3;
+
+      // Get the completion date from the last task (task 3)
+      let completedAt: Date | undefined;
+      if (isCompleted && data.tasks && data.tasks.length >= 3) {
+        const lastTask = data.tasks.find((t: any) => t.id === 3);
+        if (lastTask?.completedAt) {
+          completedAt = new Date(lastTask.completedAt);
+        }
+      }
+
+      this.logger.info(
+        { walletAddress, completedTasks: data.completedTasks, isCompleted, completedAt },
+        'Checked Ponder bApps completion'
+      );
+
+      return { isCompleted, completedAt };
+    } catch (error) {
+      this.logger.warn(
+        { error, walletAddress },
+        'Failed to check Ponder bApps completion - assuming not completed'
+      );
+      return { isCompleted: false };
+    }
   }
 
   /**
@@ -53,11 +106,36 @@ export class FirstSqueezerCampaignService {
       });
 
       // Get or create campaign progress
-      const campaignData = await prisma.firstSqueezerCampaignUser.upsert({
+      let campaignData = await prisma.firstSqueezerCampaignUser.upsert({
         where: { userId: user.id },
         create: { userId: user.id },
         update: { updatedAt: new Date() },
       });
+
+      // Check and sync bApps completion from Ponder if not already completed
+      if (!campaignData.bappsCompleted) {
+        const ponderResult = await this.checkPonderBappsCompletion(
+          checksummedAddress,
+          chainId
+        );
+
+        if (ponderResult.isCompleted) {
+          // Update database with completion status and real completion date from Ponder
+          campaignData = await prisma.firstSqueezerCampaignUser.update({
+            where: { userId: user.id },
+            data: {
+              bappsCompleted: true,
+              bappsCompletedAt: ponderResult.completedAt || new Date(),
+              updatedAt: new Date(),
+            },
+          });
+
+          this.logger.info(
+            { walletAddress: checksummedAddress, completedAt: ponderResult.completedAt },
+            'Synced bApps completion from Ponder to database'
+          );
+        }
+      }
 
       // Build conditions array
       const conditions: CampaignCondition[] = [
@@ -132,6 +210,16 @@ export class FirstSqueezerCampaignService {
     try {
       const checksummedAddress = ethers.utils.getAddress(walletAddress);
 
+      // Check if this Twitter account is already used by another wallet
+      const existingTwitterUser = await prisma.firstSqueezerCampaignUser.findUnique({
+        where: { twitterUserId },
+        include: { user: true },
+      });
+
+      if (existingTwitterUser && existingTwitterUser.user.address.toLowerCase() !== checksummedAddress.toLowerCase()) {
+        throw new Error(`This Twitter account (@${twitterUsername}) is already verified with another wallet address`);
+      }
+
       // Get or create user
       const user = await prisma.user.upsert({
         where: { address: checksummedAddress },
@@ -179,6 +267,16 @@ export class FirstSqueezerCampaignService {
   ): Promise<void> {
     try {
       const checksummedAddress = ethers.utils.getAddress(walletAddress);
+
+      // Check if this Discord account is already used by another wallet
+      const existingDiscordUser = await prisma.firstSqueezerCampaignUser.findUnique({
+        where: { discordUserId },
+        include: { user: true },
+      });
+
+      if (existingDiscordUser && existingDiscordUser.user.address.toLowerCase() !== checksummedAddress.toLowerCase()) {
+        throw new Error(`This Discord account (${discordUsername}) is already verified with another wallet address`);
+      }
 
       // Get or create user
       const user = await prisma.user.upsert({

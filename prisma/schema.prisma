@@ -57,12 +57,15 @@ model FirstSqueezerCampaignUser {
   // Condition 2: Follow @JuiceSwap_com on X (Twitter)
   twitterVerifiedAt DateTime?
   twitterUserId     String?
-  twitterUsername   String?
+  twitterUsername        String?
+  twitterOAuthState      String?   // Temporary storage for OAuth state (CSRF protection)
+  twitterOAuthCodeVerifier String? // PKCE code verifier for token exchange
 
   // Condition 3: Join JuiceSwap Discord
   discordVerifiedAt DateTime?
   discordUserId     String?
   discordUsername   String?
+  discordOAuthState String?   // Temporary storage for OAuth state (CSRF protection)
 
   // NFT Minting
   nftMinted         Boolean   @default(false)
@@ -71,6 +74,6 @@ model FirstSqueezerCampaignUser {
   nftTxHash         String?
 
   @@index([userId])
-  @@index([twitterUserId])
-  @@index([discordUserId])
+  @@unique([twitterUserId])
+  @@unique([discordUserId])
 }
