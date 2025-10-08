@@ -1,11 +1,16 @@
 import swaggerJsdoc from 'swagger-jsdoc';
+import packageJson from '../../package.json';
+
+// Detect if running from compiled code
+const isCompiled = __dirname.includes('/dist/');
+const baseDir = isCompiled ? './dist' : './src';
 
 const options: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
       title: 'JuiceSwap Routing API',
-      version: '1.0.0',
+      version: packageJson.version,
       description: 'Citrea DEX routing and quoting API',
       contact: {
         name: 'JuiceSwap',
@@ -16,20 +21,6 @@ const options: swaggerJsdoc.Options = {
         url: 'https://www.gnu.org/licenses/gpl-3.0.en.html',
       },
     },
-    servers: [
-      {
-        url: 'https://api.juiceswap.com',
-        description: 'Production API',
-      },
-      {
-        url: 'https://dev.api.juiceswap.com',
-        description: 'Development API',
-      },
-      {
-        url: 'http://localhost:3000',
-        description: 'Local Development',
-      },
-    ],
     tags: [
       { name: 'Quoting' },
       { name: 'Swaps' },
@@ -62,8 +53,8 @@ const options: swaggerJsdoc.Options = {
     },
   },
   apis: [
-    './src/endpoints/*.ts',
-    './src/swagger/schemas.ts',
+    `${baseDir}/endpoints/*.{ts,js}`,
+    `${baseDir}/swagger/schemas.{ts,js}`,
   ],
 };
 
