@@ -233,18 +233,18 @@ export class TwitterOAuthService {
 
       return followsJuiceSwap;
     } catch (error) {
-      // If 403, log the full error to understand why
+      // If 403, log the full error details
       if (axios.isAxiosError(error) && error.response?.status === 403) {
-        this.logger.warn(
+        this.logger.error(
           {
             userId,
             errorData: error.response?.data,
             errorMessage: error.message,
             headers: error.response?.headers
           },
-          'Twitter API 403 Forbidden - endpoint not accessible (assuming user follows for dev)'
+          'Twitter API 403 Forbidden - endpoint not accessible'
         );
-        return true; // Assume they follow for now
+        throw new Error('Twitter API access forbidden - cannot verify follow status');
       }
 
       this.logger.error({ error, userId }, 'Failed to check follow status');
