@@ -65,6 +65,39 @@ export interface QuoteResponse {
   }>;
 }
 
+/**
+ * @swagger
+ * /v1/quote:
+ *   post:
+ *     tags: [Quoting]
+ *     summary: Get swap quote
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/QuoteRequest'
+ *           example:
+ *             tokenInChainId: 5115
+ *             tokenInAddress: "0x0000000000000000000000000000000000000000"
+ *             tokenOutChainId: 5115
+ *             tokenOutAddress: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *             amount: "1000000000000000000"
+ *             type: "EXACT_INPUT"
+ *             swapper: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ *             protocols: ["V3"]
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/QuoteResponse'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createQuoteHandler(
   routerService: RouterService,
   logger: Logger
@@ -80,28 +113,9 @@ export function createQuoteHandler(
 
       trackUser(body.swapper, log);
 
-      // Validate required fields
-      if (!body.amount) {
-        log.debug({ body }, 'Validation failed: missing amount');
-        res.status(400).json({
-          error: 'Missing required fields',
-          detail: 'amount is required',
-        });
-        return;
-      }
-
-      // Normalize token addresses
-      const tokenIn = body.tokenIn || body.tokenInAddress;
-      const tokenOut = body.tokenOut || body.tokenOutAddress;
-
-      if (!tokenIn || !tokenOut) {
-        log.debug({ body }, 'Validation failed: missing token addresses');
-        res.status(400).json({
-          error: 'Missing token addresses',
-          detail: 'tokenIn/tokenInAddress and tokenOut/tokenOutAddress are required',
-        });
-        return;
-      }
+      // Normalize token addresses (Zod validation ensures at least one is present)
+      const tokenIn = (body.tokenIn || body.tokenInAddress)!;
+      const tokenOut = (body.tokenOut || body.tokenOutAddress)!;
 
       // Check if both tokens are on the same chain (current limitation)
       if (body.tokenInChainId !== body.tokenOutChainId) {

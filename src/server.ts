@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import Logger from 'bunyan';
+import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './swagger/config';
 import { RouterService } from './core/RouterService';
 import { initializeProviders, verifyProviders } from './providers/rpcProvider';
 import { createQuoteHandler } from './endpoints/quote';
@@ -10,10 +13,20 @@ import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
+import { validateBody, validateQuery } from './middleware/validation';
 import { getApolloMiddleware } from './adapters/handleGraphQL';
 import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
 import { quoteCache } from './cache/quoteCache';
 import { prisma } from './db/prisma';
+import {
+  QuoteRequestSchema,
+  SwapRequestSchema,
+  SwappableTokensQuerySchema,
+  SwapsQuerySchema,
+  LpApproveRequestSchema,
+  LpCreateRequestSchema,
+} from './validation/schemas';
+import packageJson from '../package.json';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -48,6 +61,12 @@ async function bootstrap() {
 
   // Body parsing middleware
   app.use(express.json({ limit: '1mb' }));
+
+  // Security headers with Helmet (configured for API use)
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disable CSP for API
+    crossOriginEmbedderPolicy: false, // Allow embedding (for Swagger UI)
+  }));
 
   // CORS configuration
   const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || [
@@ -125,22 +144,28 @@ async function bootstrap() {
   const handleLpApprove = createLpApproveHandler(routerService, logger);
   const handleLpCreate = createLpCreateHandler(routerService, logger);
 
-  // API Routes
-  app.post('/v1/quote', quoteLimiter, handleQuote);
-  app.post('/v1/swap', generalLimiter, handleSwap);
+  // API Routes with validation
+  app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
+  app.post('/v1/swap', generalLimiter, validateBody(SwapRequestSchema, logger), handleSwap);
 
   // Swappable tokens endpoint (returns supported tokens)
-  app.get('/v1/swappable_tokens', handleSwappableTokens);
+  app.get('/v1/swappable_tokens', validateQuery(SwappableTokensQuerySchema, logger), handleSwappableTokens);
 
   // LP endpoints
-  app.post('/v1/lp/approve', generalLimiter, handleLpApprove);
-  app.post('/v1/lp/create', generalLimiter, handleLpCreate);
+  app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
+  app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
 
   // Swaps transaction status endpoint
-  app.get('/v1/swaps', handleSwaps);
+  app.get('/v1/swaps', validateQuery(SwapsQuerySchema, logger), handleSwaps);
 
   // GraphQL endpoint
-  app.use('/v1/graphql', await getApolloMiddleware());
+  app.use('/v1/graphql', await getApolloMiddleware(logger));
+
+  // API Documentation (Swagger UI)
+  app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'JuiceSwap API Documentation',
+  }));
 
   // Health check endpoints
   app.get('/healthz', (_req: Request, res: Response) => {
@@ -159,7 +184,6 @@ async function bootstrap() {
 
   // Version endpoint
   app.get('/version', (_req: Request, res: Response) => {
-    const packageJson = require('../package.json');
     res.json({
       name: packageJson.name,
       version: packageJson.version,
@@ -170,7 +194,7 @@ async function bootstrap() {
 
   // Metrics endpoint (basic)
   app.get('/metrics', async (_req: Request, res: Response) => {
-    let userCount = await prisma.user.count().catch((error) => {
+    const userCount = await prisma.user.count().catch((error) => {
       logger.warn({ error }, 'Failed to fetch user count for metrics');
       return -1;
     });
@@ -180,6 +204,7 @@ async function bootstrap() {
       memory: process.memoryUsage(),
       chains: routerService.getSupportedChains(),
       userCount,
+      quoteCache: quoteCache.getStats(),
     });
   });
 
@@ -231,7 +256,6 @@ async function bootstrap() {
 
 // Start the application
 bootstrap().catch((error) => {
-  console.error('Failed to start application:', error);
   logger.fatal({
     error: error.message,
     stack: error.stack,

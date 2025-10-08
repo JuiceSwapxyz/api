@@ -11,6 +11,36 @@ interface Token {
   logoURI?: string;
 }
 
+/**
+ * @swagger
+ * /v1/swappable_tokens:
+ *   get:
+ *     tags: [Utility]
+ *     summary: Get swappable tokens
+ *     parameters:
+ *       - in: query
+ *         name: tokenInChainId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 5115
+ *       - in: query
+ *         name: tokenIn
+ *         schema:
+ *           type: string
+ *         example: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/TokenListResponse'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createSwappableTokensHandler(logger: Logger) {
   return async function handleSwappableTokens(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'swappable_tokens' });
