@@ -9,6 +9,12 @@ import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
+import {
+  createGetProgressHandler,
+  createTwitterAuthHandler,
+  createTwitterCallbackHandler,
+  createVerifyTwitterHandler,
+} from './endpoints/firstSqueezerCampaign';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { getApolloMiddleware } from './adapters/handleGraphQL';
 import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
@@ -125,6 +131,12 @@ async function bootstrap() {
   const handleLpApprove = createLpApproveHandler(routerService, logger);
   const handleLpCreate = createLpCreateHandler(routerService, logger);
 
+  // First Squeezer Campaign handlers
+  const handleGetProgress = createGetProgressHandler(logger);
+  const handleTwitterAuth = createTwitterAuthHandler(logger);
+  const handleTwitterCallback = createTwitterCallbackHandler(logger);
+  const handleVerifyTwitter = createVerifyTwitterHandler(logger);
+
   // API Routes
   app.post('/v1/quote', quoteLimiter, handleQuote);
   app.post('/v1/swap', generalLimiter, handleSwap);
@@ -138,6 +150,12 @@ async function bootstrap() {
 
   // Swaps transaction status endpoint
   app.get('/v1/swaps', handleSwaps);
+
+  // First Squeezer Campaign endpoints
+  app.get('/v1/campaign/first-squeezer/progress', handleGetProgress);
+  app.get('/v1/campaign/first-squeezer/twitter/auth', handleTwitterAuth);
+  app.get('/v1/campaign/first-squeezer/twitter/callback', handleTwitterCallback);
+  app.post('/v1/campaign/first-squeezer/verify/twitter', generalLimiter, handleVerifyTwitter);
 
   // GraphQL endpoint
   app.use('/v1/graphql', await getApolloMiddleware());

@@ -10,13 +10,14 @@ datasource db {
 
 // Central registry for wallet addresses
 model User {
-  id              String   @id @default(uuid())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  address         String   @unique
+  id                      String   @id @default(uuid())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  address                 String   @unique
 
   // Relations
-  ogCampaign      OgCampaignUser?
+  ogCampaign              OgCampaignUser?
+  firstSqueezerCampaign   FirstSqueezerCampaignUser?
 
   @@index([address])
 }
@@ -38,4 +39,38 @@ model OgCampaignUser {
   twitterUserId     String?
   discordVerifiedAt DateTime?
   discordUserId     String?
+}
+
+// First Squeezer Campaign participation tracking
+// Tracks completion of: ₿apps Campaign, Twitter follow, Discord join
+model FirstSqueezerCampaignUser {
+  userId            String    @id
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Condition 1: Complete all 3 ₿apps Campaign swap tasks
+  // This is checked via bApps campaign progress (separate table/logic)
+  bappsCompleted    Boolean   @default(false)
+  bappsCompletedAt  DateTime?
+
+  // Condition 2: Follow @JuiceSwap_com on X (Twitter)
+  twitterVerifiedAt DateTime?
+  twitterUserId     String?
+  twitterUsername   String?
+
+  // Condition 3: Join JuiceSwap Discord
+  discordVerifiedAt DateTime?
+  discordUserId     String?
+  discordUsername   String?
+
+  // NFT Minting
+  nftMinted         Boolean   @default(false)
+  nftMintedAt       DateTime?
+  nftTokenId        String?
+  nftTxHash         String?
+
+  @@index([userId])
+  @@index([twitterUserId])
+  @@index([discordUserId])
 }
