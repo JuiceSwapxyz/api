@@ -105,10 +105,6 @@ src/
 ## Supported Chains
 
 - Ethereum Mainnet (1)
-- Optimism (10)
-- Polygon (137)
-- Base (8453)
-- Arbitrum (42161)
 - Sepolia Testnet (11155111)
 - Citrea Testnet (5115)
 
@@ -121,10 +117,13 @@ All configuration is done through environment variables:
 PORT=3000
 NODE_ENV=production
 
-# RPC Endpoints
-RPC_1=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
-RPC_10=https://opt-mainnet.g.alchemy.com/v2/YOUR_KEY
-# ... etc
+# RPC Providers (Alchemy API Keys)
+ALCHEMY_1=your-alchemy-api-key          # Ethereum Mainnet
+ALCHEMY_11155111=your-alchemy-api-key   # Sepolia Testnet
+ALCHEMY_5115=none                       # Citrea Testnet (uses custom RPC)
+
+# Citrea RPC URL
+CITREA_RPC_URL=http://vm-dfx-node-dev.westeurope.cloudapp.azure.com:8085
 
 # Cache
 CACHE_TTL_SECONDS=30
@@ -157,7 +156,7 @@ Basic monitoring is available through the `/metrics` endpoint:
     "heapTotal": 12345678,
     "heapUsed": 9876543
   },
-  "chains": [1, 10, 137, 8453, 42161]
+  "chains": [1, 11155111, 5115]
 }
 ```
 

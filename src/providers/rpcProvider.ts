@@ -29,14 +29,6 @@ function buildAlchemyUrl(chainId: ChainId): string {
   switch (chainId) {
     case ChainId.MAINNET:
       return `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
-    case ChainId.OPTIMISM:
-      return `https://opt-mainnet.g.alchemy.com/v2/${alchemyKey}`;
-    case ChainId.POLYGON:
-      return `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`;
-    case ChainId.BASE:
-      return `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`;
-    case ChainId.ARBITRUM_ONE:
-      return `https://arb-mainnet.g.alchemy.com/v2/${alchemyKey}`;
     case ChainId.SEPOLIA:
       return `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`;
     default:
@@ -50,26 +42,6 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     chainId: ChainId.MAINNET,
     name: 'Ethereum Mainnet',
     rpcUrl: buildAlchemyUrl(ChainId.MAINNET),
-  },
-  {
-    chainId: ChainId.OPTIMISM,
-    name: 'Optimism',
-    rpcUrl: buildAlchemyUrl(ChainId.OPTIMISM),
-  },
-  {
-    chainId: ChainId.POLYGON,
-    name: 'Polygon',
-    rpcUrl: buildAlchemyUrl(ChainId.POLYGON),
-  },
-  {
-    chainId: ChainId.BASE,
-    name: 'Base',
-    rpcUrl: buildAlchemyUrl(ChainId.BASE),
-  },
-  {
-    chainId: ChainId.ARBITRUM_ONE,
-    name: 'Arbitrum',
-    rpcUrl: buildAlchemyUrl(ChainId.ARBITRUM_ONE),
   },
   {
     chainId: ChainId.SEPOLIA,
