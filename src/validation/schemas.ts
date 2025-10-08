@@ -22,16 +22,16 @@ export const QuoteRequestSchema = z.object({
   tokenInChainId: ChainIdSchema,
   tokenIn: AddressSchema.optional(),
   tokenInAddress: AddressSchema.optional(),
-  tokenInDecimals: z.number().int().positive().optional(),
+  tokenInDecimals: z.coerce.number().int().positive().optional(),
   tokenOutChainId: ChainIdSchema,
   tokenOut: AddressSchema.optional(),
   tokenOutAddress: AddressSchema.optional(),
-  tokenOutDecimals: z.number().int().positive().optional(),
+  tokenOutDecimals: z.coerce.number().int().positive().optional(),
   amount: AmountSchema,
   type: z.enum(['EXACT_INPUT', 'EXACT_OUTPUT']).optional(),
   swapper: AddressSchema.optional(),
-  slippageTolerance: z.string().optional(),
-  deadline: z.number().int().positive().optional(),
+  slippageTolerance: z.coerce.string().optional(),
+  deadline: z.coerce.number().int().positive().optional(),
   enableUniversalRouter: z.boolean().optional(),
   protocols: z.array(z.string()).optional(),
 }).refine(
@@ -56,15 +56,15 @@ export const SwapRequestSchema = z.object({
   tokenInChainId: ChainIdSchema,
   tokenIn: AddressSchema.optional(),
   tokenInAddress: AddressSchema.optional(),
-  tokenInDecimals: z.number().int().positive().optional(),
+  tokenInDecimals: z.coerce.number().int().positive().optional(),
   tokenOutChainId: ChainIdSchema,
   tokenOut: AddressSchema.optional(),
   tokenOutAddress: AddressSchema.optional(),
-  tokenOutDecimals: z.number().int().positive().optional(),
+  tokenOutDecimals: z.coerce.number().int().positive().optional(),
   amount: AmountSchema,
   recipient: AddressSchema,
-  slippageTolerance: z.string(),
-  deadline: z.string().optional(),
+  slippageTolerance: z.coerce.string(),
+  deadline: z.coerce.string().optional(),
   from: AddressSchema,
   chainId: ChainIdSchema.optional(),
   enableUniversalRouter: z.boolean().optional(),
@@ -117,15 +117,15 @@ export type LpApproveRequest = z.infer<typeof LpApproveRequestSchema>;
 
 // LP Create schema
 const PoolInfoSchema = z.object({
-  tickSpacing: z.number().int().optional(),
+  tickSpacing: z.coerce.number().int().optional(),
   token0: z.string(), // Can be ADDRESS_ZERO
   token1: z.string(), // Can be ADDRESS_ZERO
-  fee: z.number().int().positive(),
+  fee: z.coerce.number().int().positive(),
 });
 
 const PositionInfoSchema = z.object({
-  tickLower: z.number().int(),
-  tickUpper: z.number().int(),
+  tickLower: z.coerce.number().int(),
+  tickUpper: z.coerce.number().int(),
   pool: PoolInfoSchema,
 });
 
