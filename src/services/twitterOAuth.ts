@@ -36,10 +36,11 @@ export class TwitterOAuthService {
   private pkceStore: Map<string, { codeVerifier: string; state: string }> = new Map();
 
   constructor(logger: Logger) {
-    this.clientId = process.env.TWITTER_CLIENT_ID || '';
-    this.clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
-    this.callbackUrl = process.env.TWITTER_CALLBACK_URL || '';
-    this.juiceswapUserId = process.env.JUICESWAP_TWITTER_USER_ID || '';
+    // Use First Squeezer specific env vars, fallback to general ones
+    this.clientId = process.env.FIRST_SQUEEZER_TWITTER_CLIENT_ID || process.env.TWITTER_CLIENT_ID || '';
+    this.clientSecret = process.env.FIRST_SQUEEZER_TWITTER_CLIENT_SECRET || process.env.TWITTER_CLIENT_SECRET || '';
+    this.callbackUrl = process.env.FIRST_SQUEEZER_TWITTER_CALLBACK_URL || process.env.TWITTER_CALLBACK_URL || '';
+    this.juiceswapUserId = process.env.FIRST_SQUEEZER_JUICESWAP_TWITTER_USER_ID || process.env.JUICESWAP_TWITTER_USER_ID || '';
     this.logger = logger;
 
     if (!this.clientId || !this.clientSecret) {
