@@ -73,6 +73,44 @@ interface LpCreateRequestBody {
   position: PositionInfo;
 }
 
+/**
+ * @swagger
+ * /v1/lp/create:
+ *   post:
+ *     tags: [Liquidity]
+ *     summary: Create LP position
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LpCreateRequest'
+ *           example:
+ *             protocol: "V3"
+ *             walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ *             chainId: 5115
+ *             independentAmount: "1000000000000000000"
+ *             independentToken: "TOKEN_0"
+ *             position:
+ *               tickLower: -887220
+ *               tickUpper: 887220
+ *               pool:
+ *                 token0: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *                 token1: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *                 fee: 3000
+ *             simulateTransaction: false
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LpCreateResponse'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createLpCreateHandler(routerService: RouterService, logger: Logger) {
   return async function handleLpCreate(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'lp_create' });

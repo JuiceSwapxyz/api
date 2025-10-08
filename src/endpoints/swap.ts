@@ -72,6 +72,40 @@ async function getGasPrices(
   }
 }
 
+/**
+ * @swagger
+ * /v1/swap:
+ *   post:
+ *     tags: [Swaps]
+ *     summary: Build swap transaction
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SwapRequest'
+ *           example:
+ *             tokenInChainId: 5115
+ *             tokenInAddress: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *             tokenOutChainId: 5115
+ *             tokenOutAddress: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *             amount: "1000000000000000000"
+ *             type: "exactIn"
+ *             recipient: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ *             from: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ *             slippageTolerance: "0.5"
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SwapResponse'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createSwapHandler(
   routerService: RouterService,
   logger: Logger
@@ -115,36 +149,18 @@ async function handleWrapUnwrap(
   try {
     const {
       tokenInAddress,
+      tokenIn,
       tokenOutAddress,
+      tokenOut,
       amount,
       type,
-      recipient,
       from,
       chainId,
     } = body;
 
-    // Validate required fields
-    const missingFields = [];
-    if (!tokenInAddress) missingFields.push('tokenInAddress');
-    if (!tokenOutAddress) missingFields.push('tokenOutAddress');
-    if (!amount) missingFields.push('amount');
-    if (!type) missingFields.push('type');
-    if (!recipient) missingFields.push('recipient');
-    if (!from) missingFields.push('from');
-    if (!chainId) missingFields.push('chainId');
-
-    if (missingFields.length > 0) {
-      log.debug({ missingFields }, 'Validation failed: missing required fields for wrap/unwrap');
-      res.status(400).json({
-        error: 'Missing required fields',
-        detail: `The following fields are required: ${missingFields.join(', ')}`,
-      });
-      return;
-    }
-
-    // Type assertion after validation - all fields are now guaranteed to be defined
-    const validatedTokenIn = tokenInAddress!;
-    const validatedTokenOut = tokenOutAddress!;
+    // Normalize token addresses (Zod validation ensures at least one is present)
+    const validatedTokenIn = tokenInAddress || tokenIn!;
+    const validatedTokenOut = tokenOutAddress || tokenOut!;
 
     // Validate operation type
     if (type !== 'WRAP' && type !== 'UNWRAP') {
@@ -291,30 +307,9 @@ async function handleClassicSwap(
   routerService: RouterService
 ): Promise<void> {
   try {
-    // Validate required fields
-    const missingFields = [];
-    const tokenIn = body.tokenIn || body.tokenInAddress;
-    const tokenOut = body.tokenOut || body.tokenOutAddress;
-
-    if (!tokenIn) missingFields.push('tokenInAddress');
-    if (!tokenOut) missingFields.push('tokenOutAddress');
-    if (!body.amount) missingFields.push('amount');
-    if (!body.recipient) missingFields.push('recipient');
-    if (!body.slippageTolerance) missingFields.push('slippageTolerance');
-    if (!body.from) missingFields.push('from');
-
-    if (missingFields.length > 0) {
-      log.debug({ missingFields }, 'Validation failed: missing required fields for classic swap');
-      res.status(400).json({
-        error: 'Missing required fields',
-        detail: `The following fields are required: ${missingFields.join(', ')}`,
-      });
-      return;
-    }
-
-    // Type assertions after validation
-    const validatedTokenIn = tokenIn!;
-    const validatedTokenOut = tokenOut!;
+    // Normalize token addresses (Zod validation ensures at least one is present)
+    const validatedTokenIn = body.tokenIn || body.tokenInAddress!;
+    const validatedTokenOut = body.tokenOut || body.tokenOutAddress!;
 
     const chainId = (body.chainId || body.tokenInChainId) as ChainId;
 

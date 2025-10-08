@@ -20,6 +20,37 @@ interface GetSwapsResponse {
   }>;
 }
 
+/**
+ * @swagger
+ * /v1/swaps:
+ *   get:
+ *     tags: [Swaps]
+ *     summary: Check transaction status
+ *     parameters:
+ *       - in: query
+ *         name: txHashes
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+ *       - in: query
+ *         name: chainId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 5115
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SwapStatus'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createSwapsHandler(routerService: RouterService, logger: Logger) {
   return async function handleSwaps(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'swaps' });

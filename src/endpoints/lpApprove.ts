@@ -16,6 +16,39 @@ interface LpApproveRequestBody {
   amount1: string;
 }
 
+/**
+ * @swagger
+ * /v1/lp/approve:
+ *   post:
+ *     tags: [Liquidity]
+ *     summary: Approve tokens for LP
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LpApproveRequest'
+ *           example:
+ *             walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ *             chainId: 5115
+ *             protocol: "V3"
+ *             token0: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *             token1: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *             amount0: "1000000000000000000"
+ *             amount1: "1000000000000000000"
+ *             simulateTransaction: false
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/LpApprovalResponse'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createLpApproveHandler(routerService: RouterService, logger: Logger) {
   return async function handleLpApprove(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'lp_approve' });
@@ -54,8 +87,8 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
       }
 
       const [token0Approval, token1Approval] = await Promise.all([
-        getApproveTxForToken(token0, amount0, walletAddress, spender, provider, chainId),
-        getApproveTxForToken(token1, amount1, walletAddress, spender, provider, chainId)
+        getApproveTxForToken(token0, amount0, walletAddress, spender, provider, chainId, log),
+        getApproveTxForToken(token1, amount1, walletAddress, spender, provider, chainId, log)
       ]);
 
       res.status(200).json({

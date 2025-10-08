@@ -1,6 +1,7 @@
 import { ADDRESS_ZERO } from '@juiceswapxyz/v3-sdk';
 import { WETH9 } from '@juiceswapxyz/sdk-core';
 import { ethers } from 'ethers';
+import Logger from 'bunyan';
 
 const ERC20ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
@@ -27,7 +28,8 @@ export const getApproveTxForToken = async (
   walletAddress: string,
   spender: string,
   provider: ethers.providers.JsonRpcProvider,
-  chainId: number
+  chainId: number,
+  logger: Logger
 ): Promise<ApprovalTransaction | null> => {
   // 1. if token is ZERO_ADDRESS, return null (native tokens don't need approval)
   if (token === ADDRESS_ZERO) {
@@ -50,7 +52,7 @@ export const getApproveTxForToken = async (
       return null; // Already approved
     }
   } catch (error) {
-    console.error(`Error checking allowance for token ${token}:`, error);
+    logger.warn({ error, token }, 'Error checking allowance - will return approval transaction');
     // Continue to return approval transaction if we can't check allowance
   }
 
@@ -67,7 +69,7 @@ export const getApproveTxForToken = async (
       chainId
     };
   } catch (error) {
-    console.error(`Error encoding approval transaction for token ${token}:`, error);
+    logger.error({ error, token }, 'Error encoding approval transaction');
     throw error;
   }
 };

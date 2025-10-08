@@ -1,4 +1,10 @@
 import { PrismaClient } from '../generated/prisma'
+import Logger from 'bunyan'
+
+const logger = Logger.createLogger({
+  name: 'prisma-client',
+  level: (process.env.LOG_LEVEL as Logger.LogLevel) || 'info',
+})
 
 // Singleton pattern to prevent connection pool exhaustion
 // In development, reuse the same client across hot reloads
@@ -33,7 +39,7 @@ export async function checkDatabaseConnection(): Promise<boolean> {
     await prisma.$queryRaw`SELECT 1`
     return true
   } catch (error) {
-    console.error('Database connection failed:', error)
+    logger.error({ error }, 'Database connection failed')
     return false
   }
 }

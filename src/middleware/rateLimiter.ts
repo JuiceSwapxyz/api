@@ -1,5 +1,11 @@
 import rateLimit from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
+import Logger from 'bunyan';
+
+const logger = Logger.createLogger({
+  name: 'rate-limiter',
+  level: (process.env.LOG_LEVEL as Logger.LogLevel) || 'info',
+});
 
 // Skip rate limiting in development and test environments
 // This matches AWS Lambda behavior (no app-level rate limiting)
@@ -43,7 +49,7 @@ export const quoteLimiter = isDevelopment ? noOpLimiter : rateLimit({
   // Custom error handler with IP logging
   handler: (req: Request, res: Response) => {
     const ip = getClientIp(req);
-    console.log(`[Rate Limit] Blocked quote request from IP: ${ip}`);
+    logger.warn({ ip, endpoint: 'quote' }, 'Blocked quote request - rate limit exceeded');
 
     res.status(429).json({
       error: 'Too many requests',
@@ -77,7 +83,7 @@ export const generalLimiter = isDevelopment ? noOpLimiter : rateLimit({
   // Custom error handler with IP logging
   handler: (req: Request, res: Response) => {
     const ip = getClientIp(req);
-    console.log(`[Rate Limit] Blocked general request from IP: ${ip}`);
+    logger.warn({ ip, endpoint: 'general' }, 'Blocked general request - rate limit exceeded');
 
     res.status(429).json({
       error: 'Too many requests',
