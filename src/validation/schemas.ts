@@ -154,3 +154,10 @@ export const LpCreateRequestSchema = z.object({
 );
 
 export type LpCreateRequest = z.infer<typeof LpCreateRequestSchema>;
+
+// Portfolio endpoint schema
+export const PortfolioQuerySchema = z.object({
+  chainId: z.string().optional().default('5115').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),
+});
+
+export type PortfolioQuery = z.infer<typeof PortfolioQuerySchema>;
