@@ -12,11 +12,13 @@ import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
+import { createPortfolioHandler } from './endpoints/portfolio';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { validateBody, validateQuery } from './middleware/validation';
 import { getApolloMiddleware } from './adapters/handleGraphQL';
 import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
 import { quoteCache } from './cache/quoteCache';
+import { portfolioCache } from './cache/portfolioCache';
 import { prisma } from './db/prisma';
 import {
   QuoteRequestSchema,
@@ -25,6 +27,7 @@ import {
   SwapsQuerySchema,
   LpApproveRequestSchema,
   LpCreateRequestSchema,
+  PortfolioQuerySchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 
@@ -40,6 +43,9 @@ async function bootstrap() {
 
   // Initialize quote cache with logger
   quoteCache.setLogger(logger);
+
+  // Initialize portfolio cache with logger
+  portfolioCache.setLogger(logger);
 
   // Initialize RPC providers
   const providers = initializeProviders(logger);
@@ -143,6 +149,7 @@ async function bootstrap() {
   const handleSwaps = createSwapsHandler(routerService, logger);
   const handleLpApprove = createLpApproveHandler(routerService, logger);
   const handleLpCreate = createLpCreateHandler(routerService, logger);
+  const handlePortfolio = createPortfolioHandler(providers, logger);
 
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
@@ -150,6 +157,9 @@ async function bootstrap() {
 
   // Swappable tokens endpoint (returns supported tokens)
   app.get('/v1/swappable_tokens', validateQuery(SwappableTokensQuerySchema, logger), handleSwappableTokens);
+
+  // Portfolio endpoint (returns wallet token balances)
+  app.get('/v1/portfolio/:address', generalLimiter, validateQuery(PortfolioQuerySchema, logger), handlePortfolio);
 
   // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);

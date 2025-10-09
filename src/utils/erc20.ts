@@ -6,6 +6,7 @@ import Logger from 'bunyan';
 const ERC20ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
   'function allowance(address owner, address spender) returns (uint256)',
+  'function balanceOf(address owner) returns (uint256)',
   'function decimals() returns (uint8)'
 ];
 
