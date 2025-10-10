@@ -47,7 +47,7 @@ COPY --from=builder /app/dist ./dist
 # Copy config files (needed for JSON imports that reference ../config/)
 COPY --from=builder /app/config ./config
 
-# Copy generated Prisma client (compiled code imports from '../generated/prisma')
+# Copy generated Prisma client (defensive backup - build script should handle this)
 COPY --from=builder /app/src/generated ./dist/generated
 
 # Copy entrypoint script for automated migrations

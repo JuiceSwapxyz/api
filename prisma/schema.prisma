@@ -36,6 +36,21 @@ model OgCampaignUser {
   // Social verification - Twitter and Discord account linking
   twitterVerifiedAt DateTime?
   twitterUserId     String?
+  twitterUsername   String?
   discordVerifiedAt DateTime?
   discordUserId     String?
+}
+
+// Twitter OAuth session storage (replaces in-memory storage)
+// Sessions expire after 10 minutes for security
+model TwitterOAuthSession {
+  id            String   @id @default(uuid())
+  state         String   @unique
+  walletAddress String
+  codeVerifier  String
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([state])
+  @@index([expiresAt])
 }
