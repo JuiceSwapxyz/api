@@ -1,10 +1,11 @@
 import { Request, Response } from 'express';
 import Logger from 'bunyan';
 import { getTwitterOAuthService } from '../services/TwitterOAuthService';
+import { getDiscordOAuthService } from '../services/DiscordOAuthService';
 import { prisma } from '../db/prisma';
 
 /**
- * First Squeezer Campaign - Twitter OAuth Endpoints
+ * First Squeezer Campaign - Social OAuth Endpoints (Twitter & Discord)
  */
 
 /**
@@ -269,6 +270,300 @@ export function createTwitterStatusHandler(logger: Logger) {
       });
     } catch (error: any) {
       log.error({ error }, 'Error in handleTwitterStatus');
+      res.status(500).json({ message: 'Failed to check status' });
+    }
+  };
+}
+
+/**
+ * Discord OAuth Endpoints
+ */
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/discord/start:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Start Discord OAuth flow
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
+ *         description: User's wallet address
+ *     responses:
+ *       200:
+ *         description: OAuth URL generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 authUrl:
+ *                   type: string
+ *                   description: Discord OAuth authorization URL
+ *                 state:
+ *                   type: string
+ *                   description: State token for CSRF protection
+ *       400:
+ *         description: Missing or invalid wallet address
+ *       500:
+ *         description: Internal server error
+ */
+export function createDiscordStartHandler(logger: Logger) {
+  return async function handleDiscordStart(req: Request, res: Response): Promise<void> {
+    const log = logger.child({ endpoint: 'discord-start' });
+
+    try {
+      const walletAddress = req.query.walletAddress as string;
+
+      // Validate wallet address
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        log.debug({ walletAddress }, 'Validation failed: invalid wallet address');
+        res.status(400).json({ message: 'Invalid wallet address' });
+        return;
+      }
+
+      // Normalize address to lowercase
+      const normalizedAddress = walletAddress.toLowerCase();
+
+      log.debug({ walletAddress: normalizedAddress }, 'Generating Discord OAuth URL');
+
+      // Get Discord OAuth service
+      const discordService = getDiscordOAuthService();
+
+      // Generate authorization URL (async with database storage)
+      const { authUrl, state } = await discordService.generateAuthUrl(normalizedAddress);
+
+      log.debug({ walletAddress: normalizedAddress, state }, 'Discord OAuth URL generated');
+
+      res.status(200).json({
+        authUrl,
+        state,
+      });
+    } catch (error: any) {
+      log.error({ error: error.message, stack: error.stack }, 'Error in handleDiscordStart');
+      res.status(500).json({ message: 'Failed to generate OAuth URL', detail: error.message });
+    }
+  };
+}
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/discord/callback:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Discord OAuth callback handler
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: OAuth authorization code
+ *       - in: query
+ *         name: state
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: State token for CSRF protection
+ *     responses:
+ *       302:
+ *         description: Redirects to frontend with success/error
+ */
+export function createDiscordCallbackHandler(logger: Logger) {
+  return async function handleDiscordCallback(req: Request, res: Response): Promise<void> {
+    const log = logger.child({ endpoint: 'discord-callback' });
+
+    try {
+      const code = req.query.code as string;
+      const state = req.query.state as string;
+
+      // Validate parameters
+      if (!code || !state) {
+        log.warn('Missing code or state parameter');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=missing_params`
+        );
+        return;
+      }
+
+      log.debug({ state }, 'Processing Discord OAuth callback');
+
+      // Get Discord OAuth service
+      const discordService = getDiscordOAuthService();
+
+      // Complete OAuth flow (includes guild membership check)
+      log.debug({ state }, 'Starting Discord OAuth flow completion');
+      const { walletAddress, discordUser, isInGuild } = await discordService.completeOAuthFlow(code, state);
+      log.debug(
+        { walletAddress, username: discordUser.username, isInGuild },
+        'Discord OAuth flow completed successfully'
+      );
+
+      // Check if user is in the JuiceSwap Discord guild
+      if (!isInGuild) {
+        log.warn({ walletAddress, discordUsername: discordUser.username }, 'User is not in JuiceSwap Discord guild');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=${encodeURIComponent('You must join the JuiceSwap Discord server first')}`
+        );
+        return;
+      }
+
+      log.info(
+        {
+          walletAddress,
+          discordUserId: discordUser.id,
+          discordUsername: discordUser.username,
+        },
+        'Discord OAuth completed successfully'
+      );
+
+      // Find or create user
+      let user = await prisma.user.findUnique({
+        where: { address: walletAddress },
+      });
+
+      if (!user) {
+        user = await prisma.user.create({
+          data: { address: walletAddress },
+        });
+      }
+
+      // Format Discord username (handle discriminator)
+      const username =
+        discordUser.discriminator && discordUser.discriminator !== '0'
+          ? `${discordUser.username}#${discordUser.discriminator}`
+          : discordUser.username;
+
+      // Update or create OG campaign user record
+      await prisma.ogCampaignUser.upsert({
+        where: { userId: user.id },
+        update: {
+          discordVerifiedAt: new Date(),
+          discordUserId: discordUser.id,
+          discordUsername: username,
+        },
+        create: {
+          userId: user.id,
+          discordVerifiedAt: new Date(),
+          discordUserId: discordUser.id,
+          discordUsername: username,
+        },
+      });
+
+      log.info(
+        {
+          walletAddress,
+          discordUsername: username,
+        },
+        'Discord account linked successfully'
+      );
+
+      // Redirect to OAuth callback page
+      res.redirect(
+        `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=success&username=${encodeURIComponent(username)}`
+      );
+    } catch (error: any) {
+      log.error(
+        {
+          error: error.message,
+          stack: error.stack,
+          fullError: error,
+        },
+        'Error in handleDiscordCallback'
+      );
+
+      // Redirect to OAuth callback page
+      res.redirect(
+        `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=${encodeURIComponent(error.message || 'unknown_error')}`
+      );
+    }
+  };
+}
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/discord/status:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Check Discord verification status
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
+ *         description: User's wallet address
+ *     responses:
+ *       200:
+ *         description: Status retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 verified:
+ *                   type: boolean
+ *                   description: Whether Discord is verified
+ *                 username:
+ *                   type: string
+ *                   description: Discord username (if verified)
+ *                 verifiedAt:
+ *                   type: string
+ *                   format: date-time
+ *                   description: Verification timestamp (if verified)
+ *       400:
+ *         description: Missing or invalid wallet address
+ *       500:
+ *         description: Internal server error
+ */
+export function createDiscordStatusHandler(logger: Logger) {
+  return async function handleDiscordStatus(req: Request, res: Response): Promise<void> {
+    const log = logger.child({ endpoint: 'discord-status' });
+
+    try {
+      const walletAddress = req.query.walletAddress as string;
+
+      // Validate wallet address
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        log.debug({ walletAddress }, 'Validation failed: invalid wallet address');
+        res.status(400).json({ message: 'Invalid wallet address' });
+        return;
+      }
+
+      // Normalize address to lowercase
+      const normalizedAddress = walletAddress.toLowerCase();
+
+      log.debug({ walletAddress: normalizedAddress }, 'Checking Discord verification status');
+
+      // Find user
+      const user = await prisma.user.findUnique({
+        where: { address: normalizedAddress },
+        include: { ogCampaign: true },
+      });
+
+      if (!user || !user.ogCampaign) {
+        res.status(200).json({
+          verified: false,
+          username: null,
+          verifiedAt: null,
+        });
+        return;
+      }
+
+      const campaign = user.ogCampaign;
+
+      res.status(200).json({
+        verified: !!campaign.discordVerifiedAt,
+        username: campaign.discordUsername,
+        verifiedAt: campaign.discordVerifiedAt?.toISOString() || null,
+      });
+    } catch (error: any) {
+      log.error({ error }, 'Error in handleDiscordStatus');
       res.status(500).json({ message: 'Failed to check status' });
     }
   };
