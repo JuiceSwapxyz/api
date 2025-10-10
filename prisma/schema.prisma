@@ -58,11 +58,11 @@ model TwitterOAuthSession {
 
 // Discord OAuth session storage (replaces localStorage)
 // Sessions expire after 10 minutes for security
+// Note: Does not use PKCE (PUBLIC CLIENT = OFF, confidential client)
 model DiscordOAuthSession {
   id            String   @id @default(uuid())
   state         String   @unique
   walletAddress String
-  codeVerifier  String
   createdAt     DateTime @default(now())
   expiresAt     DateTime
 

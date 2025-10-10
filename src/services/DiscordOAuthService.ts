@@ -1,12 +1,13 @@
 import axios from 'axios';
-import { generatePKCE, generateState } from '../utils/pkce';
+import { generateState } from '../utils/pkce';
 import { prisma } from '../db/prisma';
 
 /**
  * Discord OAuth 2.0 Service
- * Handles Discord authentication flow with PKCE
+ * Handles Discord authentication flow (standard Authorization Code Grant)
  * Uses database for persistent session storage (production-ready)
  * Verifies user is member of specified Discord guild (server)
+ * Note: Does not use PKCE (PUBLIC CLIENT = OFF, confidential client)
  */
 
 interface DiscordOAuthConfig {
@@ -77,10 +78,10 @@ export class DiscordOAuthService {
   /**
    * Generate authorization URL for user to visit
    * Stores session in database for persistence across restarts
+   * Uses standard OAuth 2.0 flow (no PKCE for confidential clients)
    */
   public async generateAuthUrl(walletAddress: string): Promise<{ authUrl: string; state: string }> {
-    // Generate PKCE parameters
-    const { codeVerifier, codeChallenge } = generatePKCE();
+    // Generate state for CSRF protection
     const state = generateState();
 
     // Calculate expiry time (10 minutes from now)
@@ -91,20 +92,17 @@ export class DiscordOAuthService {
       data: {
         state,
         walletAddress,
-        codeVerifier,
         expiresAt,
       },
     });
 
-    // Build authorization URL
+    // Build authorization URL (standard OAuth 2.0, no PKCE)
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.config.clientId,
       redirect_uri: this.config.callbackUrl,
       scope: this.SCOPES,
       state,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
     });
 
     const authUrl = `${this.AUTHORIZE_URL}?${params.toString()}`;
@@ -137,7 +135,7 @@ export class DiscordOAuthService {
     }
 
     try {
-      // Exchange code for token
+      // Exchange code for token (standard OAuth 2.0, no PKCE)
       // Discord requires application/x-www-form-urlencoded
       const response = await axios.post<DiscordTokenResponse>(
         this.TOKEN_URL,
@@ -147,7 +145,6 @@ export class DiscordOAuthService {
           grant_type: 'authorization_code',
           code,
           redirect_uri: this.config.callbackUrl,
-          code_verifier: session.codeVerifier,
         }),
         {
           headers: {
