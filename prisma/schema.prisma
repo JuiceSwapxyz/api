@@ -39,11 +39,26 @@ model OgCampaignUser {
   twitterUsername   String?
   discordVerifiedAt DateTime?
   discordUserId     String?
+  discordUsername   String?
 }
 
 // Twitter OAuth session storage (replaces in-memory storage)
 // Sessions expire after 10 minutes for security
 model TwitterOAuthSession {
+  id            String   @id @default(uuid())
+  state         String   @unique
+  walletAddress String
+  codeVerifier  String
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([state])
+  @@index([expiresAt])
+}
+
+// Discord OAuth session storage (replaces localStorage)
+// Sessions expire after 10 minutes for security
+model DiscordOAuthSession {
   id            String   @id @default(uuid())
   state         String   @unique
   walletAddress String

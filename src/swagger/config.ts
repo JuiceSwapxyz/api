@@ -27,6 +27,7 @@ const options: swaggerJsdoc.Options = {
       { name: 'Liquidity' },
       { name: 'Utility' },
       { name: 'Portfolio' },
+      { name: 'Campaign' },
     ],
     components: {
       schemas: {
