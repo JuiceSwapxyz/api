@@ -54,13 +54,19 @@ export interface QuoteRequestBody {
   enableUniversalRouter?: boolean;
 }
 
+enum Routing {
+  CLASSIC = 'CLASSIC',
+  WRAP = 'WRAP',
+  UNWRAP = 'UNWRAP',
+}
+
 export interface QuoteResponse {
   requestId: string;
-  routing: 'CLASSIC' | 'WRAP';
+  routing: Routing;
   permitData: any | null;
   quote: any;
   allQuotes?: Array<{
-    routing: 'CLASSIC';
+    routing: Routing;
     quote: any;
   }>;
 }
@@ -174,19 +180,25 @@ export function createQuoteHandler(
         res.setHeader('X-Quote-Cache', 'HIT');
         res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
         log.debug({ cacheHit: true, responseTime: Date.now() - startTime }, 'Quote served from cache');
-        const requestId = generateQuoteId();
         
         const formattedQuoteCached = {
           ...cachedQuote.quote,
           swapper: body.swapper,
         };
 
+        const allQuotes = cachedQuote.allQuotes ? cachedQuote.allQuotes.map((q: any) => ({
+          ...q,
+          quote: {
+            ...q.quote,
+            swapper: body.swapper,
+          }
+        })) : undefined;
+
         res.json({
-          requestId: requestId,
-          routing: 'CLASSIC',
-          permitData: null,
+          ...cachedQuote,
+          requestId: generateQuoteId(),
           quote: formattedQuoteCached,
-          allQuotes: [{ routing: 'CLASSIC', quote: formattedQuoteCached }],
+          allQuotes,
         });
         
         return;
@@ -208,7 +220,7 @@ export function createQuoteHandler(
         // Return AWS-compatible WRAP response
         const wrapResponse: QuoteResponse = {
           requestId: generateQuoteId(),
-          routing: 'WRAP',
+          routing: isNativeCurrency(tokenIn) ? Routing.WRAP : Routing.UNWRAP,
           permitData: null,
           quote: {
             chainId: chainId,
@@ -393,10 +405,10 @@ export function createQuoteHandler(
 
       const response: QuoteResponse = {
         requestId: quoteId,
-        routing: 'CLASSIC',
+        routing: Routing.CLASSIC,
         permitData: null,
         quote: formattedQuote,
-        allQuotes: [{ routing: 'CLASSIC', quote: formattedQuote }],
+        allQuotes: [{ routing: Routing.CLASSIC, quote: formattedQuote }],
       };
 
       // Cache successful quotes
