@@ -5,7 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && tsc && npm run postbuild",
+    "postbuild": "copyfiles -u 1 \"src/generated/**/*\" dist/",
     "start": "node dist/server.js",
     "postinstall": "prisma generate",
     "test": "jest",
@@ -63,6 +64,7 @@
     "@types/uuid": "^9.0.7",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "copyfiles": "^2.4.1",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.2",
     "jest": "^29.7.0",
