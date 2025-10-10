@@ -58,7 +58,7 @@ export const getPoolInstance = ({
   tickCurrent,
   provider
 }: GetPoolInstanceParams) => {
-  if (token0 && token1 && fee && sqrtPriceX96 && liquidity && tickCurrent) {
+  if (token0 && token1 && fee && sqrtPriceX96 !== undefined && liquidity !== undefined && tickCurrent !== undefined ) {
     return new Pool(token0, token1, fee, sqrtPriceX96, liquidity, tickCurrent);
   }
 

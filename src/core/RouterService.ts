@@ -27,6 +27,7 @@ import Logger from 'bunyan';
 import JSBI from 'jsbi';
 import { CitreaStaticV3SubgraphProvider } from '../providers/CitreaStaticV3SubgraphProvider';
 import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
+import { TokenInfoRequester } from '../utils/tokenInfoRequester';
 
 export interface QuoteParams {
   tokenIn: string;
@@ -55,6 +56,7 @@ export class RouterService {
   private tokenProviders: Map<ChainId, any>;
   private v3PoolProviders: Map<ChainId, V3PoolProvider>;
   private logger: Logger;
+  private tokenInfoRequesters: Map<ChainId, TokenInfoRequester>;
 
   private constructor(
     rpcProviders: Map<ChainId, providers.StaticJsonRpcProvider>,
@@ -65,6 +67,7 @@ export class RouterService {
     this.routers = new Map();
     this.tokenProviders = new Map();
     this.v3PoolProviders = new Map();
+    this.tokenInfoRequesters = new Map();
   }
 
   static async create(
@@ -117,6 +120,10 @@ export class RouterService {
 
       // Gas price provider
       const gasPriceProvider = new EIP1559GasPriceProvider(provider);
+
+      // Initialize token info requester
+      const tokenInfoRequester = new TokenInfoRequester(multicallProvider);
+      this.tokenInfoRequesters.set(chainId, tokenInfoRequester);
 
       // For Citrea: use custom subgraph provider with static pools
       let v3SubgraphProvider = undefined;
@@ -179,7 +186,27 @@ export class RouterService {
         };
       }
     } catch (error) {
-      this.logger.warn({ error, address, chainId }, 'Failed to lookup token');
+      this.logger.warn({ error, address, chainId }, 'Failed to lookup token using token provider');
+    }
+
+    try {
+      // Try to get token info from token info requester [uniswap's TokenProvider is super dumb and doesn't look up onchain if it is not initialized with token address before hand]
+      const tokenInfoRequester = this.tokenInfoRequesters.get(chainId);
+      if (!tokenInfoRequester) {
+        throw new Error(`No token info requester available for chain ${chainId}`);
+      }
+      
+      const token = await tokenInfoRequester.getTokenInfo(address);
+      if (token) {
+        this.logger.debug({ address, chainId, decimals: token.decimals }, 'Found token in token info requester');
+        return {
+          decimals: token.decimals,
+          symbol: token.symbol,
+          name: token.name,
+        };
+      }
+    } catch (error) {
+      this.logger.warn({ error, address, chainId }, 'Failed to lookup token using token info requester');
     }
 
     throw new Error(`Token not found: ${address} on chain ${chainId}`);
