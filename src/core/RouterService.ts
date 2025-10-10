@@ -190,7 +190,6 @@ export class RouterService {
     }
 
     try {
-      // Try to get token info from token info requester [uniswap's TokenProvider is super dumb and doesn't look up onchain if it is not initialized with token address before hand]
       const tokenInfoRequester = this.tokenInfoRequesters.get(chainId);
       if (!tokenInfoRequester) {
         throw new Error(`No token info requester available for chain ${chainId}`);
