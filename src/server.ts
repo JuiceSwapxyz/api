@@ -84,8 +84,8 @@ async function bootstrap() {
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
-    'https://app.juiceswap.com',
-    'https://dev.app.juiceswap.com',
+    'https://bapp.juiceswap.com',
+    'https://dev.bapp.juiceswap.com',
   ];
 
   app.use((req, res, next) => {
