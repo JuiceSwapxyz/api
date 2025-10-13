@@ -17,6 +17,9 @@ import {
   createTwitterStartHandler,
   createTwitterCallbackHandler,
   createTwitterStatusHandler,
+  createDiscordStartHandler,
+  createDiscordCallbackHandler,
+  createDiscordStatusHandler,
 } from './endpoints/firstSqueezerCampaign';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { validateBody, validateQuery } from './middleware/validation';
@@ -160,6 +163,9 @@ async function bootstrap() {
   const handleTwitterStart = createTwitterStartHandler(logger);
   const handleTwitterCallback = createTwitterCallbackHandler(logger);
   const handleTwitterStatus = createTwitterStatusHandler(logger);
+  const handleDiscordStart = createDiscordStartHandler(logger);
+  const handleDiscordCallback = createDiscordCallbackHandler(logger);
+  const handleDiscordStatus = createDiscordStatusHandler(logger);
 
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
@@ -182,6 +188,11 @@ async function bootstrap() {
   app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
   app.get('/v1/campaigns/first-squeezer/twitter/callback', generalLimiter, handleTwitterCallback);
   app.get('/v1/campaigns/first-squeezer/twitter/status', generalLimiter, handleTwitterStatus);
+
+  // Campaign endpoints - Discord OAuth
+  app.get('/v1/campaigns/first-squeezer/discord/start', generalLimiter, handleDiscordStart);
+  app.get('/v1/campaigns/first-squeezer/discord/callback', generalLimiter, handleDiscordCallback);
+  app.get('/v1/campaigns/first-squeezer/discord/status', generalLimiter, handleDiscordStatus);
 
   // GraphQL endpoint
   app.use('/v1/graphql', await getApolloMiddleware(logger));
