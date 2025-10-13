@@ -13,6 +13,7 @@ import { prisma } from '../db/prisma';
 interface DiscordOAuthConfig {
   clientId: string;
   clientSecret: string;
+  botToken: string;
   callbackUrl: string;
   guildId: string;
 }
@@ -50,9 +51,10 @@ export class DiscordOAuthService {
   private readonly TOKEN_URL = 'https://discord.com/api/v10/oauth2/token';
   private readonly USER_INFO_URL = 'https://discord.com/api/v10/users/@me';
   private readonly USER_GUILDS_URL = 'https://discord.com/api/v10/users/@me/guilds';
+  private readonly ADD_GUILD_MEMBER_URL = 'https://discord.com/api/v10/guilds';
 
-  // OAuth scopes: identify (user info) + guilds (guild list)
-  private readonly SCOPES = 'identify guilds';
+  // OAuth scopes: identify (user info) + guilds (guild list) + guilds.join (auto-add to guild)
+  private readonly SCOPES = 'identify guilds guilds.join';
 
   // Session expiry time (10 minutes)
   private readonly SESSION_EXPIRY_MS = 10 * 60 * 1000;
@@ -224,7 +226,38 @@ export class DiscordOAuthService {
   }
 
   /**
-   * Complete OAuth flow: exchange code, get user info, and verify guild membership
+   * Add user to the JuiceSwap Discord guild
+   * Requires guilds.join scope from user OAuth and bot to be in the guild
+   * Uses Bot token to make the API call
+   */
+  public async addUserToGuild(userId: string, accessToken: string): Promise<void> {
+    try {
+      const url = `${this.ADD_GUILD_MEMBER_URL}/${this.config.guildId}/members/${userId}`;
+
+      await axios.put(
+        url,
+        {
+          access_token: accessToken,
+        },
+        {
+          headers: {
+            Authorization: `Bot ${this.config.botToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(
+          `Failed to add user to Discord guild: ${error.response?.data?.message || error.message}`
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Complete OAuth flow: exchange code, get user info, add to guild, and verify membership
    */
   public async completeOAuthFlow(
     code: string,
@@ -236,7 +269,10 @@ export class DiscordOAuthService {
     // Get user info
     const discordUser = await this.getUserInfo(accessToken);
 
-    // Check if user is in the JuiceSwap Discord guild
+    // Add user to Discord guild (auto-invite with guilds.join scope)
+    await this.addUserToGuild(discordUser.id, accessToken);
+
+    // Check if user is in the JuiceSwap Discord guild (should be true after auto-add)
     const isInGuild = await this.isUserInGuild(accessToken);
 
     return {
@@ -280,11 +316,12 @@ export function getDiscordOAuthService(): DiscordOAuthService {
     const config = {
       clientId: process.env.DISCORD_CLIENT_ID || '',
       clientSecret: process.env.DISCORD_CLIENT_SECRET || '',
+      botToken: process.env.DISCORD_BOT_TOKEN || '',
       callbackUrl: process.env.DISCORD_CALLBACK_URL || '',
       guildId: process.env.DISCORD_GUILD_ID || '',
     };
 
-    if (!config.clientId || !config.clientSecret || !config.callbackUrl || !config.guildId) {
+    if (!config.clientId || !config.clientSecret || !config.botToken || !config.callbackUrl || !config.guildId) {
       throw new Error('Missing Discord OAuth environment variables');
     }
 
