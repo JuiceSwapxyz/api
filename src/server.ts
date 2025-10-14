@@ -20,6 +20,8 @@ import {
   createDiscordStartHandler,
   createDiscordCallbackHandler,
   createDiscordStatusHandler,
+  createBAppsStatusHandler,
+  createNFTSignatureHandler,
 } from './endpoints/firstSqueezerCampaign';
 import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { validateBody, validateQuery } from './middleware/validation';
@@ -166,6 +168,8 @@ async function bootstrap() {
   const handleDiscordStart = createDiscordStartHandler(logger);
   const handleDiscordCallback = createDiscordCallbackHandler(logger);
   const handleDiscordStatus = createDiscordStatusHandler(logger);
+  const handleBAppsStatus = createBAppsStatusHandler(logger);
+  const handleNFTSignature = createNFTSignatureHandler(logger);
 
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
@@ -193,6 +197,12 @@ async function bootstrap() {
   app.get('/v1/campaigns/first-squeezer/discord/start', generalLimiter, handleDiscordStart);
   app.get('/v1/campaigns/first-squeezer/discord/callback', generalLimiter, handleDiscordCallback);
   app.get('/v1/campaigns/first-squeezer/discord/status', generalLimiter, handleDiscordStatus);
+
+  // Campaign endpoints - bApps Verification
+  app.get('/v1/campaigns/first-squeezer/bapps/status', generalLimiter, handleBAppsStatus);
+
+  // Campaign endpoints - NFT Claiming
+  app.get('/v1/campaigns/first-squeezer/nft/signature', generalLimiter, handleNFTSignature);
 
   // GraphQL endpoint
   app.use('/v1/graphql', await getApolloMiddleware(logger));

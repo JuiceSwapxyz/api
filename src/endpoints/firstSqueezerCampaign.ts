@@ -1,8 +1,13 @@
 import { Request, Response } from 'express';
 import Logger from 'bunyan';
+import { ethers } from 'ethers';
+import axios from 'axios';
+import { ChainId } from '@juiceswapxyz/sdk-core';
 import { getTwitterOAuthService } from '../services/TwitterOAuthService';
 import { getDiscordOAuthService } from '../services/DiscordOAuthService';
 import { prisma } from '../db/prisma';
+import { retryAsync } from '../lib/utils/retry';
+import { FIRST_SQUEEZER_NFT_CONTRACT } from '../lib/constants/campaigns';
 
 /**
  * First Squeezer Campaign - Social OAuth Endpoints (Twitter & Discord)
@@ -21,10 +26,8 @@ import { prisma } from '../db/prisma';
  *         schema:
  *           type: string
  *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
- *         description: User's wallet address
  *     responses:
  *       200:
- *         description: OAuth URL generated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -32,14 +35,13 @@ import { prisma } from '../db/prisma';
  *               properties:
  *                 authUrl:
  *                   type: string
- *                   description: Twitter OAuth authorization URL
  *                 state:
  *                   type: string
- *                   description: State token for CSRF protection
- *       400:
- *         description: Missing or invalid wallet address
- *       500:
- *         description: Internal server error
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 export function createTwitterStartHandler(logger: Logger) {
   return async function handleTwitterStart(req: Request, res: Response): Promise<void> {
@@ -84,23 +86,21 @@ export function createTwitterStartHandler(logger: Logger) {
  * /v1/campaigns/first-squeezer/twitter/callback:
  *   get:
  *     tags: [Campaign]
- *     summary: Twitter OAuth callback handler
+ *     summary: Twitter OAuth callback (redirects to frontend)
  *     parameters:
  *       - in: query
  *         name: code
  *         required: true
  *         schema:
  *           type: string
- *         description: OAuth authorization code
  *       - in: query
  *         name: state
  *         required: true
  *         schema:
  *           type: string
- *         description: State token for CSRF protection
  *     responses:
  *       302:
- *         description: Redirects to frontend with success/error
+ *         description: Redirects to frontend
  */
 export function createTwitterCallbackHandler(logger: Logger) {
   return async function handleTwitterCallback(req: Request, res: Response): Promise<void> {
@@ -113,7 +113,7 @@ export function createTwitterCallbackHandler(logger: Logger) {
       // Validate parameters
       if (!code || !state) {
         log.warn('Missing code or state parameter');
-        res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/oauth-callback?twitter=error&message=missing_params`);
+        res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=missing_params`);
         return;
       }
 
@@ -173,7 +173,7 @@ export function createTwitterCallbackHandler(logger: Logger) {
 
       // Redirect to OAuth callback page (popup window)
       res.redirect(
-        `${process.env.FRONTEND_URL || 'http://localhost:3000'}/oauth-callback?twitter=success&username=${encodeURIComponent(twitterUser.username)}`
+        `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=success&username=${encodeURIComponent(twitterUser.username)}`
       );
     } catch (error: any) {
       log.error({
@@ -184,7 +184,7 @@ export function createTwitterCallbackHandler(logger: Logger) {
 
       // Redirect to OAuth callback page (popup window)
       res.redirect(
-        `${process.env.FRONTEND_URL || 'http://localhost:3000'}/oauth-callback?twitter=error&message=${encodeURIComponent(error.message || 'unknown_error')}`
+        `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent(error.message || 'unknown_error')}`
       );
     }
   };
@@ -203,10 +203,8 @@ export function createTwitterCallbackHandler(logger: Logger) {
  *         schema:
  *           type: string
  *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
- *         description: User's wallet address
  *     responses:
  *       200:
- *         description: Status retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -214,18 +212,15 @@ export function createTwitterCallbackHandler(logger: Logger) {
  *               properties:
  *                 verified:
  *                   type: boolean
- *                   description: Whether Twitter is verified
  *                 username:
  *                   type: string
- *                   description: Twitter username (if verified)
  *                 verifiedAt:
  *                   type: string
- *                   format: date-time
- *                   description: Verification timestamp (if verified)
- *       400:
- *         description: Missing or invalid wallet address
- *       500:
- *         description: Internal server error
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 export function createTwitterStatusHandler(logger: Logger) {
   return async function handleTwitterStatus(req: Request, res: Response): Promise<void> {
@@ -292,10 +287,8 @@ export function createTwitterStatusHandler(logger: Logger) {
  *         schema:
  *           type: string
  *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
- *         description: User's wallet address
  *     responses:
  *       200:
- *         description: OAuth URL generated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -303,14 +296,13 @@ export function createTwitterStatusHandler(logger: Logger) {
  *               properties:
  *                 authUrl:
  *                   type: string
- *                   description: Discord OAuth authorization URL
  *                 state:
  *                   type: string
- *                   description: State token for CSRF protection
- *       400:
- *         description: Missing or invalid wallet address
- *       500:
- *         description: Internal server error
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 export function createDiscordStartHandler(logger: Logger) {
   return async function handleDiscordStart(req: Request, res: Response): Promise<void> {
@@ -355,23 +347,21 @@ export function createDiscordStartHandler(logger: Logger) {
  * /v1/campaigns/first-squeezer/discord/callback:
  *   get:
  *     tags: [Campaign]
- *     summary: Discord OAuth callback handler
+ *     summary: Discord OAuth callback (redirects to frontend)
  *     parameters:
  *       - in: query
  *         name: code
  *         required: true
  *         schema:
  *           type: string
- *         description: OAuth authorization code
  *       - in: query
  *         name: state
  *         required: true
  *         schema:
  *           type: string
- *         description: State token for CSRF protection
  *     responses:
  *       302:
- *         description: Redirects to frontend with success/error
+ *         description: Redirects to frontend
  */
 export function createDiscordCallbackHandler(logger: Logger) {
   return async function handleDiscordCallback(req: Request, res: Response): Promise<void> {
@@ -497,10 +487,8 @@ export function createDiscordCallbackHandler(logger: Logger) {
  *         schema:
  *           type: string
  *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
- *         description: User's wallet address
  *     responses:
  *       200:
- *         description: Status retrieved successfully
  *         content:
  *           application/json:
  *             schema:
@@ -508,18 +496,15 @@ export function createDiscordCallbackHandler(logger: Logger) {
  *               properties:
  *                 verified:
  *                   type: boolean
- *                   description: Whether Discord is verified
  *                 username:
  *                   type: string
- *                   description: Discord username (if verified)
  *                 verifiedAt:
  *                   type: string
- *                   format: date-time
- *                   description: Verification timestamp (if verified)
- *       400:
- *         description: Missing or invalid wallet address
- *       500:
- *         description: Internal server error
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 export function createDiscordStatusHandler(logger: Logger) {
   return async function handleDiscordStatus(req: Request, res: Response): Promise<void> {
@@ -565,6 +550,320 @@ export function createDiscordStatusHandler(logger: Logger) {
     } catch (error: any) {
       log.error({ error }, 'Error in handleDiscordStatus');
       res.status(500).json({ message: 'Failed to check status' });
+    }
+  };
+}
+
+/**
+ * bApps Campaign Verification Endpoint
+ */
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/bapps/status:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Get bApps campaign progress (proxies Ponder)
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 walletAddress:
+ *                   type: string
+ *                 chainId:
+ *                   type: integer
+ *                 tasks:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       description:
+ *                         type: string
+ *                       completed:
+ *                         type: boolean
+ *                       completedAt:
+ *                         type: string
+ *                       txHash:
+ *                         type: string
+ *                 totalTasks:
+ *                   type: integer
+ *                 completedTasks:
+ *                   type: integer
+ *                 progress:
+ *                   type: number
+ *                 nftClaimed:
+ *                   type: boolean
+ *                 claimTxHash:
+ *                   type: string
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+export function createBAppsStatusHandler(logger: Logger) {
+  return async function handleBAppsStatus(req: Request, res: Response): Promise<void> {
+    const log = logger.child({ endpoint: 'bapps-status' });
+
+    try {
+      const walletAddress = req.query.walletAddress as string;
+
+      // Validate wallet address
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        log.debug({ walletAddress }, 'Validation failed: invalid wallet address');
+        res.status(400).json({ message: 'Invalid wallet address' });
+        return;
+      }
+
+      // Normalize address to lowercase
+      const normalizedAddress = walletAddress.toLowerCase();
+
+      log.debug({ walletAddress: normalizedAddress }, 'Proxying request to Ponder API');
+
+      // Query Ponder API (pure proxy - no transformation) with retry
+      const ponderUrl = process.env.PONDER_URL || 'https://ponder.juiceswap.com';
+
+      try {
+        const response = await retryAsync(
+          async () =>
+            axios.post(
+              `${ponderUrl}/campaign/progress`,
+              {
+                walletAddress: normalizedAddress,
+                chainId: ChainId.CITREA_TESTNET,
+              },
+              {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 5000,
+              }
+            ),
+          2, // max 2 attempts
+          1000, // 1 second delay
+          'Ponder bApps status query'
+        );
+
+        log.debug(
+          { walletAddress: normalizedAddress, completedTasks: response.data?.completedTasks },
+          'Ponder API response received'
+        );
+
+        // Forward Ponder's response directly (pure proxy)
+        res.status(200).json(response.data);
+      } catch (error: any) {
+        log.error({ error: error.message, context: 'bApps status query' }, 'Failed to query Ponder API');
+        res.status(500).json({ message: 'Failed to check bApps status' });
+      }
+    } catch (error: any) {
+      log.error({ error }, 'Error in handleBAppsStatus');
+      res.status(500).json({ message: 'Failed to check bApps status' });
+    }
+  };
+}
+
+/**
+ * NFT Signature Endpoint
+ */
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/nft/signature:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Get NFT claim signature
+ *     description: Requires Twitter, Discord, and 3 swaps completed
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 signature:
+ *                   type: string
+ *                 contractAddress:
+ *                   type: string
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+export function createNFTSignatureHandler(logger: Logger) {
+  return async function handleNFTSignature(req: Request, res: Response): Promise<void> {
+    const log = logger.child({ endpoint: 'nft-signature' });
+
+    try {
+      const walletAddress = req.query.walletAddress as string;
+
+      // Validate wallet address
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        log.debug({ walletAddress }, 'Validation failed: invalid wallet address');
+        res.status(400).json({ message: 'Invalid wallet address' });
+        return;
+      }
+
+      // Normalize address to lowercase
+      const normalizedAddress = walletAddress.toLowerCase();
+
+      log.debug({ walletAddress: normalizedAddress }, 'Generating NFT claim signature');
+
+      // Validate environment variables
+      const signerPrivateKey = process.env.CAMPAIGN_SIGNER_PRIVATE_KEY;
+
+      if (!signerPrivateKey) {
+        log.error('CAMPAIGN_SIGNER_PRIVATE_KEY not configured');
+        res.status(500).json({ message: 'NFT claiming not configured' });
+        return;
+      }
+
+      // Use hardcoded contract address (public, immutable blockchain data)
+      const contractAddress = FIRST_SQUEEZER_NFT_CONTRACT;
+
+      // Find user with campaign data
+      const user = await prisma.user.findUnique({
+        where: { address: normalizedAddress },
+        include: { ogCampaign: true },
+      });
+
+      if (!user) {
+        log.debug({ walletAddress: normalizedAddress }, 'User not found');
+        res.status(404).json({ message: 'User not found' });
+        return;
+      }
+
+      if (!user.ogCampaign) {
+        log.debug({ walletAddress: normalizedAddress }, 'User has not started campaign');
+        res.status(403).json({ message: 'Complete all verification steps first' });
+        return;
+      }
+
+      // Check Twitter and Discord verification
+      const campaign = user.ogCampaign;
+      const twitterVerified = !!campaign.twitterVerifiedAt;
+      const discordVerified = !!campaign.discordVerifiedAt;
+
+      // Check bApps completion (3 swaps) via Ponder API with retry
+      const ponderUrl = process.env.PONDER_URL || 'https://ponder.juiceswap.com';
+      let bappsCompleted = false;
+
+      try {
+        const response = await retryAsync(
+          async () =>
+            axios.post(
+              `${ponderUrl}/campaign/progress`,
+              {
+                walletAddress: normalizedAddress,
+                chainId: ChainId.CITREA_TESTNET,
+              },
+              {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 5000,
+              }
+            ),
+          2, // max 2 attempts
+          1000, // 1 second delay
+          'Ponder NFT eligibility check'
+        );
+
+        const completedTasks = response.data?.completedTasks || 0;
+        bappsCompleted = completedTasks === 3;
+
+        log.debug({ walletAddress: normalizedAddress, completedTasks, bappsCompleted }, 'Ponder API verification');
+      } catch (error: any) {
+        log.error({ error: error.message, context: 'NFT signature - bApps verification' }, 'Failed to verify bApps completion via Ponder');
+        res.status(500).json({ message: 'Failed to verify campaign completion' });
+        return;
+      }
+
+      // Verify ALL steps completed
+      if (!twitterVerified || !discordVerified || !bappsCompleted) {
+        log.debug(
+          { walletAddress: normalizedAddress, twitterVerified, discordVerified, bappsCompleted },
+          'User has not completed all verifications'
+        );
+        res.status(403).json({
+          message: 'Complete all verification steps first',
+          twitterVerified,
+          discordVerified,
+          bappsCompleted,
+        });
+        return;
+      }
+
+      // Check if NFT already claimed (query contract)
+      try {
+        const provider = new ethers.providers.JsonRpcProvider(
+          process.env.CITREA_RPC_URL || 'https://rpc.testnet.citrea.xyz'
+        );
+        const nftContract = new ethers.Contract(
+          contractAddress,
+          ['function hasClaimed(address) view returns (bool)'],
+          provider
+        );
+
+        const alreadyClaimed = await nftContract.hasClaimed(normalizedAddress);
+
+        if (alreadyClaimed) {
+          log.debug({ walletAddress: normalizedAddress }, 'NFT already claimed');
+          res.status(403).json({
+            message: 'NFT already claimed',
+            alreadyClaimed: true,
+          });
+          return;
+        }
+
+        log.debug({ walletAddress: normalizedAddress, alreadyClaimed }, 'NFT claim status checked');
+      } catch (error: any) {
+        log.warn({ error: error.message, context: 'NFT claim status check' }, 'Failed to check NFT claim status, continuing with signature generation');
+        // Continue even if check fails - contract will reject if already claimed
+      }
+
+      // Generate signature (matches contract verification)
+      // keccak256(abi.encodePacked(address(this), block.chainid, msg.sender))
+      const signer = new ethers.Wallet(signerPrivateKey);
+      const messageHash = ethers.utils.solidityKeccak256(
+        ['address', 'uint256', 'address'],
+        [contractAddress, ChainId.CITREA_TESTNET, normalizedAddress]
+      );
+      const signature = await signer.signMessage(ethers.utils.arrayify(messageHash));
+
+      log.info(
+        {
+          walletAddress: normalizedAddress,
+          contractAddress,
+          signerAddress: signer.address,
+        },
+        'NFT claim signature generated'
+      );
+
+      res.status(200).json({
+        signature,
+        contractAddress,
+      });
+    } catch (error: any) {
+      log.error({ error: error.message, stack: error.stack }, 'Error in handleNFTSignature');
+      res.status(500).json({ message: 'Failed to generate signature' });
     }
   };
 }
