@@ -7,6 +7,7 @@ import { getTwitterOAuthService } from '../services/TwitterOAuthService';
 import { getDiscordOAuthService } from '../services/DiscordOAuthService';
 import { prisma } from '../db/prisma';
 import { retryAsync } from '../lib/utils/retry';
+import { FIRST_SQUEEZER_NFT_CONTRACT } from '../lib/constants/campaigns';
 
 /**
  * First Squeezer Campaign - Social OAuth Endpoints (Twitter & Discord)
@@ -729,7 +730,6 @@ export function createNFTSignatureHandler(logger: Logger) {
 
       // Validate environment variables
       const signerPrivateKey = process.env.CAMPAIGN_SIGNER_PRIVATE_KEY;
-      const contractAddress = process.env.FIRST_SQUEEZER_NFT_CONTRACT;
 
       if (!signerPrivateKey) {
         log.error('CAMPAIGN_SIGNER_PRIVATE_KEY not configured');
@@ -737,11 +737,8 @@ export function createNFTSignatureHandler(logger: Logger) {
         return;
       }
 
-      if (!contractAddress) {
-        log.error('FIRST_SQUEEZER_NFT_CONTRACT not configured');
-        res.status(500).json({ message: 'NFT contract not deployed yet' });
-        return;
-      }
+      // Use hardcoded contract address (public, immutable blockchain data)
+      const contractAddress = FIRST_SQUEEZER_NFT_CONTRACT;
 
       // Find user with campaign data
       const user = await prisma.user.findUnique({
