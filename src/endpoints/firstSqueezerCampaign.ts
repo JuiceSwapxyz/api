@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
 import Logger from 'bunyan';
 import { ethers } from 'ethers';
-import axios from 'axios';
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import { getTwitterOAuthService } from '../services/TwitterOAuthService';
 import { getDiscordOAuthService } from '../services/DiscordOAuthService';
+import { getPonderClient } from '../services/PonderClient';
 import { prisma } from '../db/prisma';
-import { retryAsync } from '../lib/utils/retry';
 import { FIRST_SQUEEZER_NFT_CONTRACT } from '../lib/constants/campaigns';
 
 /**
@@ -634,27 +633,14 @@ export function createBAppsStatusHandler(logger: Logger) {
 
       log.debug({ walletAddress: normalizedAddress }, 'Proxying request to Ponder API');
 
-      // Query Ponder API (pure proxy - no transformation) with retry
-      const ponderUrl = process.env.PONDER_URL || 'https://ponder.juiceswap.com';
-
+      // Query Ponder API (pure proxy - no transformation)
+      // Uses PonderClient with automatic fallback on 503
       try {
-        const response = await retryAsync(
-          async () =>
-            axios.post(
-              `${ponderUrl}/campaign/progress`,
-              {
-                walletAddress: normalizedAddress,
-                chainId: ChainId.CITREA_TESTNET,
-              },
-              {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 5000,
-              }
-            ),
-          2, // max 2 attempts
-          1000, // 1 second delay
-          'Ponder bApps status query'
-        );
+        const ponderClient = getPonderClient(log);
+        const response = await ponderClient.post('/campaign/progress', {
+          walletAddress: normalizedAddress,
+          chainId: ChainId.CITREA_TESTNET,
+        });
 
         log.debug(
           { walletAddress: normalizedAddress, completedTasks: response.data?.completedTasks },
@@ -763,28 +749,16 @@ export function createNFTSignatureHandler(logger: Logger) {
       const twitterVerified = !!campaign.twitterVerifiedAt;
       const discordVerified = !!campaign.discordVerifiedAt;
 
-      // Check bApps completion (3 swaps) via Ponder API with retry
-      const ponderUrl = process.env.PONDER_URL || 'https://ponder.juiceswap.com';
+      // Check bApps completion (3 swaps) via Ponder API
+      // Uses PonderClient with automatic fallback on 503
       let bappsCompleted = false;
 
       try {
-        const response = await retryAsync(
-          async () =>
-            axios.post(
-              `${ponderUrl}/campaign/progress`,
-              {
-                walletAddress: normalizedAddress,
-                chainId: ChainId.CITREA_TESTNET,
-              },
-              {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: 5000,
-              }
-            ),
-          2, // max 2 attempts
-          1000, // 1 second delay
-          'Ponder NFT eligibility check'
-        );
+        const ponderClient = getPonderClient(log);
+        const response = await ponderClient.post('/campaign/progress', {
+          walletAddress: normalizedAddress,
+          chainId: ChainId.CITREA_TESTNET,
+        });
 
         const completedTasks = response.data?.completedTasks || 0;
         bappsCompleted = completedTasks === 3;
