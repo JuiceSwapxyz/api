@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Central registry for wallet addresses
+model User {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  address         String   @unique
+
+  // Relations
+  ogCampaign      OgCampaignUser?
+
+  @@index([address])
+}
+
+// OG Campaign participation tracking
+// Stores campaign progress for users who opt in
+model OgCampaignUser {
+  userId            String    @id
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Swap task tracking
+  // Actual swap details are stored in Ponder indexer
+  swapsCompleted    Int       @default(0)
+
+  // Social verification - Twitter and Discord account linking
+  twitterVerifiedAt DateTime?
+  twitterUserId     String?
+  twitterUsername   String?
+  discordVerifiedAt DateTime?
+  discordUserId     String?
+  discordUsername   String?
+}
+
+// Twitter OAuth session storage (replaces in-memory storage)
+// Sessions expire after 10 minutes for security
+model TwitterOAuthSession {
+  id            String   @id @default(uuid())
+  state         String   @unique
+  walletAddress String
+  codeVerifier  String
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([state])
+  @@index([expiresAt])
+}
+
+// Discord OAuth session storage (replaces localStorage)
+// Sessions expire after 10 minutes for security
+// Note: Does not use PKCE (PUBLIC CLIENT = OFF, confidential client)
+model DiscordOAuthSession {
+  id            String   @id @default(uuid())
+  state         String   @unique
+  walletAddress String
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([state])
+  @@index([expiresAt])
+}

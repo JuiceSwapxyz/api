@@ -6,6 +6,7 @@ import { isNativeCurrency } from '@juiceswapxyz/universal-router-sdk';
 import { RouterService } from '../core/RouterService';
 import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
+import { trackUser } from '../services/userTracking';
 import Logger from 'bunyan';
 
 // Helper functions for AWS-compatible response formatting
@@ -53,17 +54,56 @@ export interface QuoteRequestBody {
   enableUniversalRouter?: boolean;
 }
 
+enum Routing {
+  CLASSIC = 'CLASSIC',
+  WRAP = 'WRAP',
+  UNWRAP = 'UNWRAP',
+}
+
 export interface QuoteResponse {
   requestId: string;
-  routing: 'CLASSIC' | 'WRAP';
+  routing: Routing;
   permitData: any | null;
   quote: any;
   allQuotes?: Array<{
-    routing: 'CLASSIC';
+    routing: Routing;
     quote: any;
   }>;
 }
 
+/**
+ * @swagger
+ * /v1/quote:
+ *   post:
+ *     tags: [Quoting]
+ *     summary: Get swap quote
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/QuoteRequest'
+ *           example:
+ *             tokenInChainId: 5115
+ *             tokenInAddress: "0x0000000000000000000000000000000000000000"
+ *             tokenOutChainId: 5115
+ *             tokenOutAddress: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *             amount: "1000000000000000000"
+ *             type: "EXACT_INPUT"
+ *             swapper: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+ *             protocols: ["V3"]
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/QuoteResponse'
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 export function createQuoteHandler(
   routerService: RouterService,
   logger: Logger
@@ -77,28 +117,11 @@ export function createQuoteHandler(
     try {
       const body: QuoteRequestBody = req.body;
 
-      // Validate required fields
-      if (!body.amount) {
-        log.debug({ body }, 'Validation failed: missing amount');
-        res.status(400).json({
-          error: 'Missing required fields',
-          detail: 'amount is required',
-        });
-        return;
-      }
+      trackUser(body.swapper, log);
 
-      // Normalize token addresses
-      const tokenIn = body.tokenIn || body.tokenInAddress;
-      const tokenOut = body.tokenOut || body.tokenOutAddress;
-
-      if (!tokenIn || !tokenOut) {
-        log.debug({ body }, 'Validation failed: missing token addresses');
-        res.status(400).json({
-          error: 'Missing token addresses',
-          detail: 'tokenIn/tokenInAddress and tokenOut/tokenOutAddress are required',
-        });
-        return;
-      }
+      // Normalize token addresses (Zod validation ensures at least one is present)
+      const tokenIn = (body.tokenIn || body.tokenInAddress)!;
+      const tokenOut = (body.tokenOut || body.tokenOutAddress)!;
 
       // Check if both tokens are on the same chain (current limitation)
       if (body.tokenInChainId !== body.tokenOutChainId) {
@@ -157,19 +180,25 @@ export function createQuoteHandler(
         res.setHeader('X-Quote-Cache', 'HIT');
         res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
         log.debug({ cacheHit: true, responseTime: Date.now() - startTime }, 'Quote served from cache');
-        const requestId = generateQuoteId();
         
         const formattedQuoteCached = {
           ...cachedQuote.quote,
           swapper: body.swapper,
         };
 
+        const allQuotes = cachedQuote.allQuotes ? cachedQuote.allQuotes.map((q: any) => ({
+          ...q,
+          quote: {
+            ...q.quote,
+            swapper: body.swapper,
+          }
+        })) : undefined;
+
         res.json({
-          requestId: requestId,
-          routing: 'CLASSIC',
-          permitData: null,
+          ...cachedQuote,
+          requestId: generateQuoteId(),
           quote: formattedQuoteCached,
-          allQuotes: [{ routing: 'CLASSIC', quote: formattedQuoteCached }],
+          allQuotes,
         });
         
         return;
@@ -191,7 +220,7 @@ export function createQuoteHandler(
         // Return AWS-compatible WRAP response
         const wrapResponse: QuoteResponse = {
           requestId: generateQuoteId(),
-          routing: 'WRAP',
+          routing: isNativeCurrency(tokenIn) ? Routing.WRAP : Routing.UNWRAP,
           permitData: null,
           quote: {
             chainId: chainId,
@@ -376,10 +405,10 @@ export function createQuoteHandler(
 
       const response: QuoteResponse = {
         requestId: quoteId,
-        routing: 'CLASSIC',
+        routing: Routing.CLASSIC,
         permitData: null,
         quote: formattedQuote,
-        allQuotes: [{ routing: 'CLASSIC', quote: formattedQuote }],
+        allQuotes: [{ routing: Routing.CLASSIC, quote: formattedQuote }],
       };
 
       // Cache successful quotes
