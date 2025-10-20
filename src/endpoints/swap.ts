@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
+import { extractIpAddress } from '../utils/ipAddress';
 import { ethers } from 'ethers';
 import Logger from 'bunyan';
 
@@ -118,7 +119,7 @@ export function createSwapHandler(
       const body: SwapRequestBody = req.body;
       const swapType = body.type || 'exactIn';
 
-      trackUser(body.from, log);
+      trackUser(body.from, extractIpAddress(req), log);
 
       // Handle WRAP/UNWRAP operations
       if (swapType === 'WRAP' || swapType === 'UNWRAP') {
