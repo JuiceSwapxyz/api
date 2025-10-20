@@ -31,6 +31,7 @@ export async function trackUser(
 
     // Use PostgreSQL INSERT ... ON CONFLICT to handle upsert in a single query
     // This avoids race conditions and is more efficient than separate queries
+    // COALESCE preserves the first IP hash while always updating the timestamp
     await prisma.$executeRaw`
       INSERT INTO "User" (id, address, "ipAddressHash", "createdAt", "updatedAt")
       VALUES (gen_random_uuid(), ${checksummedAddress}, ${ipAddressHash}, NOW(), NOW())
@@ -38,7 +39,6 @@ export async function trackUser(
       DO UPDATE SET
         "ipAddressHash" = COALESCE("User"."ipAddressHash", EXCLUDED."ipAddressHash"),
         "updatedAt" = NOW()
-      WHERE "User"."ipAddressHash" IS NULL
     `
 
     logger.debug({ address: checksummedAddress, ipHashed: !!ipAddressHash }, 'User tracked successfully');
@@ -46,7 +46,7 @@ export async function trackUser(
     logger.warn(
       {
         address,
-        ipAddress,
+        ipHashed: !!ipAddress,
         error: error instanceof Error ? {
           message: error.message,
           name: error.name,

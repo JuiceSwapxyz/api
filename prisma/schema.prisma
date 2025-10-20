@@ -20,6 +20,7 @@ model User {
   ogCampaign      OgCampaignUser?
 
   @@index([address])
+  @@index([ipAddressHash])
 }
 
 // OG Campaign participation tracking
