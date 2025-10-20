@@ -102,7 +102,8 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
         token0PermitTransaction: null,
         token1PermitTransaction: null,
         positionTokenPermitTransaction: null,
-        gasFeeToken0Approval: token0Approval?.gasLimit || '0'
+        gasFeeToken0Approval: token0Approval?.gasLimit || '0',
+        gasFeeToken1Approval: token1Approval?.gasLimit || '0'
       });
 
       log.debug({ chainId, walletAddress }, 'LP approve request completed');
