@@ -29,17 +29,28 @@ export async function trackUser(
     // Hash the IP address for privacy-preserving storage
     const ipAddressHash = hashIpAddress(ipAddress);
 
-    // Only create if user doesn't exist, no updates needed
-    await prisma.user.upsert({
-      where: {
-        address: checksummedAddress,
-      },
-      create: {
-        address: checksummedAddress,
-        ipAddressHash: ipAddressHash,
-      },
-      update: {},
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { address: checksummedAddress },
+      select: { ipAddressHash: true },
     });
+
+    if (!existingUser) {
+      // Create new user with IP hash
+      await prisma.user.create({
+        data: {
+          address: checksummedAddress,
+          ipAddressHash: ipAddressHash,
+        },
+      });
+    } else if (existingUser.ipAddressHash === null && ipAddressHash) {
+      // Update IP hash only if it's currently NULL
+      await prisma.user.update({
+        where: { address: checksummedAddress },
+        data: { ipAddressHash: ipAddressHash },
+      });
+    }
+    // If ipAddressHash already exists, do nothing
 
     logger.debug({ address: checksummedAddress, ipHashed: !!ipAddressHash }, 'User tracked successfully');
   } catch (error) {
