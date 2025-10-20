@@ -257,11 +257,29 @@ async function bootstrap() {
       return -1;
     });
 
+    const trackedUsers = await prisma.user.count({
+      where: { ipAddressHash: { not: null } }
+    }).catch((error) => {
+      logger.warn({ error }, 'Failed to fetch tracked users for metrics');
+      return -1;
+    });
+
+    const uniqueIpResult = await prisma.user.groupBy({
+      by: ['ipAddressHash'],
+      where: { ipAddressHash: { not: null } },
+      _count: true,
+    }).catch((error) => {
+      logger.warn({ error }, 'Failed to fetch unique IPs for metrics');
+      return [];
+    });
+
     res.json({
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       chains: routerService.getSupportedChains(),
       userCount,
+      trackedUsers,
+      uniqueIps: uniqueIpResult.length,
       quoteCache: quoteCache.getStats(),
     });
   });
