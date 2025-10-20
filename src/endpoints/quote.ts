@@ -7,6 +7,7 @@ import { RouterService } from '../core/RouterService';
 import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
 import { trackUser } from '../services/userTracking';
+import { extractIpAddress } from '../utils/ipAddress';
 import Logger from 'bunyan';
 
 // Helper functions for AWS-compatible response formatting
@@ -117,7 +118,7 @@ export function createQuoteHandler(
     try {
       const body: QuoteRequestBody = req.body;
 
-      trackUser(body.swapper, log);
+      trackUser(body.swapper, extractIpAddress(req), log);
 
       // Normalize token addresses (Zod validation ensures at least one is present)
       const tokenIn = (body.tokenIn || body.tokenInAddress)!;
