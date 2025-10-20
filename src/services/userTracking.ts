@@ -29,28 +29,17 @@ export async function trackUser(
     // Hash the IP address for privacy-preserving storage
     const ipAddressHash = hashIpAddress(ipAddress);
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { address: checksummedAddress },
-      select: { ipAddressHash: true },
-    });
-
-    if (!existingUser) {
-      // Create new user with IP hash
-      await prisma.user.create({
-        data: {
-          address: checksummedAddress,
-          ipAddressHash: ipAddressHash,
-        },
-      });
-    } else if (existingUser.ipAddressHash === null && ipAddressHash) {
-      // Update IP hash only if it's currently NULL
-      await prisma.user.update({
-        where: { address: checksummedAddress },
-        data: { ipAddressHash: ipAddressHash },
-      });
-    }
-    // If ipAddressHash already exists, do nothing
+    // Use PostgreSQL INSERT ... ON CONFLICT to handle upsert in a single query
+    // This avoids race conditions and is more efficient than separate queries
+    await prisma.$executeRaw`
+      INSERT INTO "User" (id, address, "ipAddressHash", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid(), ${checksummedAddress}, ${ipAddressHash}, NOW(), NOW())
+      ON CONFLICT (address)
+      DO UPDATE SET
+        "ipAddressHash" = COALESCE("User"."ipAddressHash", EXCLUDED."ipAddressHash"),
+        "updatedAt" = NOW()
+      WHERE "User"."ipAddressHash" IS NULL
+    `
 
     logger.debug({ address: checksummedAddress, ipHashed: !!ipAddressHash }, 'User tracked successfully');
   } catch (error) {
