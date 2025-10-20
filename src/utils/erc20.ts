@@ -66,7 +66,7 @@ export const getApproveTxForToken = async (
       value: '0x00',
       from: walletAddress,
       data: tokenContract.interface.encodeFunctionData('approve', [spender, amount]),
-      gasLimit: '60000', // Standard gas limit for ERC20 approve
+      gasLimit: '0xea60',
       chainId
     };
   } catch (error) {
