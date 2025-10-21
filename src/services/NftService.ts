@@ -2,6 +2,7 @@ import axios from "axios";
 import Logger from "bunyan";
 import { providers, Contract } from "ethers";
 import { NFTItem } from "./BalanceService";
+import { FIRST_SQUEEZER_NFT_CONTRACT } from "../lib/constants/campaigns";
 
 export interface NftResponse {
   nfts: NFTItem[];
@@ -13,7 +14,7 @@ interface NFTMetadata {
   image?: string;
 }
 
-const KNOWN_NFTS = ["0xcF62B46fF36a6FcABf4C0056c535A0cA41E7c03b"];
+const KNOWN_NFTS = [FIRST_SQUEEZER_NFT_CONTRACT];
 
 // ERC721 ABI for NFT operations
 const ERC721_ABI = [
