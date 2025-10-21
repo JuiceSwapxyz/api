@@ -14,6 +14,10 @@ import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
 import { createPortfolioHandler } from './endpoints/portfolio';
 import {
+  createTotalAddressesWithIpHandler,
+  createUniqueIpHashesHandler,
+} from './endpoints/userMetrics';
+import {
   createTwitterStartHandler,
   createTwitterCallbackHandler,
   createTwitterStatusHandler,
@@ -161,6 +165,10 @@ async function bootstrap() {
   const handleLpCreate = createLpCreateHandler(routerService, logger);
   const handlePortfolio = createPortfolioHandler(providers, logger);
 
+  // User metrics endpoint handlers
+  const handleTotalAddressesWithIp = createTotalAddressesWithIpHandler(logger);
+  const handleUniqueIpHashes = createUniqueIpHashesHandler(logger);
+
   // Campaign endpoint handlers
   const handleTwitterStart = createTwitterStartHandler(logger);
   const handleTwitterCallback = createTwitterCallbackHandler(logger);
@@ -187,6 +195,10 @@ async function bootstrap() {
 
   // Swaps transaction status endpoint
   app.get('/v1/swaps', validateQuery(SwapsQuerySchema, logger), handleSwaps);
+
+  // User metrics endpoints
+  app.get('/v1/metrics/users/total-with-ip', handleTotalAddressesWithIp);
+  app.get('/v1/metrics/users/unique-ips', handleUniqueIpHashes);
 
   // Campaign endpoints - Twitter OAuth
   app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
@@ -245,11 +257,29 @@ async function bootstrap() {
       return -1;
     });
 
+    const trackedUsers = await prisma.user.count({
+      where: { ipAddressHash: { not: null } }
+    }).catch((error) => {
+      logger.warn({ error }, 'Failed to fetch tracked users for metrics');
+      return -1;
+    });
+
+    const uniqueIpResult = await prisma.user.groupBy({
+      by: ['ipAddressHash'],
+      where: { ipAddressHash: { not: null } },
+      _count: true,
+    }).catch((error) => {
+      logger.warn({ error }, 'Failed to fetch unique IPs for metrics');
+      return [];
+    });
+
     res.json({
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       chains: routerService.getSupportedChains(),
       userCount,
+      trackedUsers,
+      uniqueIps: uniqueIpResult.length,
       quoteCache: quoteCache.getStats(),
     });
   });
