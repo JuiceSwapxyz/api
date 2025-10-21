@@ -25,7 +25,7 @@ export interface NFTItem {
 
 export interface PortfolioResponse {
   portfolio: {
-    tokens: TokenBalance[];
+    balances: TokenBalance[];
     nfts: NFTItem[];
   };
 }
@@ -67,7 +67,7 @@ export class BalanceService {
 
       if (tokens.length === 0) {
         log.warn('No tokens found for chain');
-        return { portfolio: { tokens: [], nfts: [] } };
+        return { portfolio: { balances: [], nfts: [] } };
       }
 
       // Fetch native balance
@@ -88,7 +88,7 @@ export class BalanceService {
 
       return {
         portfolio: {
-          tokens: allBalances,
+          balances: allBalances,
           nfts: [],
         },
       };

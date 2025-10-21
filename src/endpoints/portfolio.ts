@@ -39,7 +39,7 @@ import { portfolioCache } from '../cache/portfolioCache';
  *                 portfolio:
  *                   type: object
  *                   properties:
- *                     tokens:
+ *                     balances:
  *                       type: array
  *                       description: Token holdings (ERC20 and native)
  *                       items:
@@ -176,7 +176,7 @@ export function createPortfolioHandler(
         {
           address: normalizedAddress,
           chainId,
-          tokenCount: portfolio.portfolio.tokens.length,
+          balanceCount: portfolio.portfolio.balances.length,
           nftCount: portfolio.portfolio.nfts.length,
         },
         'Successfully returned portfolio'
