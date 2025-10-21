@@ -3,6 +3,7 @@ import { providers, utils } from 'ethers';
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import Logger from 'bunyan';
 import { BalanceService } from '../services/BalanceService';
+import { NftService } from '../services/NftService';
 import { portfolioCache } from '../cache/portfolioCache';
 
 /**
@@ -10,7 +11,10 @@ import { portfolioCache } from '../cache/portfolioCache';
  * /v1/portfolio/{address}:
  *   get:
  *     tags: [Portfolio]
- *     summary: Get wallet portfolio balances
+ *     summary: Get wallet portfolio balances and NFT holdings
+ *     description: |
+ *       Fetches token balances and NFTs for a wallet.
+ *       NFT support: Uses RPC-based fetching for all chains
  *     parameters:
  *       - in: path
  *         name: address
@@ -37,6 +41,7 @@ import { portfolioCache } from '../cache/portfolioCache';
  *                   properties:
  *                     balances:
  *                       type: array
+ *                       description: Token holdings (ERC20 and native)
  *                       items:
  *                         type: object
  *                         properties:
@@ -72,6 +77,33 @@ import { portfolioCache } from '../cache/portfolioCache';
  *                           - symbol
  *                           - balance
  *                           - balanceFormatted
+ *                     nfts:
+ *                       type: array
+ *                       description: NFT holdings (always included, may be empty array)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           contractAddress:
+ *                             type: string
+ *                             description: NFT contract address
+ *                           tokenId:
+ *                             type: string
+ *                             description: Token ID
+ *                           chainId:
+ *                             type: integer
+ *                             description: Chain ID
+ *                           name:
+ *                             type: string
+ *                             description: NFT name
+ *                           imageUrl:
+ *                             type: string
+ *                             description: NFT image URL
+ *                           description:
+ *                             type: string
+ *                             description: NFT description
+ *                           collectionName:
+ *                             type: string
+ *                             description: Collection name
  *       default:
  *         content:
  *           application/json:
@@ -87,7 +119,8 @@ export function createPortfolioHandler(
 
     try {
       const { address } = req.params;
-      const chainId = req.query.chainId ? parseInt(req.query.chainId.toString()) : 5115;
+      // Query params are validated and transformed by PortfolioQuerySchema middleware
+      const chainId = (req.query.chainId as unknown) as number;
 
       // Validate address parameter
       if (!address) {
@@ -128,6 +161,11 @@ export function createPortfolioHandler(
       const balanceService = new BalanceService(provider, chainId, logger);
       const portfolio = await balanceService.fetchBalances(normalizedAddress);
 
+      // Fetch NFTs
+      const nftService = new NftService(chainId, provider, logger);
+      const nftResponse = await nftService.fetchNfts(normalizedAddress);
+      portfolio.portfolio.nfts = nftResponse.nfts;
+
       // Cache the result
       portfolioCache.set(chainId, normalizedAddress, portfolio);
 
@@ -139,6 +177,7 @@ export function createPortfolioHandler(
           address: normalizedAddress,
           chainId,
           balanceCount: portfolio.portfolio.balances.length,
+          nftCount: portfolio.portfolio.nfts.length,
         },
         'Successfully returned portfolio'
       );
