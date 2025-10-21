@@ -64,7 +64,13 @@ export class NftService {
           const balance = await contract.balanceOf(walletAddress);
 
           if (balance.gt(0)) {
-            for (let tokenId = 1; tokenId <= Math.min(balance.toNumber(), 100); tokenId++) {
+            // We need to check token IDs up to a reasonable max, not just balance
+            // Balance tells us HOW MANY NFTs, not WHICH token IDs
+            // For example: user owns 1 NFT with tokenId=2, balance=1, but we'd only check tokenId=1
+            const maxTokenIdToCheck = 1000; // Check up to 1000 token IDs
+            let foundNfts = 0;
+
+            for (let tokenId = 1; tokenId <= maxTokenIdToCheck && foundNfts < balance.toNumber(); tokenId++) {
               try {
                 const owner = await contract.ownerOf(tokenId);
 
@@ -73,9 +79,11 @@ export class NftService {
 
                   if (nft) {
                     nfts.push(nft);
+                    foundNfts++;
                   }
                 }
               } catch (err: any) {
+                // Token doesn't exist or other error, continue checking
                 log.debug({ error: err, tokenId }, "Error checking token ownership");
               }
             }
