@@ -3,6 +3,11 @@ import Logger from "bunyan";
 import { providers, Contract } from "ethers";
 import { NFTItem } from "./BalanceService";
 import { FIRST_SQUEEZER_NFT_CONTRACT } from "../lib/constants/campaigns";
+import {
+  GraphqlPonderService,
+  ponderGraphQLService,
+} from "./GraphqlPonderService";
+import { getAddress } from "ethers/lib/utils";
 
 export interface NftResponse {
   nfts: NFTItem[];
@@ -30,11 +35,17 @@ export class NftService {
   private logger: Logger;
   private provider: providers.StaticJsonRpcProvider | undefined;
   private chainId: number;
+  private ponderGraphQLService: GraphqlPonderService;
 
-  constructor(chainId: number, provider: providers.StaticJsonRpcProvider | undefined, logger: Logger) {
+  constructor(
+    chainId: number,
+    provider: providers.StaticJsonRpcProvider | undefined,
+    logger: Logger
+  ) {
     this.chainId = chainId;
     this.provider = provider;
     this.logger = logger.child({ service: "NftService", chainId });
+    this.ponderGraphQLService = ponderGraphQLService;
   }
 
   /**
@@ -45,53 +56,136 @@ export class NftService {
     const log = this.logger.child({ walletAddress, method: "fetchNfts" });
     log.debug("Fetching NFTs");
 
+    const nfts: NFTItem[] = [];
+
+    await Promise.all(
+      KNOWN_NFTS.map(async (contractAddress) => {
+        if (
+          contractAddress.toLowerCase() ===
+          FIRST_SQUEEZER_NFT_CONTRACT.toLowerCase()
+        ) {
+          const nftClaims = await this.fetchNFTViaIndexer(walletAddress);
+          nfts.push(...(nftClaims?.nfts || []));
+        } else {
+          const nftResults = await this.fetchNftsViaRPC(
+            walletAddress,
+            contractAddress
+          );
+          nfts.push(...(nftResults?.nfts || []));
+        }
+      })
+    );
+
+    return { nfts };
+  }
+
+  private async fetchNFTViaIndexer(
+    walletAddress: string
+  ): Promise<NftResponse> {
+    const log = this.logger.child({
+      walletAddress,
+      method: "fetchNFTViaIndexer",
+    });
+
+    try {
+      const nftClaims: { nftClaims: { items: { tokenId: string }[] } } =
+        await this.ponderGraphQLService.query(
+          `
+      query NftClaims($walletAddress: String!) {
+        nftClaims(where: {walletAddress: $walletAddress}) {
+          items {
+            tokenId
+          }
+        }
+      }
+    `,
+          { walletAddress: getAddress(walletAddress) }
+        );
+
+      const nftResults = await Promise.all(
+        nftClaims?.nftClaims?.items?.map(async (item) =>
+          this.fetchNFTMetadataViaRPC(
+            FIRST_SQUEEZER_NFT_CONTRACT,
+            item.tokenId,
+            new Contract(FIRST_SQUEEZER_NFT_CONTRACT, ERC721_ABI, this.provider)
+          )
+        ) || []
+      );
+
+      const nfts: NFTItem[] = nftResults.filter(
+        (nft): nft is NFTItem => nft !== null
+      );
+
+      return { nfts };
+    } catch (error: any) {
+      log.error({ error }, "Error fetching NFTs via indexer");
+      return { nfts: [] };
+    }
+  }
+
+  private async fetchNftsViaRPC(
+    walletAddress: string,
+    contractAddress: string
+  ): Promise<NftResponse> {
+    const log = this.logger.child({ walletAddress, method: "fetchNftsViaRPC" });
+
     if (!this.provider) {
       log.error("No provider available for RPC-based NFT fetching");
       return { nfts: [] };
     }
 
-    return this.fetchNftsViaRPC(walletAddress);
-  }
-
-  private async fetchNftsViaRPC(walletAddress: string): Promise<NftResponse> {
-    const log = this.logger.child({ walletAddress, method: "fetchNftsViaRPC" });
-
     try {
       const nfts: NFTItem[] = [];
 
-      for (const contractAddress of KNOWN_NFTS) {
-        try {
-          const contract = new Contract(contractAddress, ERC721_ABI, this.provider);
-          const balance = await contract.balanceOf(walletAddress);
+      try {
+        const contract = new Contract(
+          contractAddress,
+          ERC721_ABI,
+          this.provider
+        );
+        const balance = await contract.balanceOf(walletAddress);
 
-          if (balance.gt(0)) {
-            // We need to check token IDs up to a reasonable max, not just balance
-            // Balance tells us HOW MANY NFTs, not WHICH token IDs
-            // For example: user owns 1 NFT with tokenId=2, balance=1, but we'd only check tokenId=1
-            const maxTokenIdToCheck = 1000; // Check up to 1000 token IDs
-            let foundNfts = 0;
+        if (balance.gt(0)) {
+          // We need to check token IDs up to a reasonable max, not just balance
+          // Balance tells us HOW MANY NFTs, not WHICH token IDs
+          // For example: user owns 1 NFT with tokenId=2, balance=1, but we'd only check tokenId=1
+          const maxTokenIdToCheck = 1000; // Check up to 1000 token IDs
+          let foundNfts = 0;
 
-            for (let tokenId = 1; tokenId <= maxTokenIdToCheck && foundNfts < balance.toNumber(); tokenId++) {
-              try {
-                const owner = await contract.ownerOf(tokenId);
+          for (
+            let tokenId = 1;
+            tokenId <= maxTokenIdToCheck && foundNfts < balance.toNumber();
+            tokenId++
+          ) {
+            try {
+              const owner = await contract.ownerOf(tokenId);
 
-                if (owner.toLowerCase() === walletAddress.toLowerCase()) {
-                  const nft = await this.fetchNFTMetadataViaRPC(contractAddress, tokenId.toString(), contract);
+              if (owner.toLowerCase() === walletAddress.toLowerCase()) {
+                const nft = await this.fetchNFTMetadataViaRPC(
+                  contractAddress,
+                  tokenId.toString(),
+                  contract
+                );
 
-                  if (nft) {
-                    nfts.push(nft);
-                    foundNfts++;
-                  }
+                if (nft) {
+                  nfts.push(nft);
+                  foundNfts++;
                 }
-              } catch (err: any) {
-                // Token doesn't exist or other error, continue checking
-                log.debug({ error: err, tokenId }, "Error checking token ownership");
               }
+            } catch (err: any) {
+              // Token doesn't exist or other error, continue checking
+              log.debug(
+                { error: err, tokenId },
+                "Error checking token ownership"
+              );
             }
           }
-        } catch (err: any) {
-          log.debug({ error: err, contractAddress }, "Error checking known contract");
         }
+      } catch (err: any) {
+        log.debug(
+          { error: err, contractAddress },
+          "Error checking known contract"
+        );
       }
 
       log.debug({ nftCount: nfts.length }, "Fetched NFTs");
