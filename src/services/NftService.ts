@@ -3,10 +3,7 @@ import Logger from "bunyan";
 import { providers, Contract } from "ethers";
 import { NFTItem } from "./BalanceService";
 import { FIRST_SQUEEZER_NFT_CONTRACT } from "../lib/constants/campaigns";
-import {
-  GraphqlPonderService,
-  ponderGraphQLService,
-} from "./GraphqlPonderService";
+import { getPonderClient } from "./PonderClient";
 import { getAddress } from "ethers/lib/utils";
 
 export interface NftResponse {
@@ -35,7 +32,6 @@ export class NftService {
   private logger: Logger;
   private provider: providers.StaticJsonRpcProvider | undefined;
   private chainId: number;
-  private ponderGraphQLService: GraphqlPonderService;
 
   constructor(
     chainId: number,
@@ -45,7 +41,6 @@ export class NftService {
     this.chainId = chainId;
     this.provider = provider;
     this.logger = logger.child({ service: "NftService", chainId });
-    this.ponderGraphQLService = ponderGraphQLService;
   }
 
   /**
@@ -88,8 +83,10 @@ export class NftService {
     });
 
     try {
+      const ponderClient = getPonderClient(this.logger);
+
       const nftClaims: { nftClaims: { items: { tokenId: string }[] } } =
-        await this.ponderGraphQLService.query(
+        await ponderClient.query(
           `
       query NftClaims($walletAddress: String!) {
         nftClaims(where: {walletAddress: $walletAddress}) {
@@ -196,7 +193,10 @@ export class NftService {
     }
   }
 
-  private async fetchMetadata(tokenURI: string, timeout = 3000): Promise<NFTMetadata | null> {
+  private async fetchMetadata(
+    tokenURI: string,
+    timeout = 3000
+  ): Promise<NFTMetadata | null> {
     try {
       if (tokenURI.startsWith("data:application/json")) {
         const base64Data = tokenURI.split(",")[1];
@@ -241,7 +241,11 @@ export class NftService {
     tokenId: string,
     contract: Contract
   ): Promise<NFTItem | null> {
-    const log = this.logger.child({ contractAddress, tokenId, method: "fetchNFTMetadataViaRPC" });
+    const log = this.logger.child({
+      contractAddress,
+      tokenId,
+      method: "fetchNFTMetadataViaRPC",
+    });
 
     try {
       let tokenURI: string;
