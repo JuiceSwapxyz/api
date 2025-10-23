@@ -246,12 +246,13 @@ async function bootstrap() {
       max-width: 800px;
     }
     .ascii-art {
-      font-size: 0.8rem;
+      font-size: 2rem;
       line-height: 1.2;
       white-space: pre;
       margin-bottom: 3rem;
       color: #ffb8e2;
       text-shadow: 0 0 20px rgba(255, 184, 226, 0.3);
+      letter-spacing: 0.1em;
     }
     .links {
       margin-top: 2rem;
@@ -272,7 +273,7 @@ async function bootstrap() {
     }
     @media (max-width: 768px) {
       .ascii-art {
-        font-size: 0.5rem;
+        font-size: 1rem;
       }
     }
   </style>
@@ -280,11 +281,9 @@ async function bootstrap() {
 <body>
   <div class="container">
     <div class="ascii-art">
-     __     _          ____                         ___    ____  ____
-    / /_ __(_)_______ / __/    ______ ____     __ / _ \\  / __/ /  _/
-   / / // / / __/ -_)\\ \\| |/|/ / _ `/ _ \\   / // / ___/ _\\ \\  _/ /
-  /_/\\_,_/_/\\__/\\__/___/|__,__/\\_,_/ .__/   \\___/_/    /___/ /___/
-                                   /_/
+   ╦╦ ╦╦╔═╗╔═╗╔═╗╦ ╦╔═╗╔═╗  ╔═╗╔═╗╦
+   ║║ ║║║  ║╣ ╚═╗║║║╠═╣╠═╝  ╠═╣╠═╝║
+  ╚╝╚═╝╩╚═╝╚═╝╚═╝╚╩╝╩ ╩╩    ╩ ╩╩  ╩
     </div>
     <div class="links">
       <a href="/swagger">→ API Documentation (Swagger)</a>
