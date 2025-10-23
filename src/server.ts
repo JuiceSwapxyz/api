@@ -231,13 +231,14 @@ async function bootstrap() {
     body {
       margin: 0;
       padding: 0;
-      background: #0a0a0a;
-      color: #00ff00;
+      background: linear-gradient(rgb(19, 19, 19) 0%, rgb(19, 19, 19) 100%);
+      color: #ffffff;
       font-family: 'Courier New', monospace;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
     .container {
       text-align: center;
@@ -249,25 +250,25 @@ async function bootstrap() {
       line-height: 1.2;
       white-space: pre;
       margin-bottom: 3rem;
-      color: #00ff00;
-      text-shadow: 0 0 10px #00ff00;
+      color: #ffb8e2;
+      text-shadow: 0 0 20px rgba(255, 184, 226, 0.3);
     }
     .links {
       margin-top: 2rem;
     }
     .links a {
       display: block;
-      color: #00ff00;
+      color: #ffffff;
       text-decoration: none;
       margin: 1rem 0;
       font-size: 1.2rem;
       transition: all 0.3s ease;
       padding: 0.5rem;
+      border-radius: 8px;
     }
     .links a:hover {
-      color: #0a0a0a;
-      background: #00ff00;
-      text-shadow: none;
+      background: rgba(255, 184, 226, 0.1);
+      color: #ffb8e2;
     }
     @media (max-width: 768px) {
       .ascii-art {
