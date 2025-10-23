@@ -219,6 +219,89 @@ async function bootstrap() {
   // GraphQL endpoint
   app.use('/v1/graphql', await getApolloMiddleware(logger));
 
+  // Root landing page
+  app.get('/', (_req: Request, res: Response) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JuiceSwap API</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0a0a0a;
+      color: #00ff00;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+      max-width: 800px;
+    }
+    .ascii-art {
+      font-size: 0.8rem;
+      line-height: 1.2;
+      white-space: pre;
+      margin-bottom: 3rem;
+      color: #00ff00;
+      text-shadow: 0 0 10px #00ff00;
+    }
+    .links {
+      margin-top: 2rem;
+    }
+    .links a {
+      display: block;
+      color: #00ff00;
+      text-decoration: none;
+      margin: 1rem 0;
+      font-size: 1.2rem;
+      transition: all 0.3s ease;
+      padding: 0.5rem;
+    }
+    .links a:hover {
+      color: #0a0a0a;
+      background: #00ff00;
+      text-shadow: none;
+    }
+    @media (max-width: 768px) {
+      .ascii-art {
+        font-size: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="ascii-art">
+     _       _          ____
+    | |_   _(_) ___ ___/ ___|_      ____ _ _ __
+ _  | | | | | |/ __/ _ \\___ \\ \\ /\\ / / _\` | '_ \\
+| |_| | |_| | | (_|  __/___) \\ V  V / (_| | |_) |
+ \\___/ \\__,_|_|\\___\\___|____/ \\_/\\_/ \\__,_| .__/
+                                          |_|
+    ______  ____  __  __
+   / __  / / __ \\/ / / /
+  / /_/ / / /_/ / / / /
+ / __  / / ____/ / / /
+/_/ /_/ /_/   /_/_/_/
+    </div>
+    <div class="links">
+      <a href="/swagger">→ API Documentation (Swagger)</a>
+      <a href="https://github.com/JuiceSwapxyz" target="_blank">→ GitHub</a>
+      <a href="/version">→ Version Info</a>
+      <a href="/metrics">→ Metrics</a>
+    </div>
+  </div>
+</body>
+</html>`);
+  });
+
   // API Documentation (Swagger UI)
   app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
