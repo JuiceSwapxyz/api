@@ -196,55 +196,55 @@ export function createFistSqueezerHandler(logger: Logger) {
         'Addresses with IP hash loaded'
       );
 
-      // Fetch all NFT claims from Ponder GraphQL endpoint
+      // Fetch aggregated NFT claim stats from Ponder GraphQL endpoint
       const ponderUrl = process.env.PONDER_URL || 'https://ponder.juiceswap.com/graphql';
-      let allNftClaims: Array<{ walletAddress: string }> = [];
-      let hasMore = true;
-      let after: string | null = null;
+      const chainId = 5115; // Citrea Testnet
 
-      while (hasMore) {
-        const query: string = after
-          ? `{ nftClaims(limit: 1000, after: "${after}") { items { walletAddress } pageInfo { hasNextPage endCursor } } }`
-          : `{ nftClaims(limit: 1000) { items { walletAddress } pageInfo { hasNextPage endCursor } } }`;
-
-        const response: any = await axios.post(ponderUrl, {
-          query,
-        });
-
-        if (response.data.errors) {
-          throw new Error(`GraphQL error: ${JSON.stringify(response.data.errors)}`);
+      const query: string = `{
+        nftClaimStats(where: { chainId: ${chainId} }, limit: 1) {
+          items {
+            totalClaims
+            uniqueAddresses
+            claimingAddresses
+            lastUpdated
+          }
         }
+      }`;
 
-        const claims: Array<{ walletAddress: string }> = response.data.data.nftClaims.items;
-        const pageInfo: any = response.data.data.nftClaims.pageInfo;
+      const response: any = await axios.post(ponderUrl, {
+        query,
+      });
 
-        allNftClaims.push(...claims);
-
-        hasMore = pageInfo?.hasNextPage || false;
-        after = pageInfo?.endCursor || null;
-
-        logger.debug(
-          {
-            batchSize: claims.length,
-            totalClaims: allNftClaims.length,
-            hasMore,
-            after
-          },
-          'Fetched NFT claims batch'
-        );
+      if (response.data.errors) {
+        throw new Error(`GraphQL error: ${JSON.stringify(response.data.errors)}`);
       }
 
-      logger.debug({ totalNftClaims: allNftClaims.length }, 'All NFT claims loaded from Ponder');
+      const statsItems = response.data.data.nftClaimStats?.items || [];
 
-      // Count NFTs claimed by addresses with IP hash
-      let nftsClaimedByAddressesWithIpHash = 0;
+      if (statsItems.length === 0) {
+        throw new Error('No NFT claim statistics found in Ponder');
+      }
+
+      const stats = statsItems[0];
+      const allNftClaims = stats.totalClaims;
+      const claimingAddressesArray: string[] = JSON.parse(stats.claimingAddresses);
+
+      logger.debug(
+        {
+          totalClaims: allNftClaims,
+          uniqueAddresses: stats.uniqueAddresses,
+          claimingAddressesCount: claimingAddressesArray.length
+        },
+        'NFT claim stats loaded from Ponder'
+      );
+
+      // Cross-reference claiming addresses with addresses that have IP hash
       const uniqueAddressesThatClaimed = new Set<string>();
       const uniqueIpHashesThatClaimedNft = new Set<string>();
 
-      for (const claim of allNftClaims) {
-        const normalizedAddress = claim.walletAddress.toLowerCase();
+      for (const address of claimingAddressesArray) {
+        const normalizedAddress = address.toLowerCase();
         if (addressesWithIpHashSet.has(normalizedAddress)) {
-          nftsClaimedByAddressesWithIpHash++;
           uniqueAddressesThatClaimed.add(normalizedAddress);
 
           // Track unique IP hashes
@@ -255,12 +255,16 @@ export function createFistSqueezerHandler(logger: Logger) {
         }
       }
 
-      const percentage = allNftClaims.length > 0
-        ? (nftsClaimedByAddressesWithIpHash / allNftClaims.length) * 100
+      // Note: We count unique addresses, not individual NFT claims
+      // An address with IP hash might have claimed multiple NFTs but is counted once
+      const nftsClaimedByAddressesWithIpHash = uniqueAddressesThatClaimed.size;
+
+      const percentage = allNftClaims > 0
+        ? (nftsClaimedByAddressesWithIpHash / allNftClaims) * 100
         : 0;
 
       const result = {
-        totalNftsClaimed: allNftClaims.length,
+        totalNftsClaimed: allNftClaims,
         totalAddressesWithIpHash: addressesWithIpHashSet.size,
         nftsClaimedByAddressesWithIpHash,
         addressesWithIpHashThatClaimedNft: uniqueAddressesThatClaimed.size,
