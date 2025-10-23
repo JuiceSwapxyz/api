@@ -4,7 +4,6 @@ import Logger from 'bunyan';
 /**
  * PonderClient - Centralized Ponder API client with automatic fallback
  *
- * Inspired by deuro's Apollo Client fallback pattern, adapted for REST/axios
  *
  * Features:
  * - Automatic fallback on 503 (Ponder syncing) for 10 minutes
@@ -13,7 +12,7 @@ import Logger from 'bunyan';
  * - Centralized error handling and logging
  */
 
-// Fallback URL management (similar to deuro's pattern)
+// Fallback URL management
 let fallbackUntil: number | null = null;
 
 function getIndexerUrl(): string {
@@ -124,14 +123,14 @@ export class PonderClient {
           wasUsingFallback,
         }, 'Ponder API request failed');
 
-        // If fallback failed, give up immediately (like deuro's guard at line 36)
+        // If fallback failed, give up immediately
         // No retries on fallback errors - just return the error to the caller
         if (wasUsingFallback) {
           this.logger.error('[Ponder] Fallback server failed, giving up');
           throw error;
         }
 
-        // We're on primary - only handle network errors (like deuro's guard)
+        // We're on primary - only handle network errors
         // Network errors include: 503 and connection/timeout errors
         let shouldRetry = false;
 

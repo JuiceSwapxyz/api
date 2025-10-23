@@ -634,7 +634,6 @@ export function createBAppsStatusHandler(logger: Logger) {
       log.debug({ walletAddress: normalizedAddress }, 'Proxying request to Ponder API');
 
       // Query Ponder API (pure proxy - no transformation)
-      // Uses PonderClient with automatic fallback on 503
       try {
         const ponderClient = getPonderClient(log);
         const response = await ponderClient.post('/campaign/progress', {
@@ -750,7 +749,6 @@ export function createNFTSignatureHandler(logger: Logger) {
       const discordVerified = !!campaign.discordVerifiedAt;
 
       // Check bApps completion (3 swaps) via Ponder API
-      // Uses PonderClient with automatic fallback on 503
       let bappsCompleted = false;
 
       try {
