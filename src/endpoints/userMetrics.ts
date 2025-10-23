@@ -128,7 +128,7 @@ export function createUniqueIpHashesHandler(logger: Logger) {
  *   get:
  *     tags: [Metrics]
  *     summary: Get count of NFTs minted by addresses with IP hash
- *     description: Returns the number of NFTs that were claimed by wallet addresses that have an associated IP address hash. Cross-references the Ponder indexer NFT claims with the User database.
+ *     description: Returns the number of NFTs that were claimed by wallet addresses that have an associated IP address hash. Cross-references the Ponder indexer NFT claims with the User database. Includes unique IP hash count to identify distinct network sources.
  *     responses:
  *       200:
  *         description: NFT claim statistics for addresses with IP hash
@@ -153,6 +153,10 @@ export function createUniqueIpHashesHandler(logger: Logger) {
  *                   type: number
  *                   description: Number of unique addresses (with IP hash) that claimed at least one NFT
  *                   example: 3456
+ *                 uniqueIpHashesThatClaimedNft:
+ *                   type: number
+ *                   description: Number of unique IP address hashes that claimed at least one NFT (multiple addresses can share the same IP hash)
+ *                   example: 2890
  *                 percentage:
  *                   type: number
  *                   description: Percentage of NFTs claimed by addresses with IP hash
@@ -174,11 +178,17 @@ export function createFistSqueezerHandler(logger: Logger) {
         },
         select: {
           address: true,
+          ipAddressHash: true,
         },
       });
 
       const addressesWithIpHashSet = new Set(
         usersWithIpHash.map(u => u.address.toLowerCase())
+      );
+
+      // Map addresses to their IP hash for unique IP counting
+      const addressToIpHash = new Map(
+        usersWithIpHash.map(u => [u.address.toLowerCase(), u.ipAddressHash!])
       );
 
       logger.debug(
@@ -229,12 +239,19 @@ export function createFistSqueezerHandler(logger: Logger) {
       // Count NFTs claimed by addresses with IP hash
       let nftsClaimedByAddressesWithIpHash = 0;
       const uniqueAddressesThatClaimed = new Set<string>();
+      const uniqueIpHashesThatClaimedNft = new Set<string>();
 
       for (const claim of allNftClaims) {
         const normalizedAddress = claim.walletAddress.toLowerCase();
         if (addressesWithIpHashSet.has(normalizedAddress)) {
           nftsClaimedByAddressesWithIpHash++;
           uniqueAddressesThatClaimed.add(normalizedAddress);
+
+          // Track unique IP hashes
+          const ipHash = addressToIpHash.get(normalizedAddress);
+          if (ipHash) {
+            uniqueIpHashesThatClaimedNft.add(ipHash);
+          }
         }
       }
 
@@ -247,6 +264,7 @@ export function createFistSqueezerHandler(logger: Logger) {
         totalAddressesWithIpHash: addressesWithIpHashSet.size,
         nftsClaimedByAddressesWithIpHash,
         addressesWithIpHashThatClaimedNft: uniqueAddressesThatClaimed.size,
+        uniqueIpHashesThatClaimedNft: uniqueIpHashesThatClaimedNft.size,
         percentage: Number(percentage.toFixed(2)),
       };
 
