@@ -250,8 +250,8 @@ async function bootstrap() {
       line-height: 1.2;
       white-space: pre;
       margin-bottom: 3rem;
-      color: #ffb8e2;
-      text-shadow: 0 0 20px rgba(255, 184, 226, 0.3);
+      color: #F7911A;
+      text-shadow: 0 0 20px rgba(247, 145, 26, 0.3);
       letter-spacing: 0.1em;
     }
     .links {
@@ -268,8 +268,8 @@ async function bootstrap() {
       border-radius: 8px;
     }
     .links a:hover {
-      background: rgba(255, 184, 226, 0.1);
-      color: #ffb8e2;
+      background: rgba(247, 145, 26, 0.1);
+      color: #F7911A;
     }
     @media (max-width: 768px) {
       .ascii-art {
