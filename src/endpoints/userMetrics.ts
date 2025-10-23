@@ -187,7 +187,7 @@ export function createFistSqueezerHandler(logger: Logger) {
       );
 
       // Fetch all NFT claims from Ponder GraphQL endpoint
-      const ponderUrl = process.env.PONDER_URL || 'https://dev.ponder.juiceswap.com/graphql';
+      const ponderUrl = process.env.PONDER_URL || 'https://ponder.juiceswap.com/graphql';
       let allNftClaims: Array<{ walletAddress: string }> = [];
       let hasMore = true;
       let after: string | null = null;
