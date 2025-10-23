@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Logger from 'bunyan';
 import { prisma } from '../db/prisma';
+import axios from 'axios';
 
 /**
  * @swagger
@@ -112,6 +113,160 @@ export function createUniqueIpHashesHandler(logger: Logger) {
           name: error.name,
         } : error,
       }, 'Failed to fetch unique IP hashes');
+
+      res.status(500).json({
+        error: 'Internal server error',
+        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+      });
+    }
+  };
+}
+
+/**
+ * @swagger
+ * /v1/metrics/fistSqueezer:
+ *   get:
+ *     tags: [Metrics]
+ *     summary: Get count of NFTs minted by addresses with IP hash
+ *     description: Returns the number of NFTs that were claimed by wallet addresses that have an associated IP address hash. Cross-references the Ponder indexer NFT claims with the User database.
+ *     responses:
+ *       200:
+ *         description: NFT claim statistics for addresses with IP hash
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalNftsClaimed:
+ *                   type: number
+ *                   description: Total number of NFTs claimed across all addresses
+ *                   example: 4192
+ *                 totalAddressesWithIpHash:
+ *                   type: number
+ *                   description: Total number of addresses with IP hash in database
+ *                   example: 12049
+ *                 nftsClaimedByAddressesWithIpHash:
+ *                   type: number
+ *                   description: Number of NFTs claimed by addresses that have an IP hash
+ *                   example: 3456
+ *                 addressesWithIpHashThatClaimedNft:
+ *                   type: number
+ *                   description: Number of unique addresses (with IP hash) that claimed at least one NFT
+ *                   example: 3456
+ *                 percentage:
+ *                   type: number
+ *                   description: Percentage of NFTs claimed by addresses with IP hash
+ *                   example: 82.45
+ *       500:
+ *         description: Internal server error
+ */
+export function createFistSqueezerHandler(logger: Logger) {
+  return async function handleFistSqueezer(_req: Request, res: Response): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      // Get all addresses with IP hash from our database
+      const usersWithIpHash = await prisma.user.findMany({
+        where: {
+          ipAddressHash: {
+            not: null,
+          },
+        },
+        select: {
+          address: true,
+        },
+      });
+
+      const addressesWithIpHashSet = new Set(
+        usersWithIpHash.map(u => u.address.toLowerCase())
+      );
+
+      logger.debug(
+        { addressesWithIpHashCount: addressesWithIpHashSet.size },
+        'Addresses with IP hash loaded'
+      );
+
+      // Fetch all NFT claims from Ponder GraphQL endpoint
+      const ponderUrl = process.env.PONDER_URL || 'https://dev.ponder.juiceswap.com/graphql';
+      let allNftClaims: Array<{ walletAddress: string }> = [];
+      let hasMore = true;
+      let after: string | null = null;
+
+      while (hasMore) {
+        const query: string = after
+          ? `{ nftClaims(limit: 1000, after: "${after}") { items { walletAddress } pageInfo { hasNextPage endCursor } } }`
+          : `{ nftClaims(limit: 1000) { items { walletAddress } pageInfo { hasNextPage endCursor } } }`;
+
+        const response: any = await axios.post(ponderUrl, {
+          query,
+        });
+
+        if (response.data.errors) {
+          throw new Error(`GraphQL error: ${JSON.stringify(response.data.errors)}`);
+        }
+
+        const claims: Array<{ walletAddress: string }> = response.data.data.nftClaims.items;
+        const pageInfo: any = response.data.data.nftClaims.pageInfo;
+
+        allNftClaims.push(...claims);
+
+        hasMore = pageInfo?.hasNextPage || false;
+        after = pageInfo?.endCursor || null;
+
+        logger.debug(
+          {
+            batchSize: claims.length,
+            totalClaims: allNftClaims.length,
+            hasMore,
+            after
+          },
+          'Fetched NFT claims batch'
+        );
+      }
+
+      logger.debug({ totalNftClaims: allNftClaims.length }, 'All NFT claims loaded from Ponder');
+
+      // Count NFTs claimed by addresses with IP hash
+      let nftsClaimedByAddressesWithIpHash = 0;
+      const uniqueAddressesThatClaimed = new Set<string>();
+
+      for (const claim of allNftClaims) {
+        const normalizedAddress = claim.walletAddress.toLowerCase();
+        if (addressesWithIpHashSet.has(normalizedAddress)) {
+          nftsClaimedByAddressesWithIpHash++;
+          uniqueAddressesThatClaimed.add(normalizedAddress);
+        }
+      }
+
+      const percentage = allNftClaims.length > 0
+        ? (nftsClaimedByAddressesWithIpHash / allNftClaims.length) * 100
+        : 0;
+
+      const result = {
+        totalNftsClaimed: allNftClaims.length,
+        totalAddressesWithIpHash: addressesWithIpHashSet.size,
+        nftsClaimedByAddressesWithIpHash,
+        addressesWithIpHashThatClaimedNft: uniqueAddressesThatClaimed.size,
+        percentage: Number(percentage.toFixed(2)),
+      };
+
+      logger.info(
+        {
+          ...result,
+          responseTime: Date.now() - startTime
+        },
+        'FistSqueezer metrics calculated'
+      );
+
+      res.json(result);
+    } catch (error) {
+      logger.error({
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        } : error,
+      }, 'Failed to fetch fistSqueezer metrics');
 
       res.status(500).json({
         error: 'Internal server error',
