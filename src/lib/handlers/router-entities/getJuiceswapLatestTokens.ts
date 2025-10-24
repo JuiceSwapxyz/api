@@ -1,5 +1,6 @@
-import axios from 'axios';
 import { log } from '@juiceswapxyz/smart-order-router';
+import { getPonderClient } from '../../../services/PonderClient';
+import Logger from 'bunyan';
 
 export interface HttpTokenResponse {
   tokens: {
@@ -10,13 +11,18 @@ export interface HttpTokenResponse {
   }[];
 }
 
+// Convert smart-order-router log to bunyan logger for PonderClient
+const bunyanLogger = Logger.createLogger({
+  name: 'juiceswap-token-list',
+  level: 'info',
+});
+
 export async function getJuiceswapLatestTokens() {
   try {
-    const url = process.env.PONDER_URL || 'https://ponder.juiceswap.com';
-    const response = await axios.get<HttpTokenResponse>(`${url}/tokens/all`, {
-      timeout: 2000,
-    });
-    log.debug(`Got juiceswap latest tokens from ${url} with ${response.data.tokens.length} tokens`);
+    const ponderClient = getPonderClient(bunyanLogger);
+    const response = await ponderClient.get<HttpTokenResponse>('/tokens/all');
+
+    log.debug(`Got juiceswap latest tokens with ${response.data.tokens.length} tokens`);
     return response.data.tokens.map((token) => ({
       ...token,
       chainId: 5115,

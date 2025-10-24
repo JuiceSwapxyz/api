@@ -2,10 +2,7 @@ import axios from "axios";
 import Logger from "bunyan";
 import { providers, Contract } from "ethers";
 import { NFTItem } from "./BalanceService";
-import {
-  GraphqlPonderService,
-  ponderGraphQLService,
-} from "./GraphqlPonderService";
+import { getPonderClient } from "./PonderClient";
 import { getAddress } from "ethers/lib/utils";
 
 export interface NftResponse {
@@ -33,7 +30,6 @@ export class NftService {
   private logger: Logger;
   private provider: providers.StaticJsonRpcProvider | undefined;
   private chainId: number;
-  private ponderGraphQLService: GraphqlPonderService;
 
   constructor(
     chainId: number,
@@ -43,7 +39,6 @@ export class NftService {
     this.chainId = chainId;
     this.provider = provider;
     this.logger = logger.child({ service: "NftService", chainId });
-    this.ponderGraphQLService = ponderGraphQLService;
   }
 
   /**
@@ -66,8 +61,10 @@ export class NftService {
     });
 
     try {
+      const ponderClient = getPonderClient(this.logger);
+
       const nftOwners: { nftOwners: { items: { contractAddress: string, tokenId: string }[] } } =
-        await this.ponderGraphQLService.query(
+        await ponderClient.query(
           `
           query NftOwners($walletAddress: String!) {
             nftOwners(
@@ -105,7 +102,6 @@ export class NftService {
       return { nfts: [] };
     }
   }
-
   private async fetchMetadata(
     tokenURI: string,
     timeout = 3000
