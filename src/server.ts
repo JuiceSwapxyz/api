@@ -16,6 +16,7 @@ import { createPortfolioHandler } from './endpoints/portfolio';
 import {
   createTotalAddressesWithIpHandler,
   createUniqueIpHashesHandler,
+  createFistSqueezerHandler,
 } from './endpoints/userMetrics';
 import {
   createTwitterStartHandler,
@@ -171,6 +172,7 @@ async function bootstrap() {
   // User metrics endpoint handlers
   const handleTotalAddressesWithIp = createTotalAddressesWithIpHandler(logger);
   const handleUniqueIpHashes = createUniqueIpHashesHandler(logger);
+  const handleFistSqueezer = createFistSqueezerHandler(logger);
 
   // Campaign endpoint handlers
   const handleTwitterStart = createTwitterStartHandler(logger);
@@ -203,6 +205,7 @@ async function bootstrap() {
   // User metrics endpoints
   app.get('/v1/metrics/users/total-with-ip', handleTotalAddressesWithIp);
   app.get('/v1/metrics/users/unique-ips', handleUniqueIpHashes);
+  app.get('/v1/metrics/fistSqueezer', handleFistSqueezer);
 
   // Campaign endpoints - Twitter OAuth
   app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
