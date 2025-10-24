@@ -101,6 +101,16 @@ export const SwapsQuerySchema = z.object({
 
 export type SwapsQuery = z.infer<typeof SwapsQuerySchema>;
 
+// Swap Approve schema
+export const SwapApproveRequestSchema = z.object({
+  walletAddress: AddressSchema,
+  chainId: ChainIdSchema,
+  tokenIn: AddressSchema,
+  spenderAddress: AddressSchema,
+});
+
+export type SwapApproveRequest = z.infer<typeof SwapApproveRequestSchema>;
+
 // LP Approve schema
 export const LpApproveRequestSchema = z.object({
   simulateTransaction: z.boolean().optional(),
