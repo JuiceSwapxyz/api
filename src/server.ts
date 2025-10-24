@@ -42,8 +42,10 @@ import {
   LpApproveRequestSchema,
   LpCreateRequestSchema,
   PortfolioQuerySchema,
+  SwapApproveRequestSchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
+import { createSwapApproveHandler } from './endpoints/swapApprove';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -160,6 +162,7 @@ async function bootstrap() {
   const handleQuote = createQuoteHandler(routerService, logger);
   const handleSwap = createSwapHandler(routerService, logger);
   const handleSwappableTokens = createSwappableTokensHandler(logger);
+  const handleSwapApprove = createSwapApproveHandler(routerService, logger);
   const handleSwaps = createSwapsHandler(routerService, logger);
   const handleLpApprove = createLpApproveHandler(routerService, logger);
   const handleLpCreate = createLpCreateHandler(routerService, logger);
@@ -182,6 +185,7 @@ async function bootstrap() {
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
   app.post('/v1/swap', generalLimiter, validateBody(SwapRequestSchema, logger), handleSwap);
+  app.post('/v1/swap/approve', generalLimiter, validateBody(SwapApproveRequestSchema, logger), handleSwapApprove);
 
   // Swappable tokens endpoint (returns supported tokens)
   app.get('/v1/swappable_tokens', validateQuery(SwappableTokensQuerySchema, logger), handleSwappableTokens);
