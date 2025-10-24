@@ -223,6 +223,83 @@ async function bootstrap() {
   // GraphQL endpoint
   app.use('/v1/graphql', await getApolloMiddleware(logger));
 
+  // Root landing page
+  app.get('/', (_req: Request, res: Response) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JuiceSwap API</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(rgb(19, 19, 19) 0%, rgb(19, 19, 19) 100%);
+      color: #ffffff;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+      max-width: 800px;
+    }
+    .ascii-art {
+      font-size: 2rem;
+      line-height: 1.2;
+      white-space: pre;
+      margin-bottom: 3rem;
+      color: #F7911A;
+      text-shadow: 0 0 20px rgba(247, 145, 26, 0.3);
+      letter-spacing: 0.1em;
+    }
+    .links {
+      margin-top: 2rem;
+    }
+    .links a {
+      display: block;
+      color: #ffffff;
+      text-decoration: none;
+      margin: 1rem 0;
+      font-size: 1.2rem;
+      transition: all 0.3s ease;
+      padding: 0.5rem;
+      border-radius: 8px;
+    }
+    .links a:hover {
+      background: rgba(247, 145, 26, 0.1);
+      color: #F7911A;
+    }
+    @media (max-width: 768px) {
+      .ascii-art {
+        font-size: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="ascii-art">
+   ╦╦ ╦╦╔═╗╔═╗╔═╗╦ ╦╔═╗╔═╗  ╔═╗╔═╗╦
+   ║║ ║║║  ║╣ ╚═╗║║║╠═╣╠═╝  ╠═╣╠═╝║
+  ╚╝╚═╝╩╚═╝╚═╝╚═╝╚╩╝╩ ╩╩    ╩ ╩╩  ╩
+    </div>
+    <div class="links">
+      <a href="/swagger">→ API Documentation (Swagger)</a>
+      <a href="https://github.com/JuiceSwapxyz" target="_blank">→ GitHub</a>
+      <a href="/version">→ Version Info</a>
+      <a href="/metrics">→ Metrics</a>
+    </div>
+  </div>
+</body>
+</html>`);
+  });
+
   // API Documentation (Swagger UI)
   app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
