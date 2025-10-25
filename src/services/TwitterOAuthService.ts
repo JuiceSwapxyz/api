@@ -1,5 +1,6 @@
 import { OAuth } from 'oauth';
 import { prisma } from '../db/prisma';
+import Logger from 'bunyan';
 
 /**
  * Twitter OAuth 1.0a Service
@@ -11,6 +12,7 @@ interface TwitterOAuthConfig {
   consumerKey: string;
   consumerSecret: string;
   callbackUrl: string;
+  logger?: Logger;
 }
 
 interface TwitterUserData {
@@ -35,6 +37,7 @@ interface FriendshipData {
 export class TwitterOAuthService {
   private cleanupIntervalId: NodeJS.Timeout | null = null;
   private readonly oauth: OAuth;
+  private readonly logger: Logger;
 
   // OAuth URLs
   private readonly REQUEST_TOKEN_URL = 'https://api.twitter.com/oauth/request_token';
@@ -59,6 +62,9 @@ export class TwitterOAuthService {
       config.callbackUrl,
       'HMAC-SHA1'
     );
+
+    // Initialize logger (fallback to console if not provided)
+    this.logger = config.logger || Logger.createLogger({ name: 'TwitterOAuthService' });
 
     // Clean up expired sessions every 5 minutes
     this.cleanupIntervalId = setInterval(() => this.cleanupSessions(), 5 * 60 * 1000);
@@ -249,14 +255,14 @@ export class TwitterOAuthService {
           juiceSwapUsername
         );
       } catch (error) {
-        // Log error but don't fail the OAuth flow
-        console.error('Failed to check Twitter following relationship:', error);
-        throw new Error(
-          'Failed to verify Twitter following status. Please make sure you follow @' + juiceSwapUsername
-        );
+        // API error: Deny verification (Security-First approach)
+        // User will be rejected at line 130-137 due to isFollowingJuiceSwap = false
+        this.logger.error({ error }, 'Failed to check Twitter following relationship');
+        isFollowingJuiceSwap = false;
+        // No throw - OAuth flow continues, but verification will fail
       }
     } else {
-      console.warn('JUICESWAP_TWITTER_USERNAME not configured, skipping following check');
+      this.logger.warn('JUICESWAP_TWITTER_USERNAME not configured, skipping following check');
     }
 
     return {
@@ -281,10 +287,10 @@ export class TwitterOAuthService {
       });
 
       if (result.count > 0) {
-        console.log(`Cleaned up ${result.count} expired Twitter OAuth sessions`);
+        this.logger.info({ count: result.count }, 'Cleaned up expired Twitter OAuth sessions');
       }
     } catch (error) {
-      console.error('Error cleaning up Twitter OAuth sessions:', error);
+      this.logger.error({ error }, 'Error cleaning up Twitter OAuth sessions');
     }
   }
 }
@@ -295,12 +301,13 @@ let twitterOAuthService: TwitterOAuthService | null = null;
 /**
  * Get or create TwitterOAuthService instance
  */
-export function getTwitterOAuthService(): TwitterOAuthService {
+export function getTwitterOAuthService(logger?: Logger): TwitterOAuthService {
   if (!twitterOAuthService) {
     const config = {
       consumerKey: process.env.TWITTER_CONSUMER_KEY || '',
       consumerSecret: process.env.TWITTER_CONSUMER_SECRET || '',
       callbackUrl: process.env.TWITTER_CALLBACK_URL || '',
+      logger,
     };
 
     if (!config.consumerKey || !config.consumerSecret || !config.callbackUrl) {

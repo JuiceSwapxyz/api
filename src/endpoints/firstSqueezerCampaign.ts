@@ -62,7 +62,7 @@ export function createTwitterStartHandler(logger: Logger) {
       log.debug({ walletAddress: normalizedAddress }, 'Generating Twitter OAuth URL');
 
       // Get Twitter OAuth service
-      const twitterService = getTwitterOAuthService();
+      const twitterService = getTwitterOAuthService(logger);
 
       // Generate authorization URL (OAuth 1.0a)
       const { authUrl, requestToken } = await twitterService.generateAuthUrl(normalizedAddress);
@@ -119,7 +119,7 @@ export function createTwitterCallbackHandler(logger: Logger) {
       log.debug({ oauthToken }, 'Processing Twitter OAuth callback');
 
       // Get Twitter OAuth service
-      const twitterService = getTwitterOAuthService();
+      const twitterService = getTwitterOAuthService(logger);
 
       // Complete OAuth flow (OAuth 1.0a)
       log.debug({ oauthToken }, 'Starting OAuth flow completion');
