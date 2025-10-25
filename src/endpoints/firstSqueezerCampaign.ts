@@ -126,6 +126,14 @@ export function createTwitterCallbackHandler(logger: Logger) {
       const { walletAddress, twitterUser } = await twitterService.completeOAuthFlow(code, state);
       log.debug({ walletAddress, username: twitterUser.username }, 'OAuth flow completed successfully');
 
+      if (!twitterUser.id || typeof twitterUser.id !== 'string' || twitterUser.id.trim() === '') {
+        log.error({ walletAddress, twitterUser }, 'Twitter OAuth returned user without valid ID');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent('Invalid Twitter response - missing user ID')}`
+        );
+        return;
+      }
+
       log.info(
         {
           walletAddress,
@@ -415,6 +423,14 @@ export function createDiscordCallbackHandler(logger: Logger) {
         { walletAddress, username: discordUser.username, isInGuild },
         'Discord OAuth flow completed successfully'
       );
+
+      if (!discordUser.id || typeof discordUser.id !== 'string' || discordUser.id.trim() === '') {
+        log.error({ walletAddress, discordUser }, 'Discord OAuth returned user without valid ID');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=${encodeURIComponent('Invalid Discord response - missing user ID')}`
+        );
+        return;
+      }
 
       // Check if user is in the JuiceSwap Discord guild
       if (!isInGuild) {
