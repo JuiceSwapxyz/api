@@ -17,7 +17,7 @@ import { FIRST_SQUEEZER_NFT_CONTRACT } from '../lib/constants/campaigns';
  * /v1/campaigns/first-squeezer/twitter/start:
  *   get:
  *     tags: [Campaign]
- *     summary: Start Twitter OAuth flow
+ *     summary: Start Twitter OAuth flow (OAuth 1.0a)
  *     parameters:
  *       - in: query
  *         name: walletAddress
@@ -34,7 +34,7 @@ import { FIRST_SQUEEZER_NFT_CONTRACT } from '../lib/constants/campaigns';
  *               properties:
  *                 authUrl:
  *                   type: string
- *                 state:
+ *                 requestToken:
  *                   type: string
  *       default:
  *         content:
@@ -64,14 +64,14 @@ export function createTwitterStartHandler(logger: Logger) {
       // Get Twitter OAuth service
       const twitterService = getTwitterOAuthService();
 
-      // Generate authorization URL (now async with database storage)
-      const { authUrl, state } = await twitterService.generateAuthUrl(normalizedAddress);
+      // Generate authorization URL (OAuth 1.0a)
+      const { authUrl, requestToken } = await twitterService.generateAuthUrl(normalizedAddress);
 
-      log.debug({ walletAddress: normalizedAddress, state }, 'OAuth URL generated');
+      log.debug({ walletAddress: normalizedAddress, requestToken }, 'OAuth URL generated');
 
       res.status(200).json({
         authUrl,
-        state,
+        requestToken,
       });
     } catch (error: any) {
       log.error({ error: error.message, stack: error.stack }, 'Error in handleTwitterStart');
@@ -85,15 +85,15 @@ export function createTwitterStartHandler(logger: Logger) {
  * /v1/campaigns/first-squeezer/twitter/callback:
  *   get:
  *     tags: [Campaign]
- *     summary: Twitter OAuth callback (redirects to frontend)
+ *     summary: Twitter OAuth callback (OAuth 1.0a - redirects to frontend)
  *     parameters:
  *       - in: query
- *         name: code
+ *         name: oauth_token
  *         required: true
  *         schema:
  *           type: string
  *       - in: query
- *         name: state
+ *         name: oauth_verifier
  *         required: true
  *         schema:
  *           type: string
@@ -106,25 +106,35 @@ export function createTwitterCallbackHandler(logger: Logger) {
     const log = logger.child({ endpoint: 'twitter-callback' });
 
     try {
-      const code = req.query.code as string;
-      const state = req.query.state as string;
+      const oauthToken = req.query.oauth_token as string;
+      const oauthVerifier = req.query.oauth_verifier as string;
 
       // Validate parameters
-      if (!code || !state) {
-        log.warn('Missing code or state parameter');
+      if (!oauthToken || !oauthVerifier) {
+        log.warn('Missing oauth_token or oauth_verifier parameter');
         res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=missing_params`);
         return;
       }
 
-      log.debug({ state }, 'Processing Twitter OAuth callback');
+      log.debug({ oauthToken }, 'Processing Twitter OAuth callback');
 
       // Get Twitter OAuth service
       const twitterService = getTwitterOAuthService();
 
-      // Complete OAuth flow
-      log.debug({ state }, 'Starting OAuth flow completion');
-      const { walletAddress, twitterUser } = await twitterService.completeOAuthFlow(code, state);
-      log.debug({ walletAddress, username: twitterUser.username }, 'OAuth flow completed successfully');
+      // Complete OAuth flow (OAuth 1.0a)
+      log.debug({ oauthToken }, 'Starting OAuth flow completion');
+      const { walletAddress, twitterUser, isFollowingJuiceSwap } = await twitterService.completeOAuthFlow(oauthToken, oauthVerifier);
+      log.debug({ walletAddress, username: twitterUser.username, isFollowingJuiceSwap }, 'OAuth flow completed successfully');
+
+      // Check if user follows JuiceSwap
+      if (!isFollowingJuiceSwap) {
+        const juiceSwapUsername = process.env.JUICESWAP_TWITTER_USERNAME || 'JuiceSwap';
+        log.warn({ walletAddress, twitterUsername: twitterUser.username }, 'User does not follow JuiceSwap on Twitter');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent(`You must follow @${juiceSwapUsername} on Twitter to qualify`)}`
+        );
+        return;
+      }
 
       log.info(
         {
