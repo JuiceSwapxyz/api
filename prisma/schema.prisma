@@ -42,6 +42,9 @@ model OgCampaignUser {
   discordVerifiedAt DateTime?
   discordUserId     String?
   discordUsername   String?
+
+  @@index([twitterUserId])
+  @@index([discordUserId])
 }
 
 // Twitter OAuth session storage (replaces in-memory storage)
