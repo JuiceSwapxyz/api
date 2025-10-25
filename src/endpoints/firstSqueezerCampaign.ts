@@ -127,8 +127,17 @@ export function createTwitterCallbackHandler(logger: Logger) {
       const { walletAddress, twitterUser } = await twitterService.completeOAuthFlow(code, state);
       log.debug({ walletAddress, username: twitterUser.username }, 'OAuth flow completed successfully');
 
+      // Validate Twitter user ID (security check)
+      if (!twitterUser.id || typeof twitterUser.id !== 'string' || twitterUser.id.trim() === '') {
+        log.error({ walletAddress, twitterUser }, 'Twitter OAuth returned user without valid ID');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent('Invalid Twitter response - missing user ID')}`
+        );
+        return;
+      }
+
       // Check if user follows JuiceSwap on Twitter using TwitterAPI.io
-      const juiceSwapUsername = process.env.JUICESWAP_TWITTER_USERNAME || 'JuiceSwap';
+      const juiceSwapUsername = process.env.JUICESWAP_TWITTER_USERNAME || 'JuiceSwap_com';
       log.debug({ twitterUsername: twitterUser.username, targetUsername: juiceSwapUsername }, 'Checking if user follows JuiceSwap');
 
       const twitterApiIoService = getTwitterApiIoService(log);
@@ -164,6 +173,30 @@ export function createTwitterCallbackHandler(logger: Logger) {
         user = await prisma.user.create({
           data: { address: walletAddress },
         });
+      }
+
+      // Check if this Twitter account is already linked to a different wallet
+      const existingTwitterLink = await prisma.ogCampaignUser.findFirst({
+        where: {
+          twitterUserId: twitterUser.id,
+          userId: { not: user.id },
+        },
+      });
+
+      if (existingTwitterLink) {
+        log.warn(
+          {
+            walletAddress,
+            twitterUserId: twitterUser.id,
+            twitterUsername: twitterUser.username,
+            existingUserId: existingTwitterLink.userId,
+          },
+          'Twitter account already linked to different wallet'
+        );
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent('This Twitter account is already linked to another wallet')}`
+        );
+        return;
       }
 
       // Update or create OG campaign user record
@@ -412,6 +445,14 @@ export function createDiscordCallbackHandler(logger: Logger) {
         'Discord OAuth flow completed successfully'
       );
 
+      if (!discordUser.id || typeof discordUser.id !== 'string' || discordUser.id.trim() === '') {
+        log.error({ walletAddress, discordUser }, 'Discord OAuth returned user without valid ID');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=${encodeURIComponent('Invalid Discord response - missing user ID')}`
+        );
+        return;
+      }
+
       // Check if user is in the JuiceSwap Discord guild
       if (!isInGuild) {
         log.warn({ walletAddress, discordUsername: discordUser.username }, 'User is not in JuiceSwap Discord guild');
@@ -439,6 +480,30 @@ export function createDiscordCallbackHandler(logger: Logger) {
         user = await prisma.user.create({
           data: { address: walletAddress },
         });
+      }
+
+      // Check if this Discord account is already linked to a different wallet
+      const existingDiscordLink = await prisma.ogCampaignUser.findFirst({
+        where: {
+          discordUserId: discordUser.id,
+          userId: { not: user.id },
+        },
+      });
+
+      if (existingDiscordLink) {
+        log.warn(
+          {
+            walletAddress,
+            discordUserId: discordUser.id,
+            discordUsername: discordUser.username,
+            existingUserId: existingDiscordLink.userId,
+          },
+          'Discord account already linked to different wallet'
+        );
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=${encodeURIComponent('This Discord account is already linked to another wallet')}`
+        );
+        return;
       }
 
       // Format Discord username (handle discriminator)
