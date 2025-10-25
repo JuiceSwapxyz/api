@@ -289,12 +289,7 @@ export class TwitterOAuthService {
       if (result.count > 0) {
         this.logger.info({ count: result.count }, 'Cleaned up expired Twitter OAuth sessions');
       }
-    } catch (error: any) {
-      // P2021: Table doesn't exist - silently skip during migrations
-      if (error?.code === 'P2021') {
-        this.logger.debug('Twitter OAuth sessions table not yet created, skipping cleanup');
-        return;
-      }
+    } catch (error) {
       this.logger.error({ error }, 'Error cleaning up Twitter OAuth sessions');
     }
   }

@@ -1,0 +1,8 @@
+POST http://localhost:3000/v1/swap/approve
+Content-Type: application/json
+
+{
+    "walletAddress": "0xC9bA12CF8AC54964aE538438edcD784e6cFE9413",
+    "chainId": 5115,
+    "tokenIn": "0x9B28B690550522608890C3C7e63c0b4A7eBab9AA"
+}

@@ -299,12 +299,7 @@ export class DiscordOAuthService {
       if (result.count > 0) {
         console.log(`Cleaned up ${result.count} expired Discord OAuth sessions`);
       }
-    } catch (error: any) {
-      // P2021: Table doesn't exist - silently skip during migrations
-      if (error?.code === 'P2021') {
-        console.debug('Discord OAuth sessions table not yet created, skipping cleanup');
-        return;
-      }
+    } catch (error) {
       console.error('Error cleaning up Discord OAuth sessions:', error);
     }
   }

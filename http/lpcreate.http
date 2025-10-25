@@ -1,0 +1,38 @@
+POST http://localhost:3000/v1/lp/approve
+Content-Type: application/json
+
+{
+    "simulateTransaction": true,
+    "walletAddress": "0xC9bA12CF8AC54964aE538438edcD784e6cFE9413",
+    "chainId": 5115,
+    "protocol": "V3",
+    "token0": "0x0000000000000000000000000000000000000000",
+    "token1": "0x9B28B690550522608890C3C7e63c0b4A7eBab9AA",
+    "amount0": "17215776637841",
+    "amount1": "1417185900120237339"
+}
+
+####
+
+POST http://localhost:3000/v1/lp/create
+Content-Type: application/json
+
+{
+    "simulateTransaction": true,
+    "protocol": "V3",
+    "walletAddress": "0xC9bA12CF8AC54964aE538438edcD784e6cFE9413",
+    "chainId": 5115,
+    "independentAmount": "14171859001202373",
+    "independentToken": "TOKEN_1",
+    "position": {
+        "tickLower": -887220,
+        "tickUpper": 887220,
+        "pool": {
+            "tickSpacing": 60,
+            "token0": "0x0000000000000000000000000000000000000000",
+            "token1": "0x9B28B690550522608890C3C7e63c0b4A7eBab9AA",
+            "fee": 3000
+        }
+    }
+}
+

@@ -1,0 +1,1 @@
+GET http://localhost:3000/v1/campaigns/first-squeezer/bapps/status?walletAddress=0x2F0cC51C02E5D4EC68bC155728798969D5c0F714

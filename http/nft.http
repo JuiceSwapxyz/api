@@ -1,0 +1,4 @@
+GET http://localhost:3000/v1/portfolio/0x456037F8830454E0eC54ad3D55c741383862D0c7
+
+###
+GET http://localhost:3000/v1/portfolio/0x2f0cc51c02e5d4ec68bc155728798969d5c0f714
