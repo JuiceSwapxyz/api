@@ -146,6 +146,30 @@ export function createTwitterCallbackHandler(logger: Logger) {
         });
       }
 
+      // Check if this Twitter account is already linked to a different wallet
+      const existingTwitterLink = await prisma.ogCampaignUser.findFirst({
+        where: {
+          twitterUserId: twitterUser.id,
+          userId: { not: user.id },
+        },
+      });
+
+      if (existingTwitterLink) {
+        log.warn(
+          {
+            walletAddress,
+            twitterUserId: twitterUser.id,
+            twitterUsername: twitterUser.username,
+            existingUserId: existingTwitterLink.userId,
+          },
+          'Twitter account already linked to different wallet'
+        );
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent('This Twitter account is already linked to another wallet')}`
+        );
+        return;
+      }
+
       // Update or create OG campaign user record
       await prisma.ogCampaignUser.upsert({
         where: { userId: user.id },
@@ -419,6 +443,30 @@ export function createDiscordCallbackHandler(logger: Logger) {
         user = await prisma.user.create({
           data: { address: walletAddress },
         });
+      }
+
+      // Check if this Discord account is already linked to a different wallet
+      const existingDiscordLink = await prisma.ogCampaignUser.findFirst({
+        where: {
+          discordUserId: discordUser.id,
+          userId: { not: user.id },
+        },
+      });
+
+      if (existingDiscordLink) {
+        log.warn(
+          {
+            walletAddress,
+            discordUserId: discordUser.id,
+            discordUsername: discordUser.username,
+            existingUserId: existingDiscordLink.userId,
+          },
+          'Discord account already linked to different wallet'
+        );
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?discord=error&message=${encodeURIComponent('This Discord account is already linked to another wallet')}`
+        );
+        return;
       }
 
       // Format Discord username (handle discriminator)
