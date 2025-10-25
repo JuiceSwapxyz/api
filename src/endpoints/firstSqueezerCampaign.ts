@@ -3,6 +3,7 @@ import Logger from 'bunyan';
 import { ethers } from 'ethers';
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import { getTwitterOAuthService } from '../services/TwitterOAuthService';
+import { getTwitterApiIoService } from '../services/TwitterApiIoService';
 import { getDiscordOAuthService } from '../services/DiscordOAuthService';
 import { getPonderClient } from '../services/PonderClient';
 import { prisma } from '../db/prisma';
@@ -126,11 +127,30 @@ export function createTwitterCallbackHandler(logger: Logger) {
       const { walletAddress, twitterUser } = await twitterService.completeOAuthFlow(code, state);
       log.debug({ walletAddress, username: twitterUser.username }, 'OAuth flow completed successfully');
 
+      // Check if user follows JuiceSwap on Twitter using TwitterAPI.io
+      const juiceSwapUsername = process.env.JUICESWAP_TWITTER_USERNAME || 'JuiceSwap';
+      log.debug({ twitterUsername: twitterUser.username, targetUsername: juiceSwapUsername }, 'Checking if user follows JuiceSwap');
+
+      const twitterApiIoService = getTwitterApiIoService(log);
+      const isFollowingJuiceSwap = await twitterApiIoService.checkFollowRelationship(
+        twitterUser.username,
+        juiceSwapUsername
+      );
+
+      if (!isFollowingJuiceSwap) {
+        log.warn({ walletAddress, twitterUsername: twitterUser.username }, 'User does not follow JuiceSwap on Twitter');
+        res.redirect(
+          `${process.env.FRONTEND_URL || 'http://localhost:3001'}/oauth-callback?twitter=error&message=${encodeURIComponent(`You must follow @${juiceSwapUsername} on Twitter to qualify`)}`
+        );
+        return;
+      }
+
       log.info(
         {
           walletAddress,
           twitterUserId: twitterUser.id,
           twitterUsername: twitterUser.username,
+          isFollowingJuiceSwap,
         },
         'Twitter OAuth completed successfully'
       );
