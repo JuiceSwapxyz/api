@@ -171,3 +171,28 @@ export const PortfolioQuerySchema = z.object({
 });
 
 export type PortfolioQuery = z.infer<typeof PortfolioQuerySchema>;
+
+// Launchpad tokens list query schema
+export const LaunchpadTokensQuerySchema = z.object({
+  filter: z.enum(['all', 'active', 'graduating', 'graduated']).optional().default('all'),
+  page: z.string().optional().default('0').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(0)),
+  limit: z.string().optional().default('20').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(1).max(100)),
+  sort: z.enum(['newest', 'volume', 'trades']).optional().default('newest'),
+});
+
+export type LaunchpadTokensQuery = z.infer<typeof LaunchpadTokensQuerySchema>;
+
+// Launchpad trades query schema
+export const LaunchpadTradesQuerySchema = z.object({
+  limit: z.string().optional().default('50').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(1).max(100)),
+  page: z.string().optional().default('0').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(0)),
+});
+
+export type LaunchpadTradesQuery = z.infer<typeof LaunchpadTradesQuerySchema>;
+
+// Launchpad recent trades query schema
+export const LaunchpadRecentTradesQuerySchema = z.object({
+  limit: z.string().optional().default('20').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(1).max(50)),
+});
+
+export type LaunchpadRecentTradesQuery = z.infer<typeof LaunchpadRecentTradesQuerySchema>;

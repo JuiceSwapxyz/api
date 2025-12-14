@@ -14,6 +14,13 @@ import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
 import { createPortfolioHandler } from './endpoints/portfolio';
 import {
+  createLaunchpadTokensHandler,
+  createLaunchpadTokenHandler,
+  createLaunchpadTokenTradesHandler,
+  createLaunchpadStatsHandler,
+  createLaunchpadRecentTradesHandler,
+} from './endpoints/launchpad';
+import {
   createTotalAddressesWithIpHandler,
   createUniqueIpHashesHandler,
 } from './endpoints/userMetrics';
@@ -43,6 +50,9 @@ import {
   LpCreateRequestSchema,
   PortfolioQuerySchema,
   SwapApproveRequestSchema,
+  LaunchpadTokensQuerySchema,
+  LaunchpadTradesQuerySchema,
+  LaunchpadRecentTradesQuerySchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 import { createSwapApproveHandler } from './endpoints/swapApprove';
@@ -172,6 +182,13 @@ async function bootstrap() {
   const handleTotalAddressesWithIp = createTotalAddressesWithIpHandler(logger);
   const handleUniqueIpHashes = createUniqueIpHashesHandler(logger);
 
+  // Launchpad endpoint handlers
+  const handleLaunchpadTokens = createLaunchpadTokensHandler(logger);
+  const handleLaunchpadToken = createLaunchpadTokenHandler(logger);
+  const handleLaunchpadTokenTrades = createLaunchpadTokenTradesHandler(logger);
+  const handleLaunchpadStats = createLaunchpadStatsHandler(logger);
+  const handleLaunchpadRecentTrades = createLaunchpadRecentTradesHandler(logger);
+
   // Campaign endpoint handlers
   const handleTwitterStart = createTwitterStartHandler(logger);
   const handleTwitterCallback = createTwitterCallbackHandler(logger);
@@ -203,6 +220,13 @@ async function bootstrap() {
   // User metrics endpoints
   app.get('/v1/metrics/users/total-with-ip', handleTotalAddressesWithIp);
   app.get('/v1/metrics/users/unique-ips', handleUniqueIpHashes);
+
+  // Launchpad endpoints (proxies to Ponder)
+  app.get('/v1/launchpad/tokens', generalLimiter, validateQuery(LaunchpadTokensQuerySchema, logger), handleLaunchpadTokens);
+  app.get('/v1/launchpad/token/:address', generalLimiter, handleLaunchpadToken);
+  app.get('/v1/launchpad/token/:address/trades', generalLimiter, validateQuery(LaunchpadTradesQuerySchema, logger), handleLaunchpadTokenTrades);
+  app.get('/v1/launchpad/stats', generalLimiter, handleLaunchpadStats);
+  app.get('/v1/launchpad/recent-trades', generalLimiter, validateQuery(LaunchpadRecentTradesQuerySchema, logger), handleLaunchpadRecentTrades);
 
   // Campaign endpoints - Twitter OAuth
   app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
