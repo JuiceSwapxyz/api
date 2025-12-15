@@ -171,3 +171,40 @@ export const PortfolioQuerySchema = z.object({
 });
 
 export type PortfolioQuery = z.infer<typeof PortfolioQuerySchema>;
+
+// Lightning address validation schema
+export const LightningAddressRequestSchema = z.object({
+  lnLikeAddress: z.string().min(1, 'lnLikeAddress is required').refine(
+    (val) => {
+      // Lightning address format: user@domain.com
+      if (val.includes('@')) {
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        return emailRegex.test(val);
+      }
+      // LNURL format: starts with lnurl
+      return val.toLowerCase().startsWith('lnurl');
+    },
+    'Must be a valid Lightning address (user@domain.com) or LNURL'
+  ),
+});
+
+export type LightningAddressRequest = z.infer<typeof LightningAddressRequestSchema>;
+
+// Lightning invoice request schema
+export const LightningInvoiceRequestSchema = z.object({
+  amount: AmountSchema,
+  lnLikeAddress: z.string().min(1, 'lnLikeAddress is required').refine(
+    (val) => {
+      // Lightning address format: user@domain.com
+      if (val.includes('@')) {
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        return emailRegex.test(val);
+      }
+      // LNURL format: starts with lnurl
+      return val.toLowerCase().startsWith('lnurl');
+    },
+    'Must be a valid Lightning address (user@domain.com) or LNURL'
+  ),
+});
+
+export type LightningInvoiceRequest = z.infer<typeof LightningInvoiceRequestSchema>;
