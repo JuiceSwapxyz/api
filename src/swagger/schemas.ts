@@ -45,11 +45,23 @@
  *           type: string
  *           description: Current tick (V3 only)
  *         reserve0:
- *           type: string
- *           description: Reserve of token0 (V2 only)
+ *           type: object
+ *           description: Reserve of token0 with token info (V2 only)
+ *           properties:
+ *             token:
+ *               $ref: '#/components/schemas/Token'
+ *             quotient:
+ *               type: string
+ *               description: Reserve amount in wei
  *         reserve1:
- *           type: string
- *           description: Reserve of token1 (V2 only)
+ *           type: object
+ *           description: Reserve of token1 with token info (V2 only)
+ *           properties:
+ *             token:
+ *               $ref: '#/components/schemas/Token'
+ *             quotient:
+ *               type: string
+ *               description: Reserve amount in wei
  *         amountIn:
  *           type: string
  *           description: Input amount for this pool (if first pool)

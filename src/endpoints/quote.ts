@@ -362,7 +362,7 @@ export function createQuoteHandler(
             }
 
             if (isV2Route) {
-              // V2 Pair formatting
+              // V2 Pair formatting - reserve0/reserve1 must include token objects
               curRoute.push({
                 type: 'v2-pool',
                 address: pool.liquidityToken?.address || 'unknown',
@@ -378,8 +378,24 @@ export function createQuoteHandler(
                   address: tokenOut.wrapped?.address || tokenOut.address,
                   symbol: tokenOut.symbol || 'TOKEN',
                 },
-                reserve0: pool.reserve0?.quotient?.toString() || '0',
-                reserve1: pool.reserve1?.quotient?.toString() || '0',
+                reserve0: {
+                  token: {
+                    chainId: pool.token0.chainId,
+                    address: pool.token0.address,
+                    decimals: pool.token0.decimals.toString(),
+                    symbol: pool.token0.symbol || 'TOKEN',
+                  },
+                  quotient: pool.reserve0?.quotient?.toString() || '0',
+                },
+                reserve1: {
+                  token: {
+                    chainId: pool.token1.chainId,
+                    address: pool.token1.address,
+                    decimals: pool.token1.decimals.toString(),
+                    symbol: pool.token1.symbol || 'TOKEN',
+                  },
+                  quotient: pool.reserve1?.quotient?.toString() || '0',
+                },
                 amountIn,
                 amountOut,
               });
