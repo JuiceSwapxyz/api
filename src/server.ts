@@ -53,9 +53,13 @@ import {
   LaunchpadTokensQuerySchema,
   LaunchpadTradesQuerySchema,
   LaunchpadRecentTradesQuerySchema,
+  LightningInvoiceRequestSchema,
+  LightningAddressRequestSchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 import { createSwapApproveHandler } from './endpoints/swapApprove';
+import { createLightningInvoiceHandler } from './endpoints/lightningInvoice';
+import { createValidateLightningAddressHandler } from './endpoints/validateLightningAddress';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -198,7 +202,8 @@ async function bootstrap() {
   const handleDiscordStatus = createDiscordStatusHandler(logger);
   const handleBAppsStatus = createBAppsStatusHandler(logger);
   const handleNFTSignature = createNFTSignatureHandler(logger);
-
+  const handleLightningInvoice = createLightningInvoiceHandler(logger);
+  const handleValidateLightningAddress = createValidateLightningAddressHandler(logger);
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
   app.post('/v1/swap', generalLimiter, validateBody(SwapRequestSchema, logger), handleSwap);
@@ -213,6 +218,10 @@ async function bootstrap() {
   // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
   app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
+
+  // Lightning invoice endpoint
+  app.post('/v1/lightning/invoice', generalLimiter, validateBody(LightningInvoiceRequestSchema, logger), handleLightningInvoice);
+  app.post('/v1/lightning/validate', generalLimiter, validateBody(LightningAddressRequestSchema, logger), handleValidateLightningAddress);
 
   // Swaps transaction status endpoint
   app.get('/v1/swaps', validateQuery(SwapsQuerySchema, logger), handleSwaps);
