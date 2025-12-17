@@ -464,6 +464,123 @@
  *                   type: string
  *                 fee:
  *                   type: integer
+ *
+ *     LaunchpadToken:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: Token address (primary key)
+ *         address:
+ *           type: string
+ *           description: Token contract address
+ *         chainId:
+ *           type: integer
+ *           description: Chain ID
+ *         name:
+ *           type: string
+ *           description: Token name
+ *         symbol:
+ *           type: string
+ *           description: Token symbol
+ *         creator:
+ *           type: string
+ *           description: Creator wallet address
+ *         baseAsset:
+ *           type: string
+ *           description: Base asset address (e.g., WBTC)
+ *         createdAt:
+ *           type: string
+ *           description: Creation timestamp (bigint as string)
+ *         createdAtBlock:
+ *           type: string
+ *           description: Creation block number
+ *         txHash:
+ *           type: string
+ *           description: Creation transaction hash
+ *         graduated:
+ *           type: boolean
+ *           description: Whether token has graduated to V2 pool
+ *         canGraduate:
+ *           type: boolean
+ *           description: Whether token is ready to graduate
+ *         v2Pair:
+ *           type: string
+ *           nullable: true
+ *           description: V2 pair address after graduation
+ *         graduatedAt:
+ *           type: string
+ *           nullable: true
+ *           description: Graduation timestamp
+ *         totalBuys:
+ *           type: integer
+ *           description: Total number of buy transactions
+ *         totalSells:
+ *           type: integer
+ *           description: Total number of sell transactions
+ *         totalVolumeBase:
+ *           type: string
+ *           description: Total trading volume in base asset (wei as string)
+ *         lastTradeAt:
+ *           type: string
+ *           nullable: true
+ *           description: Last trade timestamp
+ *
+ *     LaunchpadTrade:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: Trade ID (txHash-logIndex)
+ *         tokenAddress:
+ *           type: string
+ *           description: Token contract address
+ *         trader:
+ *           type: string
+ *           description: Trader wallet address
+ *         isBuy:
+ *           type: boolean
+ *           description: Whether this is a buy (true) or sell (false)
+ *         baseAmount:
+ *           type: string
+ *           description: Base asset amount (wei as string)
+ *         tokenAmount:
+ *           type: string
+ *           description: Token amount (wei as string)
+ *         timestamp:
+ *           type: string
+ *           description: Trade timestamp
+ *         txHash:
+ *           type: string
+ *           description: Transaction hash
+ *         tokenName:
+ *           type: string
+ *           description: Token name (only in recent-trades endpoint)
+ *         tokenSymbol:
+ *           type: string
+ *           description: Token symbol (only in recent-trades endpoint)
+ *
+ *     LaunchpadStats:
+ *       type: object
+ *       properties:
+ *         totalTokens:
+ *           type: integer
+ *           description: Total number of tokens created
+ *         graduatedTokens:
+ *           type: integer
+ *           description: Number of graduated tokens
+ *         activeTokens:
+ *           type: integer
+ *           description: Number of active (not graduating) tokens
+ *         graduatingTokens:
+ *           type: integer
+ *           description: Number of tokens ready to graduate
+ *         totalTrades:
+ *           type: integer
+ *           description: Total number of trades
+ *         totalVolumeBase:
+ *           type: string
+ *           description: Total trading volume in base asset (wei as string)
  */
 
 // This file provides OpenAPI schema definitions via JSDoc comments
