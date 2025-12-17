@@ -23,8 +23,8 @@
  *       properties:
  *         type:
  *           type: string
- *           enum: [v3-pool]
- *           description: Pool type
+ *           enum: [v2-pool, v3-pool]
+ *           description: Pool type (v2-pool for Uniswap V2, v3-pool for Uniswap V3)
  *         address:
  *           type: string
  *           description: Pool contract address
@@ -34,16 +34,22 @@
  *           $ref: '#/components/schemas/Token'
  *         fee:
  *           type: string
- *           description: Pool fee tier (e.g., 3000 for 0.3%)
+ *           description: Pool fee tier in bps (V3 only, e.g., 3000 for 0.3%)
  *         liquidity:
  *           type: string
- *           description: Pool liquidity
+ *           description: Pool liquidity (V3 only)
  *         sqrtRatioX96:
  *           type: string
- *           description: Current sqrt price ratio
+ *           description: Current sqrt price ratio (V3 only)
  *         tickCurrent:
  *           type: string
- *           description: Current tick
+ *           description: Current tick (V3 only)
+ *         reserve0:
+ *           type: string
+ *           description: Reserve of token0 (V2 only)
+ *         reserve1:
+ *           type: string
+ *           description: Reserve of token1 (V2 only)
  *         amountIn:
  *           type: string
  *           description: Input amount for this pool (if first pool)
@@ -334,6 +340,8 @@
  *           type: array
  *           items:
  *             type: string
+ *             enum: [V2, V3]
+ *           description: Routing protocols to use (defaults to all available)
  *
  *     SwapRequest:
  *       type: object

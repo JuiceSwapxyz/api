@@ -26,12 +26,27 @@ function generateRouteString(formattedRoute: any[]): string {
   // For simple single-route with single pool
   if (formattedRoute.length === 1 && formattedRoute[0].length === 1) {
     const pool = formattedRoute[0][0];
-    const feePercent = pool.fee ? (Number(pool.fee) / 10000).toFixed(1) : '0.3';
-    return `[V3] 100.00% = ${pool.tokenIn?.symbol || 'TOKEN'} -- ${feePercent}% [${pool.address}]${pool.tokenOut?.symbol || 'TOKEN'}`;
+    const isV2 = pool.type === 'v2-pool';
+
+    if (isV2) {
+      return `[V2] 100.00% = ${pool.tokenIn?.symbol || 'TOKEN'} -- [${pool.address}] -- ${pool.tokenOut?.symbol || 'TOKEN'}`;
+    } else {
+      const feePercent = pool.fee ? (Number(pool.fee) / 10000).toFixed(1) : '0.3';
+      return `[V3] 100.00% = ${pool.tokenIn?.symbol || 'TOKEN'} -- ${feePercent}% [${pool.address}] -- ${pool.tokenOut?.symbol || 'TOKEN'}`;
+    }
   }
 
-  // For multi-hop or multi-route, build more complex string
-  return '[V3] Multi-hop route';
+  // For multi-hop or multi-route, detect if any pool is V2
+  const hasV2 = formattedRoute.some(route => route.some((pool: any) => pool.type === 'v2-pool'));
+  const hasV3 = formattedRoute.some(route => route.some((pool: any) => pool.type === 'v3-pool'));
+
+  if (hasV2 && hasV3) {
+    return '[V2+V3] Multi-hop route';
+  } else if (hasV2) {
+    return '[V2] Multi-hop route';
+  } else {
+    return '[V3] Multi-hop route';
+  }
 }
 
 function calculatePriceImpact(_route: any): string {
@@ -92,7 +107,7 @@ export interface QuoteResponse {
  *             amount: "1000000000000000000"
  *             type: "EXACT_INPUT"
  *             swapper: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
- *             protocols: ["V3"]
+ *             protocols: ["V2", "V3"]
  *     responses:
  *       200:
  *         content:
@@ -259,13 +274,13 @@ export function createQuoteHandler(
         return;
       }
 
-      // Parse protocols - V3 only (V4 not yet supported in route building)
+      // Parse protocols - V2 and V3 supported (V4 not yet supported in route building)
       let protocols: Protocol[] | undefined = undefined;
       if (body.protocols) {
         protocols = body.protocols
           .map(p => p.toUpperCase())
-          .filter(p => p === 'V3')
-          .map(_ => Protocol.V3);
+          .filter(p => p === 'V2' || p === 'V3')
+          .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
       }
 
       // Get quote from router
@@ -318,10 +333,12 @@ export function createQuoteHandler(
       const v3PoolProvider = routerService.getV3PoolProvider(chainId);
 
       if (routes && routes.length > 0) {
-        // Each route has: route.pools, route.tokenPath, amount, quote
+        // Each route has: route.pools (V3) or route.pairs (V2), route.tokenPath, amount, quote
         for (const subRoute of routes) {
-          const pools = (subRoute.route as any)?.pools || [];
+          // Handle both V3 pools and V2 pairs
+          const pools = (subRoute.route as any)?.pools || (subRoute.route as any)?.pairs || [];
           const tokenPath = (subRoute.route as any)?.tokenPath || [];
+          const isV2Route = !!(subRoute.route as any)?.pairs;
           const curRoute: any[] = [];
 
           for (let i = 0; i < pools.length; i++) {
@@ -344,33 +361,58 @@ export function createQuoteHandler(
                 : subRoute.quote.quotient.toString();
             }
 
-            // Calculate pool address using v3PoolProvider (matching develop branch)
-            const poolAddress = v3PoolProvider && pool.token0 && pool.token1 && pool.fee
-              ? v3PoolProvider.getPoolAddress(pool.token0, pool.token1, pool.fee).poolAddress
-              : 'unknown';
+            if (isV2Route) {
+              // V2 Pair formatting
+              curRoute.push({
+                type: 'v2-pool',
+                address: pool.liquidityToken?.address || 'unknown',
+                tokenIn: {
+                  chainId: tokenIn.chainId,
+                  decimals: tokenIn.decimals.toString(),
+                  address: tokenIn.wrapped?.address || tokenIn.address,
+                  symbol: tokenIn.symbol || 'TOKEN',
+                },
+                tokenOut: {
+                  chainId: tokenOut.chainId,
+                  decimals: tokenOut.decimals.toString(),
+                  address: tokenOut.wrapped?.address || tokenOut.address,
+                  symbol: tokenOut.symbol || 'TOKEN',
+                },
+                reserve0: pool.reserve0?.quotient?.toString() || '0',
+                reserve1: pool.reserve1?.quotient?.toString() || '0',
+                amountIn,
+                amountOut,
+              });
+            } else {
+              // V3 Pool formatting
+              // Calculate pool address using v3PoolProvider (matching develop branch)
+              const poolAddress = v3PoolProvider && pool.token0 && pool.token1 && pool.fee
+                ? v3PoolProvider.getPoolAddress(pool.token0, pool.token1, pool.fee).poolAddress
+                : 'unknown';
 
-            curRoute.push({
-              type: 'v3-pool',
-              address: poolAddress,
-              tokenIn: {
-                chainId: tokenIn.chainId,
-                decimals: tokenIn.decimals.toString(),
-                address: tokenIn.wrapped?.address || tokenIn.address,
-                symbol: tokenIn.symbol || 'TOKEN',
-              },
-              tokenOut: {
-                chainId: tokenOut.chainId,
-                decimals: tokenOut.decimals.toString(),
-                address: tokenOut.wrapped?.address || tokenOut.address,
-                symbol: tokenOut.symbol || 'TOKEN',
-              },
-              fee: pool.fee?.toString() || '3000',
-              liquidity: pool.liquidity?.toString() || '0',
-              sqrtRatioX96: pool.sqrtRatioX96?.toString() || '0',
-              tickCurrent: pool.tickCurrent?.toString() || '0',
-              amountIn,
-              amountOut,
-            });
+              curRoute.push({
+                type: 'v3-pool',
+                address: poolAddress,
+                tokenIn: {
+                  chainId: tokenIn.chainId,
+                  decimals: tokenIn.decimals.toString(),
+                  address: tokenIn.wrapped?.address || tokenIn.address,
+                  symbol: tokenIn.symbol || 'TOKEN',
+                },
+                tokenOut: {
+                  chainId: tokenOut.chainId,
+                  decimals: tokenOut.decimals.toString(),
+                  address: tokenOut.wrapped?.address || tokenOut.address,
+                  symbol: tokenOut.symbol || 'TOKEN',
+                },
+                fee: pool.fee?.toString() || '3000',
+                liquidity: pool.liquidity?.toString() || '0',
+                sqrtRatioX96: pool.sqrtRatioX96?.toString() || '0',
+                tickCurrent: pool.tickCurrent?.toString() || '0',
+                amountIn,
+                amountOut,
+              });
+            }
           }
 
           routeResponse.push(curRoute);
