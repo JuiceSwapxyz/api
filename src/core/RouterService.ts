@@ -5,12 +5,15 @@ import {
   SwapRoute,
   SwapType,
   V3PoolProvider,
+  V2PoolProvider,
   TokenProvider,
   UniswapMulticallProvider,
   CachingTokenProviderWithFallback,
   NodeJSCache,
   EIP1559GasPriceProvider,
   nativeOnChain,
+  ITokenPropertiesProvider,
+  TokenPropertiesResult,
 } from '@juiceswapxyz/smart-order-router';
 import NodeCache from 'node-cache';
 import {
@@ -26,8 +29,22 @@ import { providers } from 'ethers';
 import Logger from 'bunyan';
 import JSBI from 'jsbi';
 import { CitreaStaticV3SubgraphProvider } from '../providers/CitreaStaticV3SubgraphProvider';
+import { GraduatedV2SubgraphProvider } from '../providers/GraduatedV2SubgraphProvider';
 import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
 import { TokenInfoRequester } from '../utils/tokenInfoRequester';
+
+/**
+ * Simple no-op token properties provider for V2 pools.
+ * Returns empty token properties - not needed for basic V2 routing.
+ */
+class NoopTokenPropertiesProvider implements ITokenPropertiesProvider {
+  async getTokensProperties(
+    _currencies: Currency[],
+    _providerConfig?: any
+  ): Promise<Record<string, TokenPropertiesResult>> {
+    return {};
+  }
+}
 
 export interface QuoteParams {
   tokenIn: string;
@@ -112,7 +129,7 @@ export class RouterService {
       // Store token provider for token lookup
       this.tokenProviders.set(chainId, tokenProvider);
 
-      // Initialize V3 pool provider only - no V2 needed
+      // Initialize V3 pool provider
       const v3PoolProvider = new V3PoolProvider(chainId, multicallProvider);
 
       // Store v3PoolProvider for pool address computation
@@ -125,10 +142,26 @@ export class RouterService {
       const tokenInfoRequester = new TokenInfoRequester(multicallProvider);
       this.tokenInfoRequesters.set(chainId, tokenInfoRequester);
 
-      // For Citrea: use custom subgraph provider with static pools
+      // For Citrea: use custom subgraph providers with static pools and graduated V2 pools
       let v3SubgraphProvider = undefined;
+      let v2SubgraphProvider = undefined;
+      let v2PoolProvider = undefined;
+
       if (chainId === ChainId.CITREA_TESTNET) {
+        // V3 subgraph provider with static pools
         v3SubgraphProvider = new CitreaStaticV3SubgraphProvider(chainId, v3PoolProvider);
+
+        // V2 providers for graduated launchpad tokens
+        // GraduatedV2SubgraphProvider fetches pool list from Ponder
+        v2SubgraphProvider = new GraduatedV2SubgraphProvider(chainId, this.logger);
+
+        // V2PoolProvider fetches on-chain data (reserves) for V2 pairs
+        // Use NoopTokenPropertiesProvider since we don't need token fee properties for basic routing
+        v2PoolProvider = new V2PoolProvider(
+          chainId,
+          multicallProvider,
+          new NoopTokenPropertiesProvider()
+        );
       }
 
       // Initialize router with essential providers
@@ -140,6 +173,8 @@ export class RouterService {
         v3PoolProvider,
         gasPriceProvider,
         ...(v3SubgraphProvider && { v3SubgraphProvider }),
+        ...(v2SubgraphProvider && { v2SubgraphProvider }),
+        ...(v2PoolProvider && { v2PoolProvider }),
       }));
     }
   }
