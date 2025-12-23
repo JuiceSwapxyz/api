@@ -103,7 +103,7 @@ export interface QuoteResponse {
  *             tokenInChainId: 5115
  *             tokenInAddress: "0x0000000000000000000000000000000000000000"
  *             tokenOutChainId: 5115
- *             tokenOutAddress: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *             tokenOutAddress: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *             amount: "1000000000000000000"
  *             type: "EXACT_INPUT"
  *             swapper: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
@@ -337,7 +337,8 @@ export function createQuoteHandler(
         for (const subRoute of routes) {
           // Handle both V3 pools and V2 pairs
           const pools = (subRoute.route as any)?.pools || (subRoute.route as any)?.pairs || [];
-          const tokenPath = (subRoute.route as any)?.tokenPath || [];
+          // V2 routes use 'path', V3 routes use 'tokenPath'
+          const tokenPath = (subRoute.route as any)?.path || (subRoute.route as any)?.tokenPath || [];
           const isV2Route = !!(subRoute.route as any)?.pairs;
           const curRoute: any[] = [];
 
@@ -345,6 +346,11 @@ export function createQuoteHandler(
             const pool = pools[i];
             const tokenIn = tokenPath[i];
             const tokenOut = tokenPath[i + 1];
+
+            // Skip if token path is incomplete (shouldn't happen with valid routes)
+            if (!tokenIn || !tokenOut) {
+              continue;
+            }
 
             // Calculate edge amounts for first and last pools
             let amountIn = undefined;

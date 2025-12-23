@@ -6,6 +6,7 @@ import {
   SwapType,
   V3PoolProvider,
   V2PoolProvider,
+  V2QuoteProvider,
   TokenProvider,
   UniswapMulticallProvider,
   CachingTokenProviderWithFallback,
@@ -14,6 +15,7 @@ import {
   nativeOnChain,
   ITokenPropertiesProvider,
   TokenPropertiesResult,
+  setGlobalLogger,
 } from '@juiceswapxyz/smart-order-router';
 import NodeCache from 'node-cache';
 import {
@@ -30,6 +32,7 @@ import Logger from 'bunyan';
 import JSBI from 'jsbi';
 import { CitreaStaticV3SubgraphProvider } from '../providers/CitreaStaticV3SubgraphProvider';
 import { GraduatedV2SubgraphProvider } from '../providers/GraduatedV2SubgraphProvider';
+import { FallbackTokenProvider } from '../providers/FallbackTokenProvider';
 import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
 import { TokenInfoRequester } from '../utils/tokenInfoRequester';
 
@@ -97,6 +100,9 @@ export class RouterService {
   }
 
   private async initialize(): Promise<void> {
+    // Enable smart-order-router internal logging
+    setGlobalLogger(this.logger);
+
     // Initialize routers for each chain with essential providers
     for (const [chainId, provider] of this.providers.entries()) {
       // Initialize multicall provider for efficient batching
@@ -109,7 +115,11 @@ export class RouterService {
       // Initialize token provider with Ponder integration for Citrea
       let tokenProvider;
       if (chainId === ChainId.CITREA_TESTNET) {
-        tokenProvider = await createLocalTokenListProvider(chainId);
+        // Create token list provider from Ponder + static list
+        const tokenListProvider = await createLocalTokenListProvider(chainId);
+        // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
+        // This is needed for graduated launchpad tokens not yet in the token list
+        tokenProvider = new FallbackTokenProvider(chainId, tokenListProvider, multicallProvider);
       } else {
         // Initialize basic token provider for non-Citrea chains
         const baseTokenProvider = new TokenProvider(chainId, multicallProvider);
@@ -152,8 +162,8 @@ export class RouterService {
         v3SubgraphProvider = new CitreaStaticV3SubgraphProvider(chainId, v3PoolProvider);
 
         // V2 providers for graduated launchpad tokens
-        // GraduatedV2SubgraphProvider fetches pool list from Ponder
-        v2SubgraphProvider = new GraduatedV2SubgraphProvider(chainId, this.logger);
+        // GraduatedV2SubgraphProvider fetches pool list from Ponder and on-chain reserves
+        v2SubgraphProvider = new GraduatedV2SubgraphProvider(chainId, this.logger, multicallProvider);
 
         // V2PoolProvider fetches on-chain data (reserves) for V2 pairs
         // Use NoopTokenPropertiesProvider since we don't need token fee properties for basic routing
@@ -175,6 +185,10 @@ export class RouterService {
         ...(v3SubgraphProvider && { v3SubgraphProvider }),
         ...(v2SubgraphProvider && { v2SubgraphProvider }),
         ...(v2PoolProvider && { v2PoolProvider }),
+        // V2QuoteProvider computes quotes off-chain using pool reserves
+        ...(v2PoolProvider && { v2QuoteProvider: new V2QuoteProvider() }),
+        // Enable V2 routing for Citrea testnet (graduated launchpad pools)
+        ...(chainId === ChainId.CITREA_TESTNET && { v2Supported: [ChainId.CITREA_TESTNET] }),
       }));
     }
   }
@@ -318,6 +332,14 @@ export class RouterService {
     // Matches main branch DEFAULT_ROUTING_CONFIG_BY_CHAIN defaults
     const routingConfig: Partial<AlphaRouterConfig> = {
       protocols,
+      v2PoolSelection: {
+        topN: 3,
+        topNDirectSwaps: 2,
+        topNTokenInOut: 2,
+        topNSecondHop: 1,
+        topNWithEachBaseToken: 3,
+        topNWithBaseToken: 3,
+      },
       v3PoolSelection: {
         topN: 2,
         topNDirectSwaps: 2,

@@ -9,7 +9,7 @@ import { FeeAmount } from '@juiceswapxyz/v3-sdk';
 // Citrea tokens - using checksummed addresses
 const CITREA_TOKENS = {
   WCBTC: new Token(ChainId.CITREA_TESTNET, '0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0', 18, 'WCBTC', 'Wrapped cBTC'),
-  CUSD: new Token(ChainId.CITREA_TESTNET, '0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0', 18, 'cUSD', 'cUSD'),
+  JUSD: new Token(ChainId.CITREA_TESTNET, '0xFdB0a83d94CD65151148a131167Eb499Cb85d015', 18, 'JUSD', 'Juice Dollar'),
   USDC: new Token(ChainId.CITREA_TESTNET, '0x36c16eaC6B0Ba6c50f494914ff015fCa95B7835F', 6, 'USDC', 'USDC'),
   NUSD: new Token(ChainId.CITREA_TESTNET, '0x9B28B690550522608890C3C7e63c0b4A7eBab9AA', 18, 'NUSD', 'Nectra USD'),
   TFC: new Token(ChainId.CITREA_TESTNET, '0x14ADf6B87096Ef750a956756BA191fc6BE94e473', 18, 'TFC', 'TaprootFreakCoin'),
@@ -18,7 +18,16 @@ const CITREA_TOKENS = {
   CTR: new Token(ChainId.CITREA_TESTNET, '0x8025aAfab9881D9E9163e1956c3bfb8D3606bb55', 18, 'CTR', 'CITREAN'),
 };
 
-// Static pools
+// V2 pools for gas estimation (required for V2 gas model to price gas in USD)
+export const CITREA_V2_POOLS = {
+  WCBTC_JUSD: {
+    pairAddress: '0x6d091877B1Fb834E3dBdB14a98533573BC963AAB',
+    token0: CITREA_TOKENS.WCBTC,
+    token1: CITREA_TOKENS.JUSD,
+  },
+};
+
+// V3 static pools
 export const CITREA_STATIC_POOLS = [
   // WCBTC/NUSD pools
   {
@@ -58,9 +67,9 @@ export const CITREA_STATIC_POOLS = [
     liquidity: '60000000000000000000000',
   },
 
-  // cUSD/WCBTC pools
+  // JUSD/WCBTC pools
   {
-    token0: CITREA_TOKENS.CUSD,
+    token0: CITREA_TOKENS.JUSD,
     token1: CITREA_TOKENS.WCBTC,
     fee: FeeAmount.MEDIUM,
     liquidity: '45000000000000000000000',
@@ -74,7 +83,7 @@ export const CITREA_STATIC_POOLS = [
     liquidity: '15000000000000000000000',
   },
   {
-    token0: CITREA_TOKENS.CUSD,
+    token0: CITREA_TOKENS.JUSD,
     token1: CITREA_TOKENS.MTK,
     fee: FeeAmount.MEDIUM,
     liquidity: '18000000000000000000000',
@@ -104,7 +113,7 @@ export const CITREA_STATIC_POOLS = [
     liquidity: '40000000000000000000000',
   },
   {
-    token0: CITREA_TOKENS.CUSD,
+    token0: CITREA_TOKENS.JUSD,
     token1: CITREA_TOKENS.NUSD,
     fee: FeeAmount.MEDIUM,
     liquidity: '35000000000000000000000',
@@ -142,7 +151,7 @@ export const CITREA_STATIC_POOLS = [
     liquidity: '10000000000000000000000',
   },
   {
-    token0: CITREA_TOKENS.CUSD,
+    token0: CITREA_TOKENS.JUSD,
     token1: CITREA_TOKENS.TFC,
     fee: FeeAmount.MEDIUM,
     liquidity: '28000000000000000000000',
