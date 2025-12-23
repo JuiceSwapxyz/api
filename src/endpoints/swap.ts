@@ -89,7 +89,7 @@ async function getGasPrices(
  *             tokenInChainId: 5115
  *             tokenInAddress: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
  *             tokenOutChainId: 5115
- *             tokenOutAddress: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *             tokenOutAddress: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *             amount: "1000000000000000000"
  *             type: "exactIn"
  *             recipient: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"

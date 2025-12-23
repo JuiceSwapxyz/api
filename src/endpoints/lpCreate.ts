@@ -96,7 +96,7 @@ interface LpCreateRequestBody {
  *               tickLower: -887220
  *               tickUpper: 887220
  *               pool:
- *                 token0: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
+ *                 token0: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *                 token1: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
  *                 fee: 3000
  *             simulateTransaction: false
