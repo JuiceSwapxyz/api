@@ -69,6 +69,7 @@ export const SwapRequestSchema = z.object({
   chainId: ChainIdSchema.optional(),
   enableUniversalRouter: z.boolean().optional(),
   simulate: z.boolean().optional(),
+  protocols: z.array(z.string()).optional(),
 }).refine(
   (data) => data.tokenIn || data.tokenInAddress,
   {

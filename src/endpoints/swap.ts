@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ChainId } from '@juiceswapxyz/sdk-core';
+import { Protocol } from '@juiceswapxyz/router-sdk';
 import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
@@ -22,6 +23,7 @@ export interface SwapRequestBody {
   deadline?: string;
   from: string;
   chainId?: number;
+  protocols?: string[];
 }
 
 const NATIVE_CURRENCY_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -361,6 +363,17 @@ async function handleClassicSwap(
     const validatedTokenInDecimals = tokenInDecimals!;
     const validatedTokenOutDecimals = tokenOutDecimals!;
 
+    // Parse protocols - V2 and V3 supported
+    let protocols: Protocol[] | undefined = undefined;
+    if (body.protocols) {
+      protocols = body.protocols
+        .map(p => p.toUpperCase())
+        .filter(p => p === 'V2' || p === 'V3')
+        .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+    }
+
+    log.info(`Swap protocols - body.protocols: ${JSON.stringify(body.protocols)}, parsed: ${JSON.stringify(protocols)}`);
+
     // Get swap route with methodParameters
     const swapRoute = await routerService.getSwap({
       tokenIn: validatedTokenIn,
@@ -374,6 +387,7 @@ async function handleClassicSwap(
       slippageTolerance: parseFloat(body.slippageTolerance) / 100, // Convert from percentage
       deadline: body.deadline ? parseInt(body.deadline) : undefined,
       from: body.from,
+      protocols,
     });
 
     if (!swapRoute || !swapRoute.methodParameters) {
