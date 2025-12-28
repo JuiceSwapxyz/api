@@ -61,6 +61,7 @@ export interface QuoteParams {
   slippageTolerance?: number;
   protocols?: Protocol[];
   enableUniversalRouter?: boolean;
+  deadline?: number;
 }
 
 export interface SwapParams extends QuoteParams {
@@ -325,7 +326,7 @@ export class RouterService {
       recipient,
       slippageTolerance: new Percent(Math.round(slippageTolerance * 100), 10000),
       type: SwapType.SWAP_ROUTER_02,
-      deadline: Math.floor(Date.now() / 1000) + 1800,
+      deadline: params.deadline ?? Math.floor(Date.now() / 1000) + 1800,
     };
 
     // Configure routing to enable multi-hop routes

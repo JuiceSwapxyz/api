@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { ChainId } from '@juiceswapxyz/sdk-core';
+import { ChainId, SWAP_ROUTER_02_ADDRESSES } from '@juiceswapxyz/sdk-core';
 import { Protocol } from '@juiceswapxyz/router-sdk';
 import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
@@ -30,12 +30,8 @@ const NATIVE_CURRENCY_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DEFAULT_MAX_FEE_PER_GAS = '0x1dcd6500'; // 500 gwei fallback
 const DEFAULT_MAX_PRIORITY_FEE_PER_GAS = '0x3b9aca00'; // 1 gwei fallback
 
-// V3 Swap Router addresses for different chains
-const SWAP_ROUTER_ADDRESSES: Record<number, string> = {
-  1: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45', // Ethereum Mainnet
-  11155111: '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E', // Sepolia Testnet
-  5115: '0x610c98EAD0df13EA906854b6041122e8A8D14413', // Citrea Testnet
-};
+// SwapRouter02 addresses are imported from @juiceswapxyz/sdk-core
+// Source of truth: sdk-core/src/addresses.ts
 
 /**
  * Fetch current gas prices from RPC provider
@@ -326,8 +322,8 @@ async function handleClassicSwap(
       return;
     }
 
-    // Get router address
-    const routerAddress = SWAP_ROUTER_ADDRESSES[chainId];
+    // Get router address from sdk-core (single source of truth)
+    const routerAddress = SWAP_ROUTER_02_ADDRESSES(chainId);
     if (!routerAddress) {
       res.status(400).json({
         error: 'No router address',
@@ -385,7 +381,7 @@ async function handleClassicSwap(
       type: body.type === 'exactOut' ? 'exactOut' : 'exactIn',
       recipient: body.recipient,
       slippageTolerance: parseFloat(body.slippageTolerance) / 100, // Convert from percentage
-      deadline: body.deadline ? parseInt(body.deadline) : undefined,
+      deadline: body.deadline ? Math.floor(Date.now() / 1000) + parseInt(body.deadline) : undefined,
       from: body.from,
       protocols,
     });
