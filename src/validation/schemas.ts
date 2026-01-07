@@ -234,3 +234,35 @@ export const LightningInvoiceRequestSchema = z.object({
 });
 
 export type LightningInvoiceRequest = z.infer<typeof LightningInvoiceRequestSchema>;
+
+// Launchpad metadata upload schemas
+export const LaunchpadUploadMetadataSchema = z.object({
+  name: z.string()
+    .min(1, 'Name is required')
+    .max(100, 'Name must be 100 characters or less')
+    .transform(val => val.trim()),
+  description: z.string()
+    .min(1, 'Description is required')
+    .max(500, 'Description must be 500 characters or less')
+    .transform(val => val.trim()),
+  imageURI: z.string()
+    .min(1, 'Image URI is required')
+    .refine(
+      (val) => val.startsWith('ipfs://') || val.startsWith('ar://') || val.startsWith('https://'),
+      'Image URI must start with ipfs://, ar://, or https://'
+    ),
+  website: z.string()
+    .url('Invalid website URL')
+    .optional()
+    .or(z.literal('')),
+  twitter: z.string()
+    .max(100, 'Twitter handle must be 100 characters or less')
+    .optional()
+    .or(z.literal('')),
+  telegram: z.string()
+    .max(100, 'Telegram handle must be 100 characters or less')
+    .optional()
+    .or(z.literal('')),
+});
+
+export type LaunchpadUploadMetadataRequest = z.infer<typeof LaunchpadUploadMetadataSchema>;

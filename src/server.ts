@@ -21,6 +21,10 @@ import {
   createLaunchpadRecentTradesHandler,
 } from './endpoints/launchpad';
 import {
+  createUploadImageHandler,
+  createUploadMetadataHandler,
+} from './endpoints/launchpadMetadata';
+import {
   createTotalAddressesWithIpHandler,
   createUniqueIpHashesHandler,
 } from './endpoints/userMetrics';
@@ -55,6 +59,7 @@ import {
   LaunchpadRecentTradesQuerySchema,
   LightningInvoiceRequestSchema,
   LightningAddressRequestSchema,
+  LaunchpadUploadMetadataSchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 import { createSwapApproveHandler } from './endpoints/swapApprove';
@@ -192,6 +197,8 @@ async function bootstrap() {
   const handleLaunchpadTokenTrades = createLaunchpadTokenTradesHandler(logger);
   const handleLaunchpadStats = createLaunchpadStatsHandler(logger);
   const handleLaunchpadRecentTrades = createLaunchpadRecentTradesHandler(logger);
+  const handleUploadImage = createUploadImageHandler(logger);
+  const handleUploadMetadata = createUploadMetadataHandler(logger);
 
   // Campaign endpoint handlers
   const handleTwitterStart = createTwitterStartHandler(logger);
@@ -236,6 +243,10 @@ async function bootstrap() {
   app.get('/v1/launchpad/token/:address/trades', generalLimiter, validateQuery(LaunchpadTradesQuerySchema, logger), handleLaunchpadTokenTrades);
   app.get('/v1/launchpad/stats', generalLimiter, handleLaunchpadStats);
   app.get('/v1/launchpad/recent-trades', generalLimiter, validateQuery(LaunchpadRecentTradesQuerySchema, logger), handleLaunchpadRecentTrades);
+
+  // Launchpad metadata upload endpoints (Pinata IPFS)
+  app.post('/v1/launchpad/upload-image', generalLimiter, handleUploadImage);
+  app.post('/v1/launchpad/upload-metadata', generalLimiter, validateBody(LaunchpadUploadMetadataSchema, logger), handleUploadMetadata);
 
   // Campaign endpoints - Twitter OAuth
   app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
