@@ -312,6 +312,20 @@
  *           type: string
  *           description: Estimated gas fee in ETH
  *
+ *     LpIncreaseResponse:
+ *       type: object
+ *       properties:
+ *         requestId:
+ *           type: string
+ *         increase:
+ *           $ref: '#/components/schemas/SwapTransaction'
+ *         dependentAmount:
+ *           type: string
+ *           description: Calculated amount for the dependent token
+ *         gasFee:
+ *           type: string
+ *           description: Estimated gas fee in ETH
+ *
  *     QuoteRequest:
  *       type: object
  *       required:
@@ -458,6 +472,61 @@
  *           type: string
  *         initialPrice:
  *           type: string
+ *         position:
+ *           type: object
+ *           required:
+ *             - tickLower
+ *             - tickUpper
+ *             - pool
+ *           properties:
+ *             tickLower:
+ *               type: integer
+ *             tickUpper:
+ *               type: integer
+ *             pool:
+ *               type: object
+ *               required:
+ *                 - token0
+ *                 - token1
+ *                 - fee
+ *               properties:
+ *                 tickSpacing:
+ *                   type: integer
+ *                 token0:
+ *                   type: string
+ *                 token1:
+ *                   type: string
+ *                 fee:
+ *                   type: integer
+ *
+ *     LpIncreaseRequest:
+ *       type: object
+ *       required:
+ *         - protocol
+ *         - walletAddress
+ *         - chainId
+ *         - tokenId
+ *         - independentAmount
+ *         - independentToken
+ *         - position
+ *       properties:
+ *         simulateTransaction:
+ *           type: boolean
+ *         protocol:
+ *           type: string
+ *           enum: [V3]
+ *         walletAddress:
+ *           type: string
+ *         chainId:
+ *           type: integer
+ *         tokenId:
+ *           type: string
+ *           description: NFT tokenId of the position to increase
+ *         independentAmount:
+ *           type: string
+ *         independentToken:
+ *           type: string
+ *           enum: [TOKEN_0, TOKEN_1]
  *         position:
  *           type: object
  *           required:
