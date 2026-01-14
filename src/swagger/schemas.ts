@@ -326,6 +326,17 @@
  *           type: string
  *           description: Estimated gas fee in ETH
  *
+ *     LpDecreaseResponse:
+ *       type: object
+ *       properties:
+ *         requestId:
+ *           type: string
+ *         decrease:
+ *           $ref: '#/components/schemas/SwapTransaction'
+ *         gasFee:
+ *           type: string
+ *           description: Estimated gas fee in ETH
+ *
  *     QuoteRequest:
  *       type: object
  *       required:
@@ -527,6 +538,68 @@
  *         independentToken:
  *           type: string
  *           enum: [TOKEN_0, TOKEN_1]
+ *         position:
+ *           type: object
+ *           required:
+ *             - tickLower
+ *             - tickUpper
+ *             - pool
+ *           properties:
+ *             tickLower:
+ *               type: integer
+ *             tickUpper:
+ *               type: integer
+ *             pool:
+ *               type: object
+ *               required:
+ *                 - token0
+ *                 - token1
+ *                 - fee
+ *               properties:
+ *                 tickSpacing:
+ *                   type: integer
+ *                 token0:
+ *                   type: string
+ *                 token1:
+ *                   type: string
+ *                 fee:
+ *                   type: integer
+ *
+ *     LpDecreaseRequest:
+ *       type: object
+ *       required:
+ *         - simulateTransaction
+ *         - protocol
+ *         - tokenId
+ *         - chainId
+ *         - walletAddress
+ *         - liquidityPercentageToDecrease
+ *         - positionLiquidity
+ *         - expectedTokenOwed0RawAmount
+ *         - expectedTokenOwed1RawAmount
+ *         - position
+ *       properties:
+ *         simulateTransaction:
+ *           type: boolean
+ *         protocol:
+ *           type: string
+ *           enum: [V3]
+ *         tokenId:
+ *           type: integer
+ *         chainId:
+ *           type: integer
+ *         walletAddress:
+ *           type: string
+ *         liquidityPercentageToDecrease:
+ *           type: number
+ *           description: Percent (0-100) of position liquidity to remove
+ *         positionLiquidity:
+ *           type: string
+ *           description: Raw liquidity of the position (as integer string)
+ *         expectedTokenOwed0RawAmount:
+ *           type: string
+ *         expectedTokenOwed1RawAmount:
+ *           type: string
  *         position:
  *           type: object
  *           required:
