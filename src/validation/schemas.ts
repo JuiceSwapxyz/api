@@ -166,6 +166,36 @@ export const LpCreateRequestSchema = z.object({
 
 export type LpCreateRequest = z.infer<typeof LpCreateRequestSchema>;
 
+// LP Increase schema
+export const LpIncreaseRequestSchema = z.object({
+  simulateTransaction: z.boolean().optional(),
+  protocol: z.literal('V3'),
+  walletAddress: AddressSchema,
+  chainId: ChainIdSchema,
+  tokenId: z.number().int().positive(),
+  independentAmount: AmountSchema,
+  independentToken: z.enum(['TOKEN_0', 'TOKEN_1']),
+  position: PositionInfoSchema,
+});
+
+export type LpIncreaseRequest = z.infer<typeof LpIncreaseRequestSchema>;
+
+// LP Decrease schema
+export const LpDecreaseRequestSchema = z.object({
+  simulateTransaction: z.boolean().optional(),
+  protocol: z.literal('V3'),
+  tokenId: z.number().int().positive(),
+  chainId: ChainIdSchema,
+  walletAddress: AddressSchema,
+  liquidityPercentageToDecrease: z.number().positive().max(100),
+  positionLiquidity: AmountSchema,
+  expectedTokenOwed0RawAmount: AmountSchema,
+  expectedTokenOwed1RawAmount: AmountSchema,
+  position: PositionInfoSchema,
+});
+
+export type LpDecreaseRequest = z.infer<typeof LpDecreaseRequestSchema>;
+
 // Portfolio endpoint schema
 export const PortfolioQuerySchema = z.object({
   chainId: z.string().optional().default('5115').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),

@@ -12,6 +12,8 @@ import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
+import { createLpIncreaseHandler } from './endpoints/lpIncrease';
+import { createLpDecreaseHandler } from './endpoints/lpDecrease';
 import { createPortfolioHandler } from './endpoints/portfolio';
 import {
   createLaunchpadTokensHandler,
@@ -52,6 +54,8 @@ import {
   SwapsQuerySchema,
   LpApproveRequestSchema,
   LpCreateRequestSchema,
+  LpIncreaseRequestSchema,
+  LpDecreaseRequestSchema,
   PortfolioQuerySchema,
   SwapApproveRequestSchema,
   LaunchpadTokensQuerySchema,
@@ -187,6 +191,8 @@ async function bootstrap() {
   const handleSwaps = createSwapsHandler(routerService, logger);
   const handleLpApprove = createLpApproveHandler(routerService, logger);
   const handleLpCreate = createLpCreateHandler(routerService, logger);
+  const handleLpIncrease = createLpIncreaseHandler(routerService, logger);
+  const handleLpDecrease = createLpDecreaseHandler(routerService, logger);
   const handlePortfolio = createPortfolioHandler(providers, logger);
 
   // User metrics endpoint handlers
@@ -232,6 +238,8 @@ async function bootstrap() {
   // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
   app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
+  app.post('/v1/lp/increase', generalLimiter, validateBody(LpIncreaseRequestSchema, logger), handleLpIncrease);
+  app.post('/v1/lp/decrease', generalLimiter, validateBody(LpDecreaseRequestSchema, logger), handleLpDecrease);
 
   // Lightning invoice endpoint
   app.post('/v1/lightning/invoice', generalLimiter, validateBody(LightningInvoiceRequestSchema, logger), handleLightningInvoice);
