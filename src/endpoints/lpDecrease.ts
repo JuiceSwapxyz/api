@@ -3,31 +3,9 @@ import Logger from 'bunyan';
 import { ethers } from 'ethers';
 import JSBI from 'jsbi';
 import { RouterService } from '../core/RouterService';
-import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES, Token, CurrencyAmount, Percent, WETH9, Ether } from '@juiceswapxyz/sdk-core';
-import { ADDRESS_ZERO, NonfungiblePositionManager, Position, nearestUsableTick } from '@juiceswapxyz/v3-sdk';
-import { getPoolInstance } from '../utils/poolFactory';
-import { getPonderClient } from '../services/PonderClient';
-import { fetchV3OnchainPoolInfo } from '../utils/v3OnchainPositionInfo';
-
-const TICK_SPACING: Record<number, number> = {
-  100: 1,
-  500: 10,
-  3000: 60,
-  10000: 200,
-};
-
-interface PoolInfo {
-  tickSpacing?: number;
-  token0: string; // can be ADDRESS_ZERO
-  token1: string; // can be ADDRESS_ZERO
-  fee: number;
-}
-
-interface PositionInfo {
-  tickLower: number;
-  tickUpper: number;
-  pool: PoolInfo;
-}
+import { CurrencyAmount, Percent, Ether } from '@juiceswapxyz/sdk-core';
+import { ADDRESS_ZERO, NonfungiblePositionManager, Position } from '@juiceswapxyz/v3-sdk';
+import { estimateEip1559Gas, getV3LpContext, V3LpPositionInput } from './_shared/v3LpCommon';
 
 interface LpDecreaseRequestBody {
   simulateTransaction?: boolean;
@@ -39,13 +17,8 @@ interface LpDecreaseRequestBody {
   positionLiquidity: string; // raw liquidity as integer string
   expectedTokenOwed0RawAmount: string; // raw amount as integer string
   expectedTokenOwed1RawAmount: string; // raw amount as integer string
-  position: PositionInfo;
+  position: V3LpPositionInput;
 }
-
-const getTokenAddress = (token: string, chainId: number) => {
-  const address = token === ADDRESS_ZERO ? WETH9[chainId].address : token;
-  return ethers.utils.getAddress(address);
-};
 
 /**
  * @swagger
@@ -125,112 +98,25 @@ export function createLpDecreaseHandler(routerService: RouterService, logger: Lo
         return;
       }
 
-      const provider = routerService.getProvider(chainId);
-      if (!provider) {
-        log.debug({ chainId }, 'Validation failed: invalid chainId for LP decrease');
-        res.status(400).json({ message: 'Invalid chainId', error: 'InvalidChainId' });
-        return;
-      }
-
-      const positionManagerAddress = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
-      if (!positionManagerAddress) {
-        res.status(400).json({ message: 'Unsupported chain for LP operations', error: 'UnsupportedChain' });
-        return;
-      }
-
       const percentBps = Math.round(liquidityPercentageToDecrease * 100);
       if (percentBps <= 0 || percentBps > 10_000) {
         res.status(400).json({ message: 'liquidityPercentageToDecrease must be > 0 and <= 100', error: 'InvalidLiquidityPercentage' });
         return;
       }
 
-      const token0Addr = getTokenAddress(position.pool.token0, chainId);
-      const token1Addr = getTokenAddress(position.pool.token1, chainId);
-      if (token0Addr.toLowerCase() >= token1Addr.toLowerCase()) {
-        res.status(400).json({ message: 'token0 must be < token1 by address', error: 'TokenOrderInvalid' });
-        return;
-      }
-
-      const ponderClient = getPonderClient(logger);
-      const positionInfo = await ponderClient.query(
-        `
-        query QueryInfo($wherePosition: positionFilter = {}, $token0Id: String = "", $token1Id: String = "") {
-             positions(where: $wherePosition) {
-                items {
-                    tickLower
-                    tickUpper
-                    tokenId
-                    poolAddress
-                }
-            }
-            token0: token(id: $token0Id) {
-                address
-                decimals
-                id
-                name
-                symbol
-            }
-            token1: token(id: $token1Id) {
-                address
-                decimals
-                id
-                name
-                symbol
-            }
-        }
-      `,
-        {
-          wherePosition: {
-            tokenId: tokenId.toString(),
-          },
-          token0Id: token0Addr.toLowerCase(),
-          token1Id: token1Addr.toLowerCase(),
-        }
-      );
-
-      const positionData = positionInfo.positions.items[0];
-      const token0Data = positionInfo.token0;
-      const token1Data = positionInfo.token1;
-      if (!positionData || !token0Data || !token1Data) {
-        res.status(400).json({ message: 'Token not found', error: 'TokenNotFound' });
-        return;
-      }
-
-      const token0 = new Token(chainId, token0Data.address, token0Data.decimals);
-      const token1 = new Token(chainId, token1Data.address, token1Data.decimals);
-
-      const onchainPoolInfo = await fetchV3OnchainPoolInfo({
-        provider,
-        poolAddress: positionData.poolAddress,
-      });
-
-      const poolInstance = await getPoolInstance({
-        token0,
-        token1,
-        fee: position.pool.fee,
+      const ctx = await getV3LpContext({
+        routerService,
+        logger: log,
         chainId,
-        provider,
-        liquidity: onchainPoolInfo.currentLiquidity,
-        tickCurrent: parseInt(onchainPoolInfo.currentTick),
-        sqrtPriceX96: onchainPoolInfo.currentPrice,
+        tokenId,
+        position,
       });
-      if (!poolInstance) {
-        res.status(400).json({ message: 'Invalid pool instance', error: 'InvalidPoolInstance' });
+      if (!ctx.ok) {
+        res.status(ctx.status).json({ message: ctx.message, error: ctx.error });
         return;
       }
 
-      const spacing = TICK_SPACING[position.pool.fee] ?? position.pool.tickSpacing;
-      if (spacing === undefined) {
-        res.status(400).json({ message: 'Unsupported fee tier', error: 'UnsupportedFee' });
-        return;
-      }
-
-      const tickLower = nearestUsableTick(position.tickLower, spacing);
-      const tickUpper = nearestUsableTick(position.tickUpper, spacing);
-      if (tickLower >= tickUpper) {
-        res.status(400).json({ message: 'Invalid tick range: tickLower < tickUpper', error: 'InvalidTickRange' });
-        return;
-      }
+      const { provider, positionManagerAddress, poolInstance, tickLower, tickUpper, token0, token1 } = ctx.data;
 
       const positionInstance = new Position({
         pool: poolInstance,
@@ -261,27 +147,16 @@ export function createLpDecreaseHandler(routerService: RouterService, logger: Lo
         },
       });
 
-      const feeData = await provider.getFeeData();
-
-      let gasEstimate = ethers.BigNumber.from('650000');
-      try {
-        gasEstimate = await provider.estimateGas({
+      const { gasLimit, maxFeePerGas, maxPriorityFeePerGas, gasFee } = await estimateEip1559Gas({
+        provider,
+        tx: {
           to: positionManagerAddress,
           from: walletAddress,
           data: calldata,
           value,
-        });
-      } catch (_e) {
-        log.warn('Gas estimation failed, using fallback');
-      }
-
-      const gasLimit = gasEstimate.mul(110).div(100);
-
-      const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
-      const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
-      const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
-
-      const gasFee = gasLimit.mul(maxFeePerGas);
+        },
+        logger: log,
+      });
 
       res.status(200).json({
         requestId: `lp-decrease-${Date.now()}`,
