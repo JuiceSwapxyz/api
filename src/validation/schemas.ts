@@ -266,3 +266,11 @@ export const LaunchpadUploadMetadataSchema = z.object({
 });
 
 export type LaunchpadUploadMetadataRequest = z.infer<typeof LaunchpadUploadMetadataSchema>;
+
+// Position Info query schema
+export const PositionInfoQuerySchema = z.object({
+  chainId: z.string().optional().default('5115').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),
+  protocol: z.enum(['V2', 'V3']).optional().default('V3'),
+});
+
+export type PositionInfoQuery = z.infer<typeof PositionInfoQuerySchema>;

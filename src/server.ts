@@ -60,11 +60,13 @@ import {
   LightningInvoiceRequestSchema,
   LightningAddressRequestSchema,
   LaunchpadUploadMetadataSchema,
+  PositionInfoQuerySchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 import { createSwapApproveHandler } from './endpoints/swapApprove';
 import { createLightningInvoiceHandler } from './endpoints/lightningInvoice';
 import { createValidateLightningAddressHandler } from './endpoints/validateLightningAddress';
+import { createPositionInfoHandler } from './endpoints/positionInfo';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -211,6 +213,8 @@ async function bootstrap() {
   const handleNFTSignature = createNFTSignatureHandler(logger);
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress = createValidateLightningAddressHandler(logger);
+  const handlePositionInfo = createPositionInfoHandler(routerService, logger);
+
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
   app.post('/v1/swap', generalLimiter, validateBody(SwapRequestSchema, logger), handleSwap);
@@ -221,6 +225,9 @@ async function bootstrap() {
 
   // Portfolio endpoint (returns wallet token balances)
   app.get('/v1/portfolio/:address', generalLimiter, validateQuery(PortfolioQuerySchema, logger), handlePortfolio);
+
+  // Position info endpoint (returns liquidity position information)
+  app.get('/v1/positions/:tokenId', generalLimiter, validateQuery(PositionInfoQuerySchema, logger), handlePositionInfo);
 
   // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
