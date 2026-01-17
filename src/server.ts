@@ -8,6 +8,7 @@ import { RouterService } from './core/RouterService';
 import { initializeProviders, verifyProviders } from './providers/rpcProvider';
 import { createQuoteHandler } from './endpoints/quote';
 import { createSwapHandler } from './endpoints/swap';
+import { JuiceGatewayService } from './services/JuiceGatewayService';
 import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
@@ -97,6 +98,9 @@ async function bootstrap() {
   // Initialize router service with Ponder integration
   const routerService = await RouterService.create(providers, logger);
 
+  // Initialize JuiceGateway service for JUSD/JUICE token routing
+  const juiceGatewayService = new JuiceGatewayService(providers, logger);
+
   // Initialize GraphQL resolvers
   initializeResolvers(routerService, logger);
 
@@ -184,13 +188,13 @@ async function bootstrap() {
   });
 
   // Create endpoint handlers
-  const handleQuote = createQuoteHandler(routerService, logger);
-  const handleSwap = createSwapHandler(routerService, logger);
+  const handleQuote = createQuoteHandler(routerService, logger, juiceGatewayService);
+  const handleSwap = createSwapHandler(routerService, logger, juiceGatewayService);
   const handleSwappableTokens = createSwappableTokensHandler(logger);
   const handleSwapApprove = createSwapApproveHandler(routerService, logger);
   const handleSwaps = createSwapsHandler(routerService, logger);
-  const handleLpApprove = createLpApproveHandler(routerService, logger);
-  const handleLpCreate = createLpCreateHandler(routerService, logger);
+  const handleLpApprove = createLpApproveHandler(routerService, logger, juiceGatewayService);
+  const handleLpCreate = createLpCreateHandler(routerService, logger, juiceGatewayService);
   const handleLpIncrease = createLpIncreaseHandler(routerService, logger);
   const handleLpDecrease = createLpDecreaseHandler(routerService, logger);
   const handlePortfolio = createPortfolioHandler(providers, logger);
@@ -283,10 +287,11 @@ async function bootstrap() {
   app.use('/v1/graphql', await getApolloMiddleware(logger));
 
   // API Documentation (Swagger UI)
-  app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  // Type assertions needed due to @types/swagger-ui-express bundling its own @types/express
+  app.use('/swagger', swaggerUi.serve as any, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'JuiceSwap API Documentation',
-  }));
+  }) as any);
 
   // Health check endpoints
   app.get('/healthz', (_req: Request, res: Response) => {

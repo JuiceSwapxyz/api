@@ -5,6 +5,8 @@ import { extractIpAddress } from '../utils/ipAddress';
 import Logger from 'bunyan';
 import { getApproveTxForToken } from '../utils/erc20';
 import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES } from '@juiceswapxyz/sdk-core';
+import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { hasJuiceDollarIntegration } from '../config/contracts';
 
 interface LpApproveRequestBody {
   simulateTransaction: boolean;
@@ -34,7 +36,7 @@ interface LpApproveRequestBody {
  *             chainId: 5115
  *             protocol: "V3"
  *             token0: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
- *             token1: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *             token1: "0x8d0c9d1c17aE5e40ffF9bE350f57840E9E66Cd93"
  *             amount0: "1000000000000000000"
  *             amount1: "1000000000000000000"
  *             simulateTransaction: false
@@ -50,7 +52,11 @@ interface LpApproveRequestBody {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-export function createLpApproveHandler(routerService: RouterService, logger: Logger) {
+export function createLpApproveHandler(
+  routerService: RouterService,
+  logger: Logger,
+  juiceGatewayService?: JuiceGatewayService
+) {
   return async function handleLpApprove(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'lp_approve' });
 
@@ -78,7 +84,24 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
         return;
       }
 
-      const spender = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
+      // Determine spender based on whether JUSD is involved
+      // If JUSD is involved, route through Gateway for automatic svJUSD conversion
+      let spender = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
+      let routingType: 'POSITION_MANAGER' | 'GATEWAY' = 'POSITION_MANAGER';
+
+      if (
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId) &&
+        juiceGatewayService.detectLpGatewayRouting(chainId, token0, token1)
+      ) {
+        const gatewayAddress = juiceGatewayService.getGatewayAddress(chainId);
+        if (gatewayAddress) {
+          spender = gatewayAddress;
+          routingType = 'GATEWAY';
+          log.debug({ chainId, token0, token1 }, 'LP approval routed through Gateway for JUSD');
+        }
+      }
+
       if (!spender) {
         res.status(400).json({
           message: 'Unsupported chain for LP operations',
@@ -104,10 +127,12 @@ export function createLpApproveHandler(routerService: RouterService, logger: Log
         token1PermitTransaction: null,
         positionTokenPermitTransaction: null,
         gasFeeToken0Approval: token0Approval?.gasLimit || '0',
-        gasFeeToken1Approval: token1Approval?.gasLimit || '0'
+        gasFeeToken1Approval: token1Approval?.gasLimit || '0',
+        _spender: spender,
+        _routingType: routingType,
       });
 
-      log.debug({ chainId, walletAddress }, 'LP approve request completed');
+      log.debug({ chainId, walletAddress, routingType }, 'LP approve request completed');
 
     } catch (error: any) {
       log.error({ error }, 'Error in handleLpApprove');

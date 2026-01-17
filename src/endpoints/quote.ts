@@ -8,6 +8,11 @@ import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
+import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import {
+  getChainContracts,
+  hasJuiceDollarIntegration,
+} from '../config/contracts';
 import Logger from 'bunyan';
 
 // Helper functions for AWS-compatible response formatting
@@ -74,6 +79,9 @@ enum Routing {
   CLASSIC = 'CLASSIC',
   WRAP = 'WRAP',
   UNWRAP = 'UNWRAP',
+  GATEWAY_JUSD = 'GATEWAY_JUSD',         // JUSD swap via JuiceSwapGateway
+  GATEWAY_JUICE_OUT = 'GATEWAY_JUICE_OUT', // Buy JUICE via Gateway + Equity
+  GATEWAY_JUICE_IN = 'GATEWAY_JUICE_IN',   // Sell JUICE via Equity.redeem()
 }
 
 export interface QuoteResponse {
@@ -122,7 +130,8 @@ export interface QuoteResponse {
  */
 export function createQuoteHandler(
   routerService: RouterService,
-  logger: Logger
+  logger: Logger,
+  juiceGatewayService?: JuiceGatewayService
 ) {
   return async function handleQuote(req: Request, res: Response): Promise<void> {
     const startTime = Date.now();
@@ -272,6 +281,174 @@ export function createQuoteHandler(
         res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
         res.json(wrapResponse);
         return;
+      }
+
+      // ============================================
+      // JuiceDollar Gateway Routing (JUSD/JUICE)
+      // ============================================
+      // Detect if this swap involves JUSD or JUICE tokens that need Gateway routing
+      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
+        const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
+
+        if (routingType) {
+          log.debug({ routingType, tokenIn, tokenOut }, 'Gateway routing detected');
+
+          try {
+            // Check if Gateway is paused
+            const isPaused = await juiceGatewayService.isGatewayPaused(chainId);
+            if (isPaused) {
+              res.status(503).json({
+                error: 'GATEWAY_PAUSED',
+                detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
+              });
+              return;
+            }
+
+            // Prepare quote with internal token conversions
+            const gatewayQuote = await juiceGatewayService.prepareQuote(
+              chainId,
+              tokenIn,
+              tokenOut,
+              body.amount
+            );
+
+            if (!gatewayQuote) {
+              res.status(500).json({
+                error: 'GATEWAY_QUOTE_FAILED',
+                detail: 'Failed to prepare Gateway quote',
+              });
+              return;
+            }
+
+            // For JUICE input, we've already converted to JUSD amount internally
+            // Now route using internal tokens (svJUSD-based pools)
+            const contracts = getChainContracts(chainId)!;
+
+            // Get decimals for internal tokens
+            let internalTokenInDecimals = tokenInDecimals;
+            let internalTokenOutDecimals = tokenOutDecimals;
+
+            // svJUSD and JUSD both have 18 decimals
+            if (gatewayQuote.internalTokenIn.toLowerCase() === contracts.SV_JUSD.toLowerCase()) {
+              internalTokenInDecimals = 18;
+            }
+            if (gatewayQuote.internalTokenOut.toLowerCase() === contracts.SV_JUSD.toLowerCase()) {
+              internalTokenOutDecimals = 18;
+            }
+
+            // Parse protocols
+            let protocols: Protocol[] | undefined = undefined;
+            if (body.protocols) {
+              protocols = body.protocols
+                .map(p => p.toUpperCase())
+                .filter(p => p === 'V2' || p === 'V3')
+                .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+            }
+
+            // Get internal route quote
+            const internalRoute = await routerService.getQuote({
+              tokenIn: gatewayQuote.internalTokenIn,
+              tokenOut: gatewayQuote.internalTokenOut,
+              tokenInDecimals: internalTokenInDecimals,
+              tokenOutDecimals: internalTokenOutDecimals,
+              amount: gatewayQuote.internalAmountIn,
+              chainId,
+              type: body.type === 'EXACT_OUTPUT' ? 'exactOut' : 'exactIn',
+              recipient: body.swapper,
+              protocols,
+              enableUniversalRouter: body.enableUniversalRouter,
+            });
+
+            if (!internalRoute) {
+              res.status(404).json({
+                error: 'NO_ROUTE',
+                detail: 'No route found for Gateway swap',
+              });
+              return;
+            }
+
+            // Convert internal output to user-facing token
+            const internalOutputAmount = internalRoute.quote.quotient.toString();
+            const userOutputAmount = await juiceGatewayService.convertOutputToUserToken(
+              chainId,
+              tokenOut,
+              internalOutputAmount,
+              routingType
+            );
+
+            // Build Gateway quote response
+            const quoteId = generateQuoteId();
+            const inputAmountDecimals = formatDecimals(body.amount, tokenInDecimals);
+            const outputAmountDecimals = formatDecimals(userOutputAmount, tokenOutDecimals);
+
+            // Map routing type to Routing enum
+            const gatewayRouting = routingType === 'GATEWAY_JUICE_IN'
+              ? Routing.GATEWAY_JUICE_IN
+              : routingType === 'GATEWAY_JUICE_OUT'
+                ? Routing.GATEWAY_JUICE_OUT
+                : Routing.GATEWAY_JUSD;
+
+            const gatewayResponse: QuoteResponse = {
+              requestId: quoteId,
+              routing: gatewayRouting,
+              permitData: null,
+              quote: {
+                chainId: chainId,
+                swapper: body.swapper || '0x0000000000000000000000000000000000000000',
+                input: {
+                  amount: body.amount,
+                  token: tokenIn,
+                },
+                output: {
+                  amount: userOutputAmount,
+                  token: tokenOut,
+                  recipient: body.swapper || '0x0000000000000000000000000000000000000000',
+                },
+                tradeType: body.type || 'EXACT_INPUT',
+                amount: body.amount,
+                amountDecimals: inputAmountDecimals,
+                quote: userOutputAmount,
+                quoteDecimals: outputAmountDecimals,
+                quoteGasAdjusted: internalRoute.quoteGasAdjusted.quotient.toString(),
+                gasUseEstimate: internalRoute.estimatedGasUsed.toString(),
+                gasUseEstimateUSD: internalRoute.estimatedGasUsedUSD.toExact(),
+                gasPriceWei: internalRoute.gasPriceWei.toString(),
+                // Include internal routing info for swap endpoint
+                _internal: {
+                  routingType,
+                  internalTokenIn: gatewayQuote.internalTokenIn,
+                  internalTokenOut: gatewayQuote.internalTokenOut,
+                  internalAmountIn: gatewayQuote.internalAmountIn,
+                  internalOutputAmount,
+                },
+              },
+            };
+
+            // Cache Gateway quotes
+            if (quoteCache.shouldCache(body, gatewayResponse)) {
+              quoteCache.set(body, gatewayResponse);
+            }
+
+            res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
+            log.debug({
+              routingType,
+              userInput: body.amount,
+              userOutput: userOutputAmount,
+              responseTime: Date.now() - startTime,
+            }, 'Gateway quote generated');
+
+            res.json(gatewayResponse);
+            return;
+
+          } catch (error) {
+            log.error({ error, routingType }, 'Gateway quote failed');
+            res.status(500).json({
+              error: 'GATEWAY_ERROR',
+              detail: error instanceof Error ? error.message : 'Gateway routing failed',
+            });
+            return;
+          }
+        }
       }
 
       // Parse protocols - V2 and V3 supported (V4 not yet supported in route building)

@@ -4,6 +4,11 @@ import { Protocol } from '@juiceswapxyz/router-sdk';
 import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
+import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import {
+  getChainContracts,
+  hasJuiceDollarIntegration,
+} from '../config/contracts';
 import { ethers } from 'ethers';
 import Logger from 'bunyan';
 
@@ -85,7 +90,7 @@ async function getGasPrices(
  *             $ref: '#/components/schemas/SwapRequest'
  *           example:
  *             tokenInChainId: 5115
- *             tokenInAddress: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *             tokenInAddress: "0x8d0c9d1c17aE5e40ffF9bE350f57840E9E66Cd93"
  *             tokenOutChainId: 5115
  *             tokenOutAddress: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *             amount: "1000000000000000000"
@@ -107,7 +112,8 @@ async function getGasPrices(
  */
 export function createSwapHandler(
   routerService: RouterService,
-  logger: Logger
+  logger: Logger,
+  juiceGatewayService?: JuiceGatewayService
 ) {
   return async function handleSwap(req: Request, res: Response): Promise<void> {
     const requestId = req.headers['x-request-id'] as string || `swap-${Date.now()}`;
@@ -122,6 +128,20 @@ export function createSwapHandler(
       // Handle WRAP/UNWRAP operations
       if (swapType === 'WRAP' || swapType === 'UNWRAP') {
         return await handleWrapUnwrap(body, res, log, routerService);
+      }
+
+      // Normalize token addresses
+      const tokenIn = body.tokenIn || body.tokenInAddress!;
+      const tokenOut = body.tokenOut || body.tokenOutAddress!;
+      const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+
+      // Check for Gateway routing (JUSD/JUICE)
+      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
+        const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
+
+        if (routingType) {
+          return await handleGatewaySwap(body, res, log, routerService, juiceGatewayService, routingType);
+        }
       }
 
       // Handle classic swaps (exactIn/exactOut)
@@ -289,6 +309,221 @@ async function handleWrapUnwrap(
     res.json(response);
   } catch (error) {
     log.error({ error }, 'Error in handleWrapUnwrap');
+    res.status(500).json({
+      error: 'Internal server error',
+      detail: error instanceof Error ? error.message : 'Unknown error occurred',
+    });
+  }
+}
+
+/**
+ * Handle Gateway swap operations (JUSD/JUICE tokens)
+ * Routes through JuiceSwapGateway or Equity contract
+ */
+async function handleGatewaySwap(
+  body: SwapRequestBody,
+  res: Response,
+  log: Logger,
+  routerService: RouterService,
+  juiceGatewayService: JuiceGatewayService,
+  routingType: 'GATEWAY_JUSD' | 'GATEWAY_JUICE_OUT' | 'GATEWAY_JUICE_IN'
+): Promise<void> {
+  try {
+    const tokenIn = body.tokenIn || body.tokenInAddress!;
+    const tokenOut = body.tokenOut || body.tokenOutAddress!;
+    const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+
+    const contracts = getChainContracts(chainId);
+    if (!contracts) {
+      res.status(400).json({
+        error: 'GATEWAY_NOT_CONFIGURED',
+        detail: `JuiceDollar Gateway not configured for chain ${chainId}`,
+      });
+      return;
+    }
+
+    // Check if Gateway is paused before building transaction
+    const isPaused = await juiceGatewayService.isGatewayPaused(chainId);
+    if (isPaused) {
+      res.status(503).json({
+        error: 'GATEWAY_PAUSED',
+        detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
+      });
+      return;
+    }
+
+    // Get RPC provider for gas prices
+    const provider = routerService.getProvider(chainId);
+    if (!provider) {
+      res.status(500).json({
+        error: 'Provider error',
+        detail: 'RPC provider not available',
+      });
+      return;
+    }
+
+    const gasPrices = await getGasPrices(provider, log);
+
+    // Calculate deadline
+    const deadline = body.deadline
+      ? Math.floor(Date.now() / 1000) + parseInt(body.deadline)
+      : Math.floor(Date.now() / 1000) + 1800; // 30 minutes default
+
+    // Calculate slippage-adjusted minimum output
+    const slippagePercent = parseFloat(body.slippageTolerance) / 100;
+
+    // Handle different routing types
+    if (routingType === 'GATEWAY_JUICE_IN') {
+      // JUICE input - use Equity.redeem() directly
+      // This returns JUSD which user can then swap if needed
+      const calldata = juiceGatewayService.buildEquityRedeemCalldata({
+        juiceAmount: body.amount,
+        recipient: body.recipient,
+      });
+
+      const equityAddress = juiceGatewayService.getEquityAddress(chainId);
+      if (!equityAddress) {
+        res.status(500).json({
+          error: 'EQUITY_NOT_CONFIGURED',
+          detail: 'Equity contract address not configured',
+        });
+        return;
+      }
+
+      // If output is not JUSD, we need a two-step transaction
+      // For now, return the Equity.redeem() call and let frontend handle subsequent swap
+      if (tokenOut.toLowerCase() !== contracts.JUSD.toLowerCase()) {
+        // Return info that this needs a multi-step transaction
+        const swapData = {
+          data: calldata,
+          to: equityAddress,
+          value: '0x0',
+          from: body.from,
+          maxFeePerGas: gasPrices.maxFeePerGas,
+          maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+          _routingType: routingType,
+          _note: 'This redeems JUICE for JUSD. Additional swap needed for final output token.',
+        };
+
+        log.debug({ routingType, tokenIn, tokenOut }, 'Gateway JUICE_IN swap prepared (step 1)');
+        res.json(swapData);
+        return;
+      }
+
+      // Direct JUICE -> JUSD redemption
+      const swapData = {
+        data: calldata,
+        to: equityAddress,
+        value: '0x0',
+        from: body.from,
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        _routingType: routingType,
+      };
+
+      log.debug({ routingType, tokenIn, tokenOut }, 'Gateway JUICE_IN swap prepared');
+      res.json(swapData);
+      return;
+    }
+
+    // GATEWAY_JUSD or GATEWAY_JUICE_OUT - use JuiceSwapGateway
+    const gatewayAddress = juiceGatewayService.getGatewayAddress(chainId);
+    if (!gatewayAddress) {
+      res.status(500).json({
+        error: 'GATEWAY_NOT_CONFIGURED',
+        detail: 'JuiceSwapGateway address not configured',
+      });
+      return;
+    }
+
+    // Get default fee from Gateway
+    const fee = await juiceGatewayService.getDefaultFee(chainId);
+
+    // For Gateway swaps, we need to calculate minAmountOut
+    // First get a quote to determine expected output
+    const gatewayQuote = await juiceGatewayService.prepareQuote(
+      chainId,
+      tokenIn,
+      tokenOut,
+      body.amount
+    );
+
+    if (!gatewayQuote) {
+      res.status(500).json({
+        error: 'GATEWAY_QUOTE_FAILED',
+        detail: 'Failed to prepare Gateway quote for swap',
+      });
+      return;
+    }
+
+    // Route internally to get expected output
+    const internalRoute = await routerService.getQuote({
+      tokenIn: gatewayQuote.internalTokenIn,
+      tokenOut: gatewayQuote.internalTokenOut,
+      tokenInDecimals: 18, // svJUSD has 18 decimals
+      tokenOutDecimals: body.tokenOutDecimals || 18,
+      amount: gatewayQuote.internalAmountIn,
+      chainId,
+      type: 'exactIn',
+    });
+
+    if (!internalRoute) {
+      res.status(404).json({
+        error: 'NO_ROUTE',
+        detail: 'No route found for Gateway swap',
+      });
+      return;
+    }
+
+    // Calculate user-facing output and minAmountOut with slippage
+    const internalOutputAmount = internalRoute.quote.quotient.toString();
+    const userOutputAmount = await juiceGatewayService.convertOutputToUserToken(
+      chainId,
+      tokenOut,
+      internalOutputAmount,
+      routingType
+    );
+
+    // Apply slippage to get minAmountOut
+    const userOutputBN = ethers.BigNumber.from(userOutputAmount);
+    const slippageBN = ethers.BigNumber.from(Math.floor(slippagePercent * 10000));
+    const minAmountOut = userOutputBN.mul(10000 - slippageBN.toNumber()).div(10000);
+
+    // Build Gateway calldata
+    const calldata = juiceGatewayService.buildGatewaySwapCalldata({
+      tokenIn,
+      tokenOut,
+      fee,
+      amountIn: body.amount,
+      minAmountOut: minAmountOut.toString(),
+      recipient: body.recipient,
+      deadline,
+    });
+
+    const swapData = {
+      data: calldata,
+      to: gatewayAddress,
+      value: '0x0', // No native value for token swaps
+      from: body.from,
+      maxFeePerGas: gasPrices.maxFeePerGas,
+      maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      _routingType: routingType,
+      _expectedOutput: userOutputAmount,
+      _minAmountOut: minAmountOut.toString(),
+    };
+
+    log.debug({
+      routingType,
+      tokenIn,
+      tokenOut,
+      expectedOutput: userOutputAmount,
+      minAmountOut: minAmountOut.toString(),
+    }, 'Gateway swap prepared');
+
+    res.json(swapData);
+
+  } catch (error) {
+    log.error({ error }, 'Error in handleGatewaySwap');
     res.status(500).json({
       error: 'Internal server error',
       detail: error instanceof Error ? error.message : 'Unknown error occurred',
