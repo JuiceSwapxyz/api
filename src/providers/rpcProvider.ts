@@ -31,6 +31,8 @@ function buildAlchemyUrl(chainId: ChainId): string {
       return `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
     case ChainId.SEPOLIA:
       return `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`;
+    case ChainId.POLYGON:
+      return `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`;
     default:
       return '';
   }
@@ -47,6 +49,11 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     chainId: ChainId.SEPOLIA,
     name: 'Sepolia Testnet',
     rpcUrl: buildAlchemyUrl(ChainId.SEPOLIA),
+  },
+  {
+    chainId: ChainId.POLYGON,
+    name: 'Polygon Mainnet',
+    rpcUrl: buildAlchemyUrl(ChainId.POLYGON),
   },
   {
     chainId: ChainId.CITREA_TESTNET,
