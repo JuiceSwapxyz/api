@@ -1,6 +1,6 @@
 import { ethers, providers } from 'ethers';
 import Logger from 'bunyan';
-import citreaTokenList from '../../config/citrea-testnet.tokenlist.json';
+import { citreaTestnetTokenList } from '../config/citrea-testnet.tokenlist';
 
 export interface TokenBalance {
   address: string;
@@ -61,7 +61,7 @@ export class BalanceService {
 
     try {
       // Get token list for this chain
-      const tokens = citreaTokenList.tokens.filter(
+      const tokens = citreaTestnetTokenList.tokens.filter(
         (token) => token.chainId === this.chainId
       );
 

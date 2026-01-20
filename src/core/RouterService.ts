@@ -54,6 +54,10 @@ export interface QuoteParams {
   tokenOut: string;
   tokenInDecimals: number;
   tokenOutDecimals: number;
+  tokenInSymbol?: string;
+  tokenInName?: string;
+  tokenOutSymbol?: string;
+  tokenOutName?: string;
   amount: string;
   chainId: ChainId;
   type: 'exactIn' | 'exactOut';
@@ -295,6 +299,10 @@ export class RouterService {
       tokenOut,
       tokenInDecimals,
       tokenOutDecimals,
+      tokenInSymbol,
+      tokenInName,
+      tokenOutSymbol,
+      tokenOutName,
       amount,
       chainId,
       type,
@@ -310,8 +318,8 @@ export class RouterService {
 
     // Create currencies using original addresses to properly handle native currency
     // The router will automatically handle native <-> wrapped token conversions
-    const currencyIn = this.createCurrency(tokenIn, chainId, tokenInDecimals);
-    const currencyOut = this.createCurrency(tokenOut, chainId, tokenOutDecimals);
+    const currencyIn = this.createCurrency(tokenIn, chainId, tokenInDecimals, tokenInSymbol, tokenInName);
+    const currencyOut = this.createCurrency(tokenOut, chainId, tokenOutDecimals, tokenOutSymbol, tokenOutName);
 
     const currencyAmount = CurrencyAmount.fromRawAmount(
       currencyIn,

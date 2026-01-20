@@ -1,9 +1,9 @@
 import defaultTokenList from '@uniswap/default-token-list/build/uniswap-default.tokenlist.json';
-import citreaTestnetTokenList from '../../../config/citrea-testnet.tokenlist.json';
 import { CachingTokenListProvider, NodeJSCache } from '@juiceswapxyz/smart-order-router';
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import NodeCache from 'node-cache';
 import { getJuiceswapLatestTokens } from './getJuiceswapLatestTokens';
+import { citreaTestnetTokenList } from '../../../config/citrea-testnet.tokenlist';
 
 export async function createLocalTokenListProvider(chainId: ChainId) {
   const tokenCache = new NodeCache({ stdTTL: 360, useClones: false });
