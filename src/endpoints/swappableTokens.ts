@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import citreaTokenList from '../../config/citrea-testnet.tokenlist.json';
 import Logger from 'bunyan';
+import { citreaTestnetTokenList } from '../config/citrea-testnet.tokenlist';
 
 interface Token {
   address: string;
@@ -63,7 +63,7 @@ export function createSwappableTokensHandler(logger: Logger) {
       }
 
       // Get all tokens from the token list
-      let tokens: Token[] = citreaTokenList.tokens as Token[];
+      let tokens: Token[] = citreaTestnetTokenList.tokens as Token[];
 
       // Filter out the input token if specified
       if (tokenIn) {

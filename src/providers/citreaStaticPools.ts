@@ -1,4 +1,4 @@
-import { ChainId, Token, WETH9 } from '@juiceswapxyz/sdk-core';
+import { WETH9, ChainId, Token } from '@juiceswapxyz/sdk-core';
 import { FeeAmount } from '@juiceswapxyz/v3-sdk';
 import { ADDRESS } from '@juicedollar/jusd';
 
@@ -13,12 +13,12 @@ const JUSD_ADDRESSES = ADDRESS[ChainId.CITREA_TESTNET];
 // Citrea tokens - using checksummed addresses from canonical packages
 const CITREA_TOKENS = {
   // WcBTC from SDK WETH9 - single source of truth
-  WCBTC: WETH9[ChainId.CITREA_TESTNET]!,
+  WCBTC: new Token(ChainId.CITREA_TESTNET, WETH9[ChainId.CITREA_TESTNET].address, 18, 'WCBTC', 'Wrapped cBTC'),
   // JuiceDollar tokens from @juicedollar/jusd package
   JUSD: new Token(ChainId.CITREA_TESTNET, JUSD_ADDRESSES.juiceDollar, 18, 'JUSD', 'Juice Dollar'),
   SV_JUSD: new Token(ChainId.CITREA_TESTNET, JUSD_ADDRESSES.savingsVaultJUSD, 18, 'svJUSD', 'Savings Vault JUSD'),
   JUICE: new Token(ChainId.CITREA_TESTNET, JUSD_ADDRESSES.equity, 18, 'JUICE', 'JUICE Equity'),
-  USDC: new Token(ChainId.CITREA_TESTNET, '0x36c16eaC6B0Ba6c50f494914ff015fCa95B7835F', 6, 'USDC', 'USDC'),
+  USDC: new Token(ChainId.CITREA_TESTNET, '0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0', 18, 'USDC', 'USDC'),
   NUSD: new Token(ChainId.CITREA_TESTNET, '0x9B28B690550522608890C3C7e63c0b4A7eBab9AA', 18, 'NUSD', 'Nectra USD'),
   TFC: new Token(ChainId.CITREA_TESTNET, '0x14ADf6B87096Ef750a956756BA191fc6BE94e473', 18, 'TFC', 'TaprootFreakCoin'),
   KCDU: new Token(ChainId.CITREA_TESTNET, '0x302670d7830684C14fB8bb9B20f5D8F874e65cA4', 18, 'KCDU', 'KucingDully'),

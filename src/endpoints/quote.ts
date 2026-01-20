@@ -176,18 +176,26 @@ export function createQuoteHandler(
       // Fetch token decimals from token lists if not provided (matches develop behavior)
       let tokenInDecimals = body.tokenInDecimals;
       let tokenOutDecimals = body.tokenOutDecimals;
+      let tokenInSymbol: string | undefined;
+      let tokenInName: string | undefined;
+      let tokenOutSymbol: string | undefined;
+      let tokenOutName: string | undefined;
 
       if (tokenInDecimals === undefined || tokenOutDecimals === undefined) {
         try {
           if (tokenInDecimals === undefined) {
             const tokenInInfo = await routerService.getTokenInfo(tokenIn, chainId);
             tokenInDecimals = tokenInInfo.decimals;
+            tokenInSymbol = tokenInInfo.symbol;
+            tokenInName = tokenInInfo.name;
             log.debug({ tokenIn, decimals: tokenInDecimals }, 'Fetched tokenIn decimals from token list');
           }
 
           if (tokenOutDecimals === undefined) {
             const tokenOutInfo = await routerService.getTokenInfo(tokenOut, chainId);
             tokenOutDecimals = tokenOutInfo.decimals;
+            tokenOutSymbol = tokenOutInfo.symbol;
+            tokenOutName = tokenOutInfo.name;
             log.debug({ tokenOut, decimals: tokenOutDecimals }, 'Fetched tokenOut decimals from token list');
           }
         } catch (error: any) {
@@ -466,6 +474,10 @@ export function createQuoteHandler(
         tokenOut,
         tokenInDecimals,
         tokenOutDecimals,
+        tokenInSymbol,
+        tokenInName,
+        tokenOutSymbol,
+        tokenOutName,
         amount: body.amount,
         chainId,
         type: body.type === 'EXACT_OUTPUT' ? 'exactOut' : 'exactIn',
