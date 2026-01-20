@@ -44,9 +44,6 @@ RUN npm ci --omit=dev && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy config files (needed for JSON imports that reference ../config/)
-COPY --from=builder /app/config ./config
-
 # Copy generated Prisma client (defensive backup - build script should handle this)
 COPY --from=builder /app/src/generated ./dist/generated
 
