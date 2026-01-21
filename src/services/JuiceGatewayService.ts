@@ -397,15 +397,20 @@ export class JuiceGatewayService {
         internalTokenOut = contracts.SV_JUSD;
         break;
 
-      case 'GATEWAY_JUICE_IN':
+      case 'GATEWAY_JUICE_IN': {
+        // JUICE can only be swapped directly to JUSD
+        // Multi-hop swaps (JUICE → X where X is not JUSD) are not supported
+        // Users must manually redeem JUICE for JUSD first, then swap JUSD → X
+        if (!isJusdAddress(chainId, tokenOut)) {
+          return null; // Signal unsupported - will fall through to NO_ROUTE
+        }
         // Selling JUICE - first get JUSD via Equity.redeem()
         const jusdFromRedeem = await this.calculateRedeemProceeds(chainId, amountIn);
         internalTokenIn = contracts.SV_JUSD;
         internalAmountIn = await this.jusdToSvJusd(chainId, jusdFromRedeem);
-        if (isJusdAddress(chainId, tokenOut)) {
-          internalTokenOut = contracts.SV_JUSD;
-        }
+        internalTokenOut = contracts.SV_JUSD;
         break;
+      }
     }
 
     return {
@@ -440,10 +445,11 @@ export class JuiceGatewayService {
         }
         return routerOutput;
 
-      case 'GATEWAY_JUICE_OUT':
+      case 'GATEWAY_JUICE_OUT': {
         // Convert svJUSD output to JUICE via Equity
         const jusdOutput = await this.svJusdToJusd(chainId, routerOutput);
         return await this.jusdToJuice(chainId, jusdOutput);
+      }
 
       case 'GATEWAY_JUICE_IN':
         // If output is JUSD, convert from svJUSD

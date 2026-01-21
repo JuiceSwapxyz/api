@@ -3,6 +3,7 @@ import Logger from 'bunyan';
 import { ethers } from 'ethers';
 import JSBI from 'jsbi';
 import { RouterService } from '../core/RouterService';
+import { JuiceGatewayService } from '../services/JuiceGatewayService';
 import { CurrencyAmount, Percent, Ether } from '@juiceswapxyz/sdk-core';
 import { ADDRESS_ZERO, NonfungiblePositionManager, Position } from '@juiceswapxyz/v3-sdk';
 import { estimateEip1559Gas, getV3LpContext, V3LpPositionInput } from './_shared/v3LpCommon';
@@ -61,7 +62,11 @@ const isNativeCurrencyPair = (token0: string, token1: string) => token0 === ADDR
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-export function createLpIncreaseHandler(routerService: RouterService, logger: Logger) {
+export function createLpIncreaseHandler(
+  routerService: RouterService,
+  logger: Logger,
+  juiceGatewayService?: JuiceGatewayService
+) {
   return async function handleLpIncrease(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'lp_increase' });
 
@@ -99,6 +104,7 @@ export function createLpIncreaseHandler(routerService: RouterService, logger: Lo
         chainId,
         tokenId,
         position,
+        juiceGatewayService,
       });
       if (!ctx.ok) {
         res.status(ctx.status).json({ message: ctx.message, error: ctx.error });

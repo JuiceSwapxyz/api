@@ -15,7 +15,26 @@ export const ChainIdSchema = z.number().int().refine(
   (val) => [1, 11155111, 137, 5115].includes(val),
   'Unsupported chain ID'
 );
-export const AmountSchema = z.string().regex(/^\d+$/, 'Amount must be a positive integer string');
+export const AmountSchema = z.string().regex(/^[1-9]\d*$/, 'Amount must be a positive non-zero integer string');
+
+// For state amounts that can be zero (e.g., accumulated fees)
+export const NonNegativeAmountSchema = z.string().regex(
+  /^(0|[1-9]\d*)$/,
+  'Amount must be a non-negative integer string (no leading zeros)'
+);
+
+// Slippage tolerance validation: must be between 0 and 50 (percentage)
+export const SlippageToleranceSchema = z.coerce
+  .string()
+  .optional()
+  .refine(
+    (val) => {
+      if (val === undefined || val === '') return true;
+      const num = parseFloat(val);
+      return !isNaN(num) && num >= 0 && num <= 50;
+    },
+    { message: 'slippageTolerance must be between 0 and 50' }
+  );
 
 // Quote endpoint schema
 export const QuoteRequestSchema = z.object({
@@ -30,7 +49,7 @@ export const QuoteRequestSchema = z.object({
   amount: AmountSchema,
   type: z.enum(['EXACT_INPUT', 'EXACT_OUTPUT']).optional(),
   swapper: AddressSchema.optional(),
-  slippageTolerance: z.coerce.string().optional(),
+  slippageTolerance: SlippageToleranceSchema,
   deadline: z.coerce.number().int().positive().optional(),
   enableUniversalRouter: z.boolean().optional(),
   protocols: z.array(z.string()).optional(),
@@ -46,9 +65,30 @@ export const QuoteRequestSchema = z.object({
     message: 'Either tokenOut or tokenOutAddress must be provided',
     path: ['tokenOutAddress'],
   }
+).refine(
+  (data) => {
+    const tokenIn = (data.tokenIn || data.tokenInAddress)?.toLowerCase();
+    const tokenOut = (data.tokenOut || data.tokenOutAddress)?.toLowerCase();
+    return tokenIn !== tokenOut;
+  },
+  {
+    message: 'tokenIn and tokenOut must be different tokens',
+    path: ['tokenOut'],
+  }
 );
 
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
+
+// Required slippage tolerance validation for swap endpoint
+const RequiredSlippageToleranceSchema = z.coerce
+  .string()
+  .refine(
+    (val) => {
+      const num = parseFloat(val);
+      return !isNaN(num) && num >= 0 && num <= 50;
+    },
+    { message: 'slippageTolerance must be between 0 and 50' }
+  );
 
 // Swap endpoint schema
 export const SwapRequestSchema = z.object({
@@ -63,7 +103,7 @@ export const SwapRequestSchema = z.object({
   tokenOutDecimals: z.coerce.number().int().positive().optional(),
   amount: AmountSchema,
   recipient: AddressSchema,
-  slippageTolerance: z.coerce.string(),
+  slippageTolerance: RequiredSlippageToleranceSchema,
   deadline: z.coerce.string().optional(),
   from: AddressSchema,
   chainId: ChainIdSchema.optional(),
@@ -81,6 +121,16 @@ export const SwapRequestSchema = z.object({
   {
     message: 'Either tokenOut or tokenOutAddress must be provided',
     path: ['tokenOutAddress'],
+  }
+).refine(
+  (data) => {
+    const tokenIn = (data.tokenIn || data.tokenInAddress)?.toLowerCase();
+    const tokenOut = (data.tokenOut || data.tokenOutAddress)?.toLowerCase();
+    return tokenIn !== tokenOut;
+  },
+  {
+    message: 'tokenIn and tokenOut must be different tokens',
+    path: ['tokenOut'],
   }
 );
 
@@ -189,8 +239,8 @@ export const LpDecreaseRequestSchema = z.object({
   walletAddress: AddressSchema,
   liquidityPercentageToDecrease: z.number().positive().max(100),
   positionLiquidity: AmountSchema,
-  expectedTokenOwed0RawAmount: AmountSchema,
-  expectedTokenOwed1RawAmount: AmountSchema,
+  expectedTokenOwed0RawAmount: NonNegativeAmountSchema,
+  expectedTokenOwed1RawAmount: NonNegativeAmountSchema,
   position: PositionInfoSchema,
 });
 

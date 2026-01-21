@@ -197,8 +197,8 @@ async function bootstrap() {
   const handleSwaps = createSwapsHandler(routerService, logger);
   const handleLpApprove = createLpApproveHandler(routerService, logger, juiceGatewayService);
   const handleLpCreate = createLpCreateHandler(routerService, logger, juiceGatewayService);
-  const handleLpIncrease = createLpIncreaseHandler(routerService, logger);
-  const handleLpDecrease = createLpDecreaseHandler(routerService, logger);
+  const handleLpIncrease = createLpIncreaseHandler(routerService, logger, juiceGatewayService);
+  const handleLpDecrease = createLpDecreaseHandler(routerService, logger, juiceGatewayService);
   const handlePortfolio = createPortfolioHandler(providers, logger);
 
   // User metrics endpoint handlers

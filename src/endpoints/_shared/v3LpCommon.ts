@@ -4,6 +4,7 @@ import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES, Token, WETH9 } from '@juiceswap
 import { ADDRESS_ZERO, nearestUsableTick } from '@juiceswapxyz/v3-sdk';
 import { RouterService } from '../../core/RouterService';
 import { getPonderClient } from '../../services/PonderClient';
+import { JuiceGatewayService } from '../../services/JuiceGatewayService';
 import { getPoolInstance } from '../../utils/poolFactory';
 import { fetchV3OnchainPoolInfo } from '../../utils/v3OnchainPositionInfo';
 
@@ -54,8 +55,9 @@ export async function getV3LpContext(params: {
   chainId: number;
   tokenId: string | number;
   position: V3LpPositionInput;
+  juiceGatewayService?: JuiceGatewayService;
 }): Promise<V3LpContextResult> {
-  const { routerService, logger, chainId, tokenId, position } = params;
+  const { routerService, logger, chainId, tokenId, position, juiceGatewayService } = params;
 
   const provider = routerService.getProvider(chainId);
   if (!provider) {
@@ -67,8 +69,13 @@ export async function getV3LpContext(params: {
     return { ok: false, status: 400, message: 'Unsupported chain for LP operations', error: 'UnsupportedChain' };
   }
 
-  const token0Addr = getTokenAddress(position.pool.token0, chainId);
-  const token1Addr = getTokenAddress(position.pool.token1, chainId);
+  // Map JUSD → svJUSD for internal pool token lookups (Ponder only indexes svJUSD)
+  const token0Input = juiceGatewayService?.getInternalPoolToken(chainId, position.pool.token0)
+                    ?? position.pool.token0;
+  const token1Input = juiceGatewayService?.getInternalPoolToken(chainId, position.pool.token1)
+                    ?? position.pool.token1;
+  const token0Addr = getTokenAddress(token0Input, chainId);
+  const token1Addr = getTokenAddress(token1Input, chainId);
   if (token0Addr.toLowerCase() >= token1Addr.toLowerCase()) {
     return { ok: false, status: 400, message: 'token0 must be < token1 by address', error: 'TokenOrderInvalid' };
   }

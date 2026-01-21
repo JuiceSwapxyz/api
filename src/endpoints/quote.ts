@@ -321,9 +321,12 @@ export function createQuoteHandler(
             );
 
             if (!gatewayQuote) {
-              res.status(500).json({
-                error: 'GATEWAY_QUOTE_FAILED',
-                detail: 'Failed to prepare Gateway quote',
+              // Gateway doesn't support this route (e.g., JUICE → non-JUSD)
+              // Return NO_ROUTE to indicate the swap is not supported
+              log.debug({ routingType, tokenIn, tokenOut }, 'Gateway route not supported');
+              res.status(404).json({
+                error: 'NO_ROUTE',
+                detail: 'This token combination is not supported. For JUICE swaps, you can only swap directly to JUSD.',
               });
               return;
             }
