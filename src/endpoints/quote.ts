@@ -75,7 +75,7 @@ export interface QuoteRequestBody {
   enableUniversalRouter?: boolean;
 }
 
-enum Routing {
+export enum Routing {
   CLASSIC = 'CLASSIC',
   WRAP = 'WRAP',
   UNWRAP = 'UNWRAP',

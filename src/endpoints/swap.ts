@@ -11,6 +11,9 @@ import {
 } from '../config/contracts';
 import { ethers } from 'ethers';
 import Logger from 'bunyan';
+import { Routing } from './quote';
+
+const BASIS_POINTS_DENOMINATOR = 10000;
 
 export interface SwapRequestBody {
   type?: 'WRAP' | 'UNWRAP' | 'exactIn' | 'exactOut';
@@ -369,11 +372,11 @@ async function handleGatewaySwap(
       ? Math.floor(Date.now() / 1000) + parseInt(body.deadline)
       : Math.floor(Date.now() / 1000) + 1800; // 30 minutes default
 
-    // Calculate slippage-adjusted minimum output
-    const slippagePercent = parseFloat(body.slippageTolerance) / 100;
+    // Calculate slippage in basis points (e.g., "0.5" -> 50 bps)
+    const slippageBps = Math.round(parseFloat(body.slippageTolerance) * 100);
 
     // Handle different routing types
-    if (routingType === 'GATEWAY_JUICE_IN') {
+    if (routingType === Routing.GATEWAY_JUICE_IN) {
       // JUICE input - use Equity.redeem() directly
       // This returns JUSD which user can then swap if needed
       const calldata = juiceGatewayService.buildEquityRedeemCalldata({
@@ -402,7 +405,8 @@ async function handleGatewaySwap(
           maxFeePerGas: gasPrices.maxFeePerGas,
           maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
           _routingType: routingType,
-          _note: 'This redeems JUICE for JUSD. Additional swap needed for final output token.',
+          _multiStep: true,
+          _intermediateToken: contracts.JUSD,
         };
 
         log.debug({ routingType, tokenIn, tokenOut }, 'Gateway JUICE_IN swap prepared (step 1)');
@@ -484,10 +488,9 @@ async function handleGatewaySwap(
       routingType
     );
 
-    // Apply slippage to get minAmountOut
+    // Apply slippage to get minAmountOut (using basis points directly)
     const userOutputBN = ethers.BigNumber.from(userOutputAmount);
-    const slippageBN = ethers.BigNumber.from(Math.floor(slippagePercent * 10000));
-    const minAmountOut = userOutputBN.mul(10000 - slippageBN.toNumber()).div(10000);
+    const minAmountOut = userOutputBN.mul(BASIS_POINTS_DENOMINATOR - slippageBps).div(BASIS_POINTS_DENOMINATOR);
 
     // Build Gateway calldata
     const calldata = juiceGatewayService.buildGatewaySwapCalldata({

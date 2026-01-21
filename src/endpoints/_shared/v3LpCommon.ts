@@ -7,7 +7,7 @@ import { getPonderClient } from '../../services/PonderClient';
 import { getPoolInstance } from '../../utils/poolFactory';
 import { fetchV3OnchainPoolInfo } from '../../utils/v3OnchainPositionInfo';
 
-const TICK_SPACING: Record<number, number> = {
+export const TICK_SPACING: Record<number, number> = {
   100: 1,
   500: 10,
   3000: 60,

@@ -15,6 +15,7 @@ import { Token, CurrencyAmount, Percent, WETH9 } from '@juiceswapxyz/sdk-core';
 import JSBI from 'jsbi';
 import { ethers } from 'ethers';
 import { getPoolInstance } from '../utils/poolFactory';
+import { TICK_SPACING } from './_shared/v3LpCommon';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
 import { getChainContracts, hasJuiceDollarIntegration } from '../config/contracts';
 
@@ -24,12 +25,7 @@ const NPM_IFACE = new ethers.utils.Interface([
   'function refundETH()',
 ]);
 
-const TICK_SPACING: Record<number, number> = {
-  100: 1,
-  500: 10,
-  3000: 60,
-  10000: 200,
-};
+const BASIS_POINTS_DENOMINATOR = 10000;
 
 const getTokenAddress = (token: string, chainId: number) => {
   const address = token === ADDRESS_ZERO ? WETH9[chainId].address : token;
@@ -74,6 +70,7 @@ interface LpCreateRequestBody {
   initialDependentAmount?: string;
   initialPrice?: string;
   position: PositionInfo;
+  slippageTolerance?: string;
 }
 
 /**
@@ -454,10 +451,9 @@ async function handleGatewayLpCreate(
   const internalToken1 = juiceGatewayService.getInternalPoolToken(chainId, token1Addr);
 
   // Fetch decimals for internal tokens
-  const ERC20_ABI_DECIMALS = ['function decimals() view returns (uint8)'];
   const [dec0, dec1] = await Promise.all([
-    new ethers.Contract(internalToken0, ERC20_ABI_DECIMALS, provider).decimals(),
-    new ethers.Contract(internalToken1, ERC20_ABI_DECIMALS, provider).decimals(),
+    new ethers.Contract(internalToken0, ERC20_ABI, provider).decimals(),
+    new ethers.Contract(internalToken1, ERC20_ABI, provider).decimals(),
   ]);
 
   const internalPoolToken0 = new Token(chainId, internalToken0, dec0);
@@ -548,10 +544,12 @@ async function handleGatewayLpCreate(
     }
   }
 
-  // Apply slippage (5% default for LP)
-  const slippagePercent = 0.05;
-  const amount0Min = ethers.BigNumber.from(amount0Raw).mul(Math.floor((1 - slippagePercent) * 10000)).div(10000);
-  const amount1Min = ethers.BigNumber.from(amount1Raw).mul(Math.floor((1 - slippagePercent) * 10000)).div(10000);
+  // Apply slippage (default 5% = 500 bps for LP)
+  const slippageBps = body.slippageTolerance
+    ? Math.round(parseFloat(body.slippageTolerance) * 100)
+    : 500;
+  const amount0Min = ethers.BigNumber.from(amount0Raw).mul(BASIS_POINTS_DENOMINATOR - slippageBps).div(BASIS_POINTS_DENOMINATOR);
+  const amount1Min = ethers.BigNumber.from(amount1Raw).mul(BASIS_POINTS_DENOMINATOR - slippageBps).div(BASIS_POINTS_DENOMINATOR);
 
   const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
