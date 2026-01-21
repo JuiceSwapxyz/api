@@ -30,11 +30,11 @@ import { Protocol } from '@juiceswapxyz/router-sdk';
 import { providers } from 'ethers';
 import Logger from 'bunyan';
 import JSBI from 'jsbi';
-import { CitreaStaticV3SubgraphProvider } from '../providers/CitreaStaticV3SubgraphProvider';
 import { GraduatedV2SubgraphProvider } from '../providers/GraduatedV2SubgraphProvider';
 import { FallbackTokenProvider } from '../providers/FallbackTokenProvider';
 import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
 import { TokenInfoRequester } from '../utils/tokenInfoRequester';
+import { CitreaTestnetV3SubgraphProvider } from '../providers/CitreaV3SubgraphProvider';
 
 /**
  * Simple no-op token properties provider for V2 pools.
@@ -163,8 +163,8 @@ export class RouterService {
       let v2PoolProvider = undefined;
 
       if (chainId === ChainId.CITREA_TESTNET) {
-        // V3 subgraph provider with static pools
-        v3SubgraphProvider = new CitreaStaticV3SubgraphProvider(chainId, v3PoolProvider);
+        // V3 subgraph provider (Ponder)
+        v3SubgraphProvider = new CitreaTestnetV3SubgraphProvider(this.logger);
 
         // V2 providers for graduated launchpad tokens
         // GraduatedV2SubgraphProvider fetches pool list from Ponder and on-chain reserves
