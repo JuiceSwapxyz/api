@@ -303,4 +303,10 @@ export const PositionInfoQuerySchema = z.object({
   protocol: z.enum(['V2', 'V3']).optional().default('V3'),
 });
 
+// Pool details endpoint schema
+export const PoolDetailsRequestSchema = z.object({
+  address: AddressSchema,
+  chainId: z.number().int().positive(),
+});
+
 export type PositionInfoQuery = z.infer<typeof PositionInfoQuerySchema>;
