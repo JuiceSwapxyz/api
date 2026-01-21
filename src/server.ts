@@ -66,12 +66,14 @@ import {
   LightningAddressRequestSchema,
   LaunchpadUploadMetadataSchema,
   PositionInfoQuerySchema,
+  PoolDetailsRequestSchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 import { createSwapApproveHandler } from './endpoints/swapApprove';
 import { createLightningInvoiceHandler } from './endpoints/lightningInvoice';
 import { createValidateLightningAddressHandler } from './endpoints/validateLightningAddress';
 import { createPositionInfoHandler } from './endpoints/positionInfo';
+import { createPoolDetailsHandler } from './endpoints/poolDetails';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -224,6 +226,7 @@ async function bootstrap() {
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress = createValidateLightningAddressHandler(logger);
   const handlePositionInfo = createPositionInfoHandler(routerService, logger);
+  const handlePoolDetails = createPoolDetailsHandler(providers, logger);
 
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
@@ -238,6 +241,9 @@ async function bootstrap() {
 
   // Position info endpoint (returns liquidity position information)
   app.get('/v1/positions/:tokenId', generalLimiter, validateQuery(PositionInfoQuerySchema, logger), handlePositionInfo);
+
+  // Pool details endpoint
+  app.post('/v1/pools/v3/details', generalLimiter, validateBody(PoolDetailsRequestSchema, logger), handlePoolDetails);
 
   // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
