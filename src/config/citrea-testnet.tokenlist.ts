@@ -79,6 +79,22 @@ export const citreaTestnetTokenList = {
       "name": "Juice Dollar",
       "symbol": "JUSD",
       "logoURI": ""
+    },
+    {
+      "address": "0x9580498224551E3f2e3A04330a684BF025111C53",
+      "chainId": 5115,
+      "decimals": 18,
+      "name": "Savings Vault JUSD",
+      "symbol": "svJUSD",
+      "logoURI": ""
+    },
+    {
+      "address": "0x7b2A560bf72B0Dd2EAbE3271F829C2597c8420d5",
+      "chainId": 5115,
+      "decimals": 18,
+      "name": "JUICE Equity",
+      "symbol": "JUICE",
+      "logoURI": ""
     }
   ]
 };

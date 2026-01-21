@@ -30,7 +30,7 @@ interface SwapApproveRequestBody {
  *             chainId: 5115
  *             protocol: "V3"
  *             token0: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
- *             token1: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *             token1: "0x8d0c9d1c17aE5e40ffF9bE350f57840E9E66Cd93"
  *             amount0: "1000000000000000000"
  *             amount1: "1000000000000000000"
  *             simulateTransaction: false
