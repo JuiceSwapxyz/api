@@ -500,10 +500,13 @@ async function handleGatewaySwap(
       deadline,
     });
 
+    // Check if input is native token - Gateway expects msg.value == amount for native swaps
+    const isNativeInput = tokenIn.toLowerCase() === NATIVE_CURRENCY_ADDRESS.toLowerCase();
+
     const swapData = {
       data: calldata,
       to: gatewayAddress,
-      value: '0x0', // No native value for token swaps
+      value: isNativeInput ? ethers.BigNumber.from(body.amount).toHexString() : '0x0',
       from: body.from,
       maxFeePerGas: gasPrices.maxFeePerGas,
       maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
