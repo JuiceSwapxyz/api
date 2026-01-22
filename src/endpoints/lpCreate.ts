@@ -160,6 +160,26 @@ export function createLpCreateHandler(
         return;
       }
 
+      // Validate sqrtPriceX96 is within valid range for new pools
+      if (initialPrice) {
+        const sqrtPriceX96 = JSBI.BigInt(initialPrice);
+        if (
+          JSBI.lessThan(sqrtPriceX96, TickMath.MIN_SQRT_RATIO) ||
+          JSBI.greaterThanOrEqual(sqrtPriceX96, TickMath.MAX_SQRT_RATIO)
+        ) {
+          log.debug({ initialPrice }, 'Validation failed: sqrtPriceX96 out of valid range');
+          res.status(400).json({
+            message: 'Initial price (sqrtPriceX96) is out of valid range',
+            error: 'InvalidSqrtPriceX96',
+            _hint: {
+              minSqrtPriceX96: TickMath.MIN_SQRT_RATIO.toString(),
+              maxSqrtPriceX96: TickMath.MAX_SQRT_RATIO.toString(),
+            },
+          });
+          return;
+        }
+      }
+
       const provider = routerService.getProvider(chainId);
       if (!provider) {
         log.debug({ chainId }, 'Validation failed: invalid chainId for LP create');
@@ -394,6 +414,15 @@ async function handleGatewayLpCreate(
     res.status(400).json({
       message: 'JuiceDollar contracts not configured for this chain',
       error: 'GatewayNotConfigured',
+    });
+    return;
+  }
+
+  const positionManagerAddress = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
+  if (!positionManagerAddress) {
+    res.status(400).json({
+      message: 'PositionManager not configured for this chain',
+      error: 'PositionManagerNotConfigured',
     });
     return;
   }
@@ -637,15 +666,76 @@ async function handleGatewayLpCreate(
   // Estimate gas
   const feeData = await provider.getFeeData();
   const isActuallyNewPool = frontendThinksPoolIsNew && !poolActuallyExistsOnChain;
+
+  // Build createPool transaction if pool doesn't exist on-chain
+  // For Gateway flow, we need to create the svJUSD pool on the PositionManager first,
+  // then the Gateway.addLiquidity() call will mint into that pool
+  let createPoolTx: {
+    to: string;
+    from: string;
+    data: string;
+    value: string;
+    maxFeePerGas: string;
+    maxPriorityFeePerGas: string;
+    gasLimit: string;
+    chainId: number;
+  } | undefined;
+
+  if (isActuallyNewPool && initialPrice) {
+    // Build createAndInitializePoolIfNecessary calldata using internal tokens (svJUSD)
+    const { calldata: createPoolCalldata, value: createPoolValue } =
+      NonfungiblePositionManager.createCallParameters(poolInstance);
+
+    // Estimate gas for pool creation
+    let createPoolGasEstimate = ethers.BigNumber.from('500000'); // fallback
+    try {
+      createPoolGasEstimate = await provider.estimateGas({
+        to: positionManagerAddress,
+        from: walletAddress,
+        data: createPoolCalldata,
+        value: createPoolValue || '0x0',
+      });
+    } catch (e) {
+      log.warn({ error: e }, 'Gas estimation failed for createPool, using fallback');
+    }
+
+    const createPoolGasLimit = createPoolGasEstimate.mul(120).div(100);
+    const baseFeeForCreatePool = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
+    const maxPriorityFeeForCreatePool = ethers.utils.parseUnits('1', 'gwei');
+    const maxFeeForCreatePool = baseFeeForCreatePool.mul(105).div(100).add(maxPriorityFeeForCreatePool);
+
+    createPoolTx = {
+      to: positionManagerAddress,
+      from: walletAddress,
+      data: createPoolCalldata,
+      value: createPoolValue?.toString() || '0x0',
+      maxFeePerGas: maxFeeForCreatePool.toHexString(),
+      maxPriorityFeePerGas: maxPriorityFeeForCreatePool.toHexString(),
+      gasLimit: createPoolGasLimit.toHexString(),
+      chainId,
+    };
+
+    log.info({
+      internalToken0,
+      internalToken1,
+      fee: position.pool.fee,
+      sqrtPriceX96: initialPrice,
+    }, 'Building createPool transaction for new svJUSD pool');
+  }
+
   let gasEstimate = isActuallyNewPool ? ethers.BigNumber.from('800000') : ethers.BigNumber.from('500000');
 
   try {
-    gasEstimate = await provider.estimateGas({
-      to: gatewayAddress,
-      from: walletAddress,
-      data: calldata,
-      value: nativeValue,
-    });
+    // Only estimate gas for Gateway tx if pool exists or will be created first
+    // If pool creation is needed, we may not be able to estimate the addLiquidity call yet
+    if (!isActuallyNewPool) {
+      gasEstimate = await provider.estimateGas({
+        to: gatewayAddress,
+        from: walletAddress,
+        data: calldata,
+        value: nativeValue,
+      });
+    }
   } catch (e) {
     log.warn({ error: e }, 'Gas estimation failed for Gateway LP, using fallback');
   }
@@ -657,7 +747,7 @@ async function handleGatewayLpCreate(
   const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
   const gasFee = gasLimit.mul(maxFeePerGas);
 
-  const response = {
+  const response: Record<string, unknown> = {
     requestId: `lp-create-gateway-${Date.now()}`,
     create: {
       to: gatewayAddress,
@@ -674,6 +764,12 @@ async function handleGatewayLpCreate(
     _routingType: 'GATEWAY_LP',
     _note: 'LP routed through JuiceSwapGateway. JUSD will be converted to svJUSD internally for capital efficiency.',
   };
+
+  // Add createPool transaction if pool needs to be created first
+  if (createPoolTx) {
+    response.createPool = createPoolTx;
+    response._note = 'New pool detected. Execute createPool transaction first, then the Gateway addLiquidity transaction.';
+  }
 
   res.status(200).json(response);
 
