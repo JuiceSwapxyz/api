@@ -31,7 +31,7 @@ export class FallbackTokenProvider implements ITokenProvider {
 
   async getTokens(addresses: string[]): Promise<TokenAccessor> {
     const foundTokens: Map<string, Token> = new Map();
-    let missingAddresses: string[] = [];
+    const missingAddresses: string[] = [];
 
     // First, try to get tokens from primary provider
     try {

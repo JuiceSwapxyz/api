@@ -25,7 +25,7 @@
     "@getalby/lightning-tools": "^6.0.0",
     "@juicedollar/jusd": "^1.0.6",
     "@juiceswapxyz/router-sdk": "^0.1.4-beta.0",
-    "@juiceswapxyz/sdk-core": "^0.1.7-beta.0",
+    "@juiceswapxyz/sdk-core": "^0.1.8-beta.0",
     "@juiceswapxyz/smart-order-router": "^0.1.5-beta.0",
     "@juiceswapxyz/universal-router-sdk": "^0.1.5-beta.0",
     "@juiceswapxyz/v2-sdk": "^0.1.2-beta.0",

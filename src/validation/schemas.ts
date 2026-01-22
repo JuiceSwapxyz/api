@@ -162,17 +162,31 @@ export const SwapApproveRequestSchema = z.object({
 
 export type SwapApproveRequest = z.infer<typeof SwapApproveRequestSchema>;
 
-// LP Approve schema
+// LP Approve schema - supports two modes:
+// 1. Token approval mode: token0/token1/amount0/amount1 (for increase liquidity)
+// 2. NFT-only approval mode: token0/token1/tokenId without amounts (for decrease liquidity)
 export const LpApproveRequestSchema = z.object({
   simulateTransaction: z.boolean().optional(),
   walletAddress: AddressSchema,
   chainId: ChainIdSchema,
   protocol: z.literal('V3'),
-  token0: AddressSchema,
-  token1: AddressSchema,
-  amount0: AmountSchema,
-  amount1: AmountSchema,
-});
+  token0: AddressSchema,       // Always required (for Gateway routing detection)
+  token1: AddressSchema,       // Always required (for Gateway routing detection)
+  amount0: AmountSchema.optional(),  // Optional for NFT-only mode
+  amount1: AmountSchema.optional(),  // Optional for NFT-only mode
+  tokenId: z.coerce.number().int().positive().optional(),
+}).refine(
+  (data) => {
+    // Either both amounts are provided (increase liquidity)
+    // OR tokenId is provided without amounts (decrease liquidity / NFT-only approval)
+    const hasAmounts = data.amount0 && data.amount1;
+    const hasTokenId = data.tokenId !== undefined;
+    return hasAmounts || hasTokenId;
+  },
+  {
+    message: 'Either provide amount0/amount1 (for token approvals) or tokenId without amounts (for NFT-only approval)',
+  }
+);
 
 export type LpApproveRequest = z.infer<typeof LpApproveRequestSchema>;
 
