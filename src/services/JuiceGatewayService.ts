@@ -22,6 +22,8 @@ const GATEWAY_ABI = [
   'function swapExactTokensForTokens(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint256 minAmountOut, address to, uint256 deadline) payable returns (uint256)',
   // LP functions
   'function addLiquidity(address tokenA, address tokenB, uint24 fee, uint256 amountADesired, uint256 amountBDesired, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) payable returns (uint256 amountA, uint256 amountB, uint256 liquidity)',
+  'function increaseLiquidity(uint256 tokenId, address tokenA, address tokenB, uint256 amountADesired, uint256 amountBDesired, uint256 amountAMin, uint256 amountBMin, uint256 deadline) payable returns (uint256 amountA, uint256 amountB, uint128 liquidity)',
+  'function removeLiquidity(uint256 tokenId, uint128 liquidityToRemove, address tokenA, address tokenB, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) returns (uint256 amountA, uint256 amountB)',
   // Settings
   'function defaultFee() view returns (uint24)',
   'function paused() view returns (bool)',
@@ -66,6 +68,28 @@ export interface GatewayLpParams {
   fee: number;
   amountADesired: string;
   amountBDesired: string;
+  amountAMin: string;
+  amountBMin: string;
+  recipient: string;
+  deadline: number;
+}
+
+export interface GatewayIncreaseLiquidityParams {
+  tokenId: string;
+  tokenA: string;
+  tokenB: string;
+  amountADesired: string;
+  amountBDesired: string;
+  amountAMin: string;
+  amountBMin: string;
+  deadline: number;
+}
+
+export interface GatewayRemoveLiquidityParams {
+  tokenId: string;
+  liquidityToRemove: string; // 0 = remove all
+  tokenA: string;
+  tokenB: string;
   amountAMin: string;
   amountBMin: string;
   recipient: string;
@@ -397,15 +421,20 @@ export class JuiceGatewayService {
         internalTokenOut = contracts.SV_JUSD;
         break;
 
-      case 'GATEWAY_JUICE_IN':
+      case 'GATEWAY_JUICE_IN': {
+        // JUICE can only be swapped directly to JUSD
+        // Multi-hop swaps (JUICE → X where X is not JUSD) are not supported
+        // Users must manually redeem JUICE for JUSD first, then swap JUSD → X
+        if (!isJusdAddress(chainId, tokenOut)) {
+          return null; // Signal unsupported - will fall through to NO_ROUTE
+        }
         // Selling JUICE - first get JUSD via Equity.redeem()
         const jusdFromRedeem = await this.calculateRedeemProceeds(chainId, amountIn);
         internalTokenIn = contracts.SV_JUSD;
         internalAmountIn = await this.jusdToSvJusd(chainId, jusdFromRedeem);
-        if (isJusdAddress(chainId, tokenOut)) {
-          internalTokenOut = contracts.SV_JUSD;
-        }
+        internalTokenOut = contracts.SV_JUSD;
         break;
+      }
     }
 
     return {
@@ -440,10 +469,11 @@ export class JuiceGatewayService {
         }
         return routerOutput;
 
-      case 'GATEWAY_JUICE_OUT':
+      case 'GATEWAY_JUICE_OUT': {
         // Convert svJUSD output to JUICE via Equity
         const jusdOutput = await this.svJusdToJusd(chainId, routerOutput);
         return await this.jusdToJuice(chainId, jusdOutput);
+      }
 
       case 'GATEWAY_JUICE_IN':
         // If output is JUSD, convert from svJUSD
@@ -510,6 +540,43 @@ export class JuiceGatewayService {
       params.fee,
       params.amountADesired,
       params.amountBDesired,
+      params.amountAMin,
+      params.amountBMin,
+      params.recipient,
+      params.deadline,
+    ]);
+  }
+
+  /**
+   * Build Gateway.increaseLiquidity() calldata
+   * Increases liquidity for an existing position with automatic JUSD→svJUSD conversion
+   */
+  buildGatewayIncreaseLiquidityCalldata(params: GatewayIncreaseLiquidityParams): string {
+    const iface = new ethers.utils.Interface(GATEWAY_ABI);
+    return iface.encodeFunctionData('increaseLiquidity', [
+      params.tokenId,
+      params.tokenA,
+      params.tokenB,
+      params.amountADesired,
+      params.amountBDesired,
+      params.amountAMin,
+      params.amountBMin,
+      params.deadline,
+    ]);
+  }
+
+  /**
+   * Build Gateway.removeLiquidity() calldata
+   * Removes liquidity from a position with automatic svJUSD→JUSD conversion
+   * @param params.liquidityToRemove - Amount of liquidity to remove (0 = remove all)
+   */
+  buildGatewayRemoveLiquidityCalldata(params: GatewayRemoveLiquidityParams): string {
+    const iface = new ethers.utils.Interface(GATEWAY_ABI);
+    return iface.encodeFunctionData('removeLiquidity', [
+      params.tokenId,
+      params.liquidityToRemove,
+      params.tokenA,
+      params.tokenB,
       params.amountAMin,
       params.amountBMin,
       params.recipient,

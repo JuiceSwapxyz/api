@@ -3,9 +3,11 @@ import Logger from 'bunyan';
 import { ethers } from 'ethers';
 import JSBI from 'jsbi';
 import { RouterService } from '../core/RouterService';
-import { CurrencyAmount, Percent, Ether } from '@juiceswapxyz/sdk-core';
-import { ADDRESS_ZERO, NonfungiblePositionManager, Position } from '@juiceswapxyz/v3-sdk';
-import { estimateEip1559Gas, getV3LpContext, V3LpPositionInput } from './_shared/v3LpCommon';
+import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { CurrencyAmount, Percent, Ether, ChainId, Token } from '@juiceswapxyz/sdk-core';
+import { ADDRESS_ZERO, NonfungiblePositionManager, Position, Pool } from '@juiceswapxyz/v3-sdk';
+import { estimateEip1559Gas, getV3LpContext, V3LpPositionInput, getTokenAddress } from './_shared/v3LpCommon';
+import { getChainContracts, hasJuiceDollarIntegration } from '../config/contracts';
 
 type IndependentToken = 'TOKEN_0' | 'TOKEN_1';
 
@@ -61,7 +63,11 @@ const isNativeCurrencyPair = (token0: string, token1: string) => token0 === ADDR
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-export function createLpIncreaseHandler(routerService: RouterService, logger: Logger) {
+export function createLpIncreaseHandler(
+  routerService: RouterService,
+  logger: Logger,
+  juiceGatewayService?: JuiceGatewayService
+) {
   return async function handleLpIncrease(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'lp_increase' });
 
@@ -99,6 +105,7 @@ export function createLpIncreaseHandler(routerService: RouterService, logger: Lo
         chainId,
         tokenId,
         position,
+        juiceGatewayService,
       });
       if (!ctx.ok) {
         res.status(ctx.status).json({ message: ctx.message, error: ctx.error });
@@ -106,6 +113,27 @@ export function createLpIncreaseHandler(routerService: RouterService, logger: Lo
       }
 
       const { provider, positionManagerAddress, token0, token1, poolInstance, tickLower, tickUpper } = ctx.data;
+
+      // Get user-facing token addresses (before JUSD→svJUSD mapping)
+      const userToken0Addr = getTokenAddress(position.pool.token0, chainId);
+      const userToken1Addr = getTokenAddress(position.pool.token1, chainId);
+
+      // Check for Gateway routing (JUSD involved)
+      if (
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId) &&
+        juiceGatewayService.detectLpGatewayRouting(chainId, userToken0Addr, userToken1Addr)
+      ) {
+        return handleGatewayLpIncrease({
+          body: req.body,
+          res,
+          log,
+          ctx: ctx.data,
+          juiceGatewayService,
+          userToken0Addr,
+          userToken1Addr,
+        });
+      }
 
       const independentIsToken0 = independentToken === 'TOKEN_0';
 
@@ -196,5 +224,193 @@ export function createLpIncreaseHandler(routerService: RouterService, logger: Lo
       res.status(500).json({ message: 'Internal server error', error: error?.message });
     }
   };
+}
+
+/**
+ * Handle LP increase when JUSD is involved
+ * Routes through JuiceSwapGateway for automatic JUSD → svJUSD conversion
+ */
+async function handleGatewayLpIncrease(params: {
+  body: LpIncreaseRequestBody;
+  res: Response;
+  log: Logger;
+  ctx: {
+    provider: ethers.providers.StaticJsonRpcProvider;
+    positionManagerAddress: string;
+    token0: Token;
+    token1: Token;
+    poolInstance: Pool;
+    tickLower: number;
+    tickUpper: number;
+  };
+  juiceGatewayService: JuiceGatewayService;
+  userToken0Addr: string;
+  userToken1Addr: string;
+}): Promise<void> {
+  const { body, res, log, ctx, juiceGatewayService, userToken0Addr, userToken1Addr } = params;
+  const { walletAddress, chainId, tokenId, independentAmount, independentToken } = body;
+  const { provider, poolInstance, tickLower, tickUpper } = ctx;
+
+  const contracts = getChainContracts(chainId);
+  if (!contracts) {
+    res.status(400).json({
+      message: 'JuiceDollar contracts not configured for this chain',
+      error: 'GatewayNotConfigured',
+    });
+    return;
+  }
+
+  const gatewayAddress = juiceGatewayService.getGatewayAddress(chainId);
+  if (!gatewayAddress) {
+    res.status(500).json({
+      message: 'Gateway address not configured',
+      error: 'GatewayNotConfigured',
+    });
+    return;
+  }
+
+  // Check if Gateway is paused
+  const isPaused = await juiceGatewayService.isGatewayPaused(chainId as ChainId);
+  if (isPaused) {
+    res.status(503).json({
+      error: 'GATEWAY_PAUSED',
+      detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
+    });
+    return;
+  }
+
+  const independentIsToken0 = independentToken === 'TOKEN_0';
+  const isToken0Jusd = userToken0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+  const isToken1Jusd = userToken1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+
+  // Convert independent amount to svJUSD for position calculation
+  let internalIndependentAmount = independentAmount;
+  if ((independentIsToken0 && isToken0Jusd) || (!independentIsToken0 && isToken1Jusd)) {
+    internalIndependentAmount = await juiceGatewayService.jusdToSvJusd(chainId as ChainId, independentAmount);
+  }
+
+  // Calculate amounts using the SDK
+  let positionCalc: Position;
+  let amount0Raw: string, amount1Raw: string;
+
+  if (independentIsToken0) {
+    positionCalc = Position.fromAmount0({
+      pool: poolInstance,
+      tickLower,
+      tickUpper,
+      amount0: JSBI.BigInt(internalIndependentAmount),
+      useFullPrecision: false,
+    });
+
+    // Convert dependent amount back to JUSD if token1 is JUSD
+    let dependentAmount = positionCalc.amount1.quotient.toString();
+    if (isToken1Jusd) {
+      dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+    }
+
+    amount0Raw = independentAmount; // User's JUSD amount (or other token)
+    amount1Raw = dependentAmount;
+  } else {
+    positionCalc = Position.fromAmount1({
+      pool: poolInstance,
+      tickLower,
+      tickUpper,
+      amount1: JSBI.BigInt(internalIndependentAmount),
+    });
+
+    // Convert dependent amount back to JUSD if token0 is JUSD
+    let dependentAmount = positionCalc.amount0.quotient.toString();
+    if (isToken0Jusd) {
+      dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+    }
+
+    amount0Raw = dependentAmount;
+    amount1Raw = independentAmount; // User's JUSD amount (or other token)
+  }
+
+  // Calculate minimums with slippage in internal (svJUSD) terms
+  const internalAmount0 = isToken0Jusd
+    ? await juiceGatewayService.jusdToSvJusd(chainId as ChainId, amount0Raw)
+    : amount0Raw;
+  const internalAmount1 = isToken1Jusd
+    ? await juiceGatewayService.jusdToSvJusd(chainId as ChainId, amount1Raw)
+    : amount1Raw;
+
+  const positionForSlippage = Position.fromAmounts({
+    pool: poolInstance,
+    tickLower,
+    tickUpper,
+    amount0: JSBI.BigInt(internalAmount0),
+    amount1: JSBI.BigInt(internalAmount1),
+    useFullPrecision: false,
+  });
+
+  const slippageTolerance = new Percent(50, 10_000); // 0.5%
+  const { amount0: internalAmount0Min, amount1: internalAmount1Min } =
+    positionForSlippage.mintAmountsWithSlippage(slippageTolerance);
+
+  // Convert minimums back to user-facing tokens (JUSD) for Gateway
+  const amount0Min = isToken0Jusd
+    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, internalAmount0Min.toString())
+    : internalAmount0Min.toString();
+  const amount1Min = isToken1Jusd
+    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, internalAmount1Min.toString())
+    : internalAmount1Min.toString();
+
+  const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
+
+  // Build Gateway.increaseLiquidity() calldata
+  const calldata = juiceGatewayService.buildGatewayIncreaseLiquidityCalldata({
+    tokenId,
+    tokenA: userToken0Addr,
+    tokenB: userToken1Addr,
+    amountADesired: amount0Raw,
+    amountBDesired: amount1Raw,
+    amountAMin: amount0Min,
+    amountBMin: amount1Min,
+    deadline,
+  });
+
+  // Calculate value for native token (cBTC)
+  const nativeValue = isNativeCurrencyPair(body.position.pool.token0, body.position.pool.token1)
+    ? ethers.BigNumber.from(body.position.pool.token0 === ADDRESS_ZERO ? amount0Raw : amount1Raw)
+    : ethers.BigNumber.from('0');
+
+  // Estimate gas
+  const { gasLimit, maxFeePerGas, maxPriorityFeePerGas, gasFee } = await estimateEip1559Gas({
+    provider,
+    tx: {
+      to: gatewayAddress,
+      from: walletAddress,
+      data: calldata,
+      value: nativeValue,
+    },
+    logger: log,
+  });
+
+  res.status(200).json({
+    requestId: `lp-increase-gateway-${Date.now()}`,
+    increase: {
+      to: gatewayAddress,
+      from: walletAddress,
+      data: calldata,
+      value: nativeValue.toHexString(),
+      maxFeePerGas: maxFeePerGas.toHexString(),
+      maxPriorityFeePerGas: maxPriorityFeePerGas.toHexString(),
+      gasLimit: gasLimit.toHexString(),
+      chainId,
+    },
+    dependentAmount: independentIsToken0 ? amount1Raw : amount0Raw,
+    gasFee: ethers.utils.formatEther(gasFee),
+    _routingType: 'GATEWAY_LP',
+    _note: 'LP increase routed through JuiceSwapGateway. JUSD will be converted to svJUSD internally.',
+  });
+
+  log.debug({
+    chainId,
+    walletAddress,
+    tokenId,
+    routingType: 'GATEWAY_LP',
+  }, 'Gateway LP increase request completed');
 }
 

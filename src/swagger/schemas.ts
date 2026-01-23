@@ -454,6 +454,9 @@
  *           type: string
  *         amount1:
  *           type: string
+ *         tokenId:
+ *           type: integer
+ *           description: NFT position token ID (for increase/decrease liquidity)
  *
  *     LpCreateRequest:
  *       type: object
