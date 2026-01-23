@@ -341,11 +341,19 @@ export class RouterService {
     // Matches main branch DEFAULT_ROUTING_CONFIG_BY_CHAIN defaults
     const routingConfig: Partial<AlphaRouterConfig> = {
           protocols,
+          v2PoolSelection: {
+            topN: 3,
+            topNDirectSwaps: 2,
+            topNTokenInOut: 2,
+            topNSecondHop: 1,
+            topNWithEachBaseToken: 3,
+            topNWithBaseToken: 3,
+          },
           v3PoolSelection: {
             topN: 2,
             topNDirectSwaps: 2,
             topNTokenInOut: 2,
-            topNSecondHop: 0,
+            topNSecondHop: 1,
             topNWithEachBaseToken: 1,
             topNWithBaseToken: 2,
           },
