@@ -9,6 +9,9 @@ import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES } from '@juiceswapxyz/sdk-core';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
 import { hasJuiceDollarIntegration } from '../config/contracts';
 
+// Gas limit for ERC721 approve operations
+const ERC721_APPROVE_GAS_LIMIT = 65000;
+
 interface LpApproveRequestBody {
   simulateTransaction: boolean;
   walletAddress: string;
@@ -165,7 +168,7 @@ export function createLpApproveHandler(
                 value: '0x00',
                 from: walletAddress,
                 data: approveData,
-                gasLimit: '0xfde8', // 65000 in hex - standard ERC721 approve gas
+                gasLimit: ethers.utils.hexlify(ERC721_APPROVE_GAS_LIMIT),
                 chainId,
               };
 
@@ -186,7 +189,7 @@ export function createLpApproveHandler(
               value: '0x00',
               from: walletAddress,
               data: approveData,
-              gasLimit: '0xfde8',
+              gasLimit: ethers.utils.hexlify(ERC721_APPROVE_GAS_LIMIT),
               chainId,
             };
           }

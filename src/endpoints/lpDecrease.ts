@@ -4,8 +4,8 @@ import { ethers } from 'ethers';
 import JSBI from 'jsbi';
 import { RouterService } from '../core/RouterService';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
-import { CurrencyAmount, Percent, Ether, ChainId } from '@juiceswapxyz/sdk-core';
-import { ADDRESS_ZERO, NonfungiblePositionManager, Position } from '@juiceswapxyz/v3-sdk';
+import { CurrencyAmount, Percent, Ether, ChainId, Token } from '@juiceswapxyz/sdk-core';
+import { ADDRESS_ZERO, NonfungiblePositionManager, Position, Pool } from '@juiceswapxyz/v3-sdk';
 import { estimateEip1559Gas, getV3LpContext, V3LpPositionInput, getTokenAddress } from './_shared/v3LpCommon';
 import { getChainContracts, hasJuiceDollarIntegration } from '../config/contracts';
 
@@ -222,9 +222,9 @@ async function handleGatewayLpDecrease(params: {
   ctx: {
     provider: ethers.providers.StaticJsonRpcProvider;
     positionManagerAddress: string;
-    token0: any;
-    token1: any;
-    poolInstance: any;
+    token0: Token;
+    token1: Token;
+    poolInstance: Pool;
     tickLower: number;
     tickUpper: number;
   };
@@ -287,18 +287,24 @@ async function handleGatewayLpDecrease(params: {
   const { amount0: internalAmount0Min, amount1: internalAmount1Min } =
     positionInstance.burnAmountsWithSlippage(slippageTolerance);
 
-  // Scale minimum amounts by the percentage being removed
-  const scaledInternalAmount0Min = (JSBI.toNumber(internalAmount0Min) * percentBps) / 10000;
-  const scaledInternalAmount1Min = (JSBI.toNumber(internalAmount1Min) * percentBps) / 10000;
+  // Scale minimum amounts by the percentage being removed using JSBI to maintain precision
+  const scaledInternalAmount0Min = JSBI.divide(
+    JSBI.multiply(internalAmount0Min, JSBI.BigInt(percentBps)),
+    JSBI.BigInt(10000)
+  );
+  const scaledInternalAmount1Min = JSBI.divide(
+    JSBI.multiply(internalAmount1Min, JSBI.BigInt(percentBps)),
+    JSBI.BigInt(10000)
+  );
 
   // Convert minimums to user-facing tokens (JUSD) for Gateway
   // The Gateway will return JUSD directly to the user (handles svJUSD → JUSD conversion)
   const amount0Min = isToken0Jusd
-    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, Math.floor(scaledInternalAmount0Min).toString())
-    : Math.floor(scaledInternalAmount0Min).toString();
+    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, scaledInternalAmount0Min.toString())
+    : scaledInternalAmount0Min.toString();
   const amount1Min = isToken1Jusd
-    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, Math.floor(scaledInternalAmount1Min).toString())
-    : Math.floor(scaledInternalAmount1Min).toString();
+    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, scaledInternalAmount1Min.toString())
+    : scaledInternalAmount1Min.toString();
 
   const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 

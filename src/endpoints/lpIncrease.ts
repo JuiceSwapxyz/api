@@ -4,8 +4,8 @@ import { ethers } from 'ethers';
 import JSBI from 'jsbi';
 import { RouterService } from '../core/RouterService';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
-import { CurrencyAmount, Percent, Ether, ChainId } from '@juiceswapxyz/sdk-core';
-import { ADDRESS_ZERO, NonfungiblePositionManager, Position } from '@juiceswapxyz/v3-sdk';
+import { CurrencyAmount, Percent, Ether, ChainId, Token } from '@juiceswapxyz/sdk-core';
+import { ADDRESS_ZERO, NonfungiblePositionManager, Position, Pool } from '@juiceswapxyz/v3-sdk';
 import { estimateEip1559Gas, getV3LpContext, V3LpPositionInput, getTokenAddress } from './_shared/v3LpCommon';
 import { getChainContracts, hasJuiceDollarIntegration } from '../config/contracts';
 
@@ -237,9 +237,9 @@ async function handleGatewayLpIncrease(params: {
   ctx: {
     provider: ethers.providers.StaticJsonRpcProvider;
     positionManagerAddress: string;
-    token0: any;
-    token1: any;
-    poolInstance: any;
+    token0: Token;
+    token1: Token;
+    poolInstance: Pool;
     tickLower: number;
     tickUpper: number;
   };

@@ -6,6 +6,14 @@ import { ethers } from 'ethers';
  * Provides runtime validation with type inference
  */
 
+// Helper for token difference validation (used in Quote and Swap schemas)
+const validateTokensDifferent = (data: { tokenIn?: string; tokenInAddress?: string; tokenOut?: string; tokenOutAddress?: string }) => {
+  const tokenIn = (data.tokenIn || data.tokenInAddress)?.toLowerCase();
+  const tokenOut = (data.tokenOut || data.tokenOutAddress)?.toLowerCase();
+  return tokenIn !== tokenOut;
+};
+const TOKEN_DIFFERENCE_ERROR = { message: 'tokenIn and tokenOut must be different tokens', path: ['tokenOut'] };
+
 // Common schemas
 export const AddressSchema = z.string().refine(
   (val) => ethers.utils.isAddress(val),
@@ -65,17 +73,7 @@ export const QuoteRequestSchema = z.object({
     message: 'Either tokenOut or tokenOutAddress must be provided',
     path: ['tokenOutAddress'],
   }
-).refine(
-  (data) => {
-    const tokenIn = (data.tokenIn || data.tokenInAddress)?.toLowerCase();
-    const tokenOut = (data.tokenOut || data.tokenOutAddress)?.toLowerCase();
-    return tokenIn !== tokenOut;
-  },
-  {
-    message: 'tokenIn and tokenOut must be different tokens',
-    path: ['tokenOut'],
-  }
-);
+).refine(validateTokensDifferent, TOKEN_DIFFERENCE_ERROR);
 
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
 
@@ -122,17 +120,7 @@ export const SwapRequestSchema = z.object({
     message: 'Either tokenOut or tokenOutAddress must be provided',
     path: ['tokenOutAddress'],
   }
-).refine(
-  (data) => {
-    const tokenIn = (data.tokenIn || data.tokenInAddress)?.toLowerCase();
-    const tokenOut = (data.tokenOut || data.tokenOutAddress)?.toLowerCase();
-    return tokenIn !== tokenOut;
-  },
-  {
-    message: 'tokenIn and tokenOut must be different tokens',
-    path: ['tokenOut'],
-  }
-);
+).refine(validateTokensDifferent, TOKEN_DIFFERENCE_ERROR);
 
 export type SwapRequest = z.infer<typeof SwapRequestSchema>;
 

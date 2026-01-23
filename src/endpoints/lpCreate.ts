@@ -208,7 +208,6 @@ export function createLpCreateHandler(
           req.body,
           res,
           log,
-          routerService,
           juiceGatewayService,
           provider
         );
@@ -395,7 +394,6 @@ async function handleGatewayLpCreate(
   body: LpCreateRequestBody,
   res: Response,
   log: Logger,
-  _routerService: RouterService,
   juiceGatewayService: JuiceGatewayService,
   provider: ethers.providers.StaticJsonRpcProvider
 ): Promise<void> {
@@ -632,7 +630,7 @@ async function handleGatewayLpCreate(
   // Use SDK's slippage calculation - this accounts for current pool price
   const slippageBps = body.slippageTolerance
     ? Math.round(parseFloat(body.slippageTolerance) * 100)
-    : 500; // 5% default
+    : 50; // 0.5% default (consistent with other LP operations)
   const slippageTolerance = new Percent(slippageBps, 10_000);
   const { amount0: internalAmount0Min, amount1: internalAmount1Min } =
     positionForSlippage.mintAmountsWithSlippage(slippageTolerance);
