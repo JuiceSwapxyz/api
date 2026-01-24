@@ -410,19 +410,21 @@ export class JuiceGatewayService {
 
     switch (routingType) {
       case 'GATEWAY_JUSD':
-        // JUSD input/output - convert to svJUSD for internal routing
-        if (isJusdAddress(chainId, tokenIn)) {
+        // JUSD or SUSD input/output - convert to svJUSD for internal routing
+        // SUSD is 1:1 with JUSD via StablecoinBridge (both 18 decimals)
+        if (isJusdAddress(chainId, tokenIn) || isSusdAddress(chainId, tokenIn)) {
           internalTokenIn = contracts.SV_JUSD;
           internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
         }
-        if (isJusdAddress(chainId, tokenOut)) {
+        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
           internalTokenOut = contracts.SV_JUSD;
         }
         break;
 
       case 'GATEWAY_JUICE_OUT':
         // Buying JUICE - route to svJUSD first
-        if (isJusdAddress(chainId, tokenIn)) {
+        // Also handle SUSD input (1:1 with JUSD)
+        if (isJusdAddress(chainId, tokenIn) || isSusdAddress(chainId, tokenIn)) {
           internalTokenIn = contracts.SV_JUSD;
           internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
         }
@@ -472,8 +474,9 @@ export class JuiceGatewayService {
   ): Promise<string> {
     switch (routingType) {
       case 'GATEWAY_JUSD':
-        // If output is JUSD, convert from svJUSD
-        if (isJusdAddress(chainId, tokenOut)) {
+        // If output is JUSD or SUSD, convert from svJUSD
+        // SUSD is 1:1 with JUSD (both 18 decimals), so same conversion applies
+        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
           return await this.svJusdToJusd(chainId, routerOutput);
         }
         return routerOutput;
@@ -485,8 +488,8 @@ export class JuiceGatewayService {
       }
 
       case 'GATEWAY_JUICE_IN':
-        // If output is JUSD, convert from svJUSD
-        if (isJusdAddress(chainId, tokenOut)) {
+        // If output is JUSD or SUSD, convert from svJUSD
+        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
           return await this.svJusdToJusd(chainId, routerOutput);
         }
         return routerOutput;
