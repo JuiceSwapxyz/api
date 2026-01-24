@@ -1,5 +1,6 @@
 import { Contract, providers } from 'ethers';
-import { ChainId, NONFUNGIBLE_POSITION_MANAGER_ADDRESSES } from '@juiceswapxyz/sdk-core';
+import { ChainId, NONFUNGIBLE_POSITION_MANAGER_ADDRESSES, Token } from '@juiceswapxyz/sdk-core';
+import { Pool, Position } from '@juiceswapxyz/v3-sdk';
 
 export type V3OnchainPositionInfo = {
   /** Position liquidity (uint128) from NonfungiblePositionManager.positions(tokenId).liquidity */
@@ -10,6 +11,14 @@ export type V3OnchainPositionInfo = {
   currentPrice: string;
   /** Pool in-range liquidity (uint128) from pool.liquidity() */
   currentLiquidity: string;
+  /** Position tick lower (int24) from NonfungiblePositionManager.positions(tokenId).tickLower */
+  tickLower: string;
+  /** Position tick upper (int24) from NonfungiblePositionManager.positions(tokenId).tickUpper */
+  tickUpper: string;
+  /** Position amount0 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount0 */
+  amount0: string;
+  /** Position amount1 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount1 */
+  amount1: string;
 };
 
 export type V3OnchainPoolInfo = {
@@ -24,6 +33,11 @@ export type V3OnchainPoolInfo = {
 export type V3OnchainPositionLiquidityInfo = {
   /** Position liquidity (uint128) from NonfungiblePositionManager.positions(tokenId).liquidity */
   liquidity: string;
+  /** Position tick lower (int24) from NonfungiblePositionManager.positions(tokenId).tickLower */
+  tickLower: string;
+  /** Position tick upper (int24) from NonfungiblePositionManager.positions(tokenId).tickUpper */
+  tickUpper: string;
+  /** Position amount0 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount0 */
 };
 
 const V3_POOL_ABI = [
@@ -69,7 +83,9 @@ export async function fetchV3OnchainPositionLiquidityInfo(params: {
   const positionManager = new Contract(positionManagerAddress, NONFUNGIBLE_POSITION_MANAGER_ABI, provider);
   const pos = await positionManager.positions(tokenId);
 
-  return { liquidity: pos.liquidity.toString() };
+  return {
+    liquidity: pos.liquidity.toString(), tickLower: pos.tickLower.toString(), tickUpper: pos.tickUpper.toString()
+  };
 }
 
 export async function fetchV3OnchainPositionInfo(params: {
@@ -77,8 +93,11 @@ export async function fetchV3OnchainPositionInfo(params: {
   chainId: ChainId;
   poolAddress: string;
   tokenId: string | number;
+  token0: Token;
+  token1: Token;
+  fee: number;
 }): Promise<V3OnchainPositionInfo> {
-  const [{ currentTick, currentPrice, currentLiquidity }, { liquidity }] = await Promise.all([
+  const [{ currentTick, currentPrice, currentLiquidity }, { liquidity, tickLower, tickUpper }] = await Promise.all([
     fetchV3OnchainPoolInfo({ provider: params.provider, poolAddress: params.poolAddress }),
     fetchV3OnchainPositionLiquidityInfo({
       provider: params.provider,
@@ -87,11 +106,31 @@ export async function fetchV3OnchainPositionInfo(params: {
     }),
   ]);
 
+  const pool = new Pool(
+    params.token0,
+    params.token1,
+    params.fee,
+    currentPrice,
+    currentLiquidity,
+    parseInt(currentTick)
+  )
+
+  const position = new Position({
+    pool,
+    tickLower: parseInt(tickLower),
+    tickUpper: parseInt(tickUpper),
+    liquidity: parseInt(liquidity),
+  });
+
   return {
     liquidity,
     currentTick,
     currentPrice,
     currentLiquidity,
+    tickLower,
+    tickUpper,
+    amount0: position.amount0.quotient.toString(),
+    amount1: position.amount1.quotient.toString(),
   };
 }
 

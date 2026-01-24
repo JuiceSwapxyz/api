@@ -3,7 +3,7 @@ import Logger from "bunyan";
 import { getPonderClient } from "../services/PonderClient";
 import { getAddress } from "viem";
 import { RouterService } from "../core/RouterService";
-import { ChainId } from "@juiceswapxyz/sdk-core";
+import { ChainId, Token } from "@juiceswapxyz/sdk-core";
 import { fetchV3OnchainPositionInfo } from "../utils/v3OnchainPositionInfo";
 
 /**
@@ -222,6 +222,9 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         chainId: chainId as ChainId,
         poolAddress: getAddress(positionData.poolAddress),
         tokenId,
+        token0: new Token(chainId as ChainId, token0.address, token0.decimals),
+        token1: new Token(chainId as ChainId, token1.address, token1.decimals),
+        fee: poolData.fee,
       });
 
       const position = {
@@ -255,8 +258,8 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
           currentLiquidity: onchain.currentLiquidity,
           feeTier: poolData.fee.toString(),
           tickSpacing: poolData.tickSpacing.toString(),
-          amount0: positionData.amount0.toString(),
-          amount1: positionData.amount1.toString(),
+          amount0: onchain.amount0,
+          amount1: onchain.amount1,
           token0UncollectedFees: "0",
           token1UncollectedFees: "0",
           totalLiquidityUsd: "0",
