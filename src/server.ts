@@ -9,7 +9,6 @@ import { initializeProviders, verifyProviders } from './providers/rpcProvider';
 import { createQuoteHandler } from './endpoints/quote';
 import { createSwapHandler } from './endpoints/swap';
 import { JuiceGatewayService } from './services/JuiceGatewayService';
-import { StablecoinBridgeService } from './services/StablecoinBridgeService';
 import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
@@ -101,11 +100,9 @@ async function bootstrap() {
   // Initialize router service with Ponder integration
   const routerService = await RouterService.create(providers, logger);
 
-  // Initialize JuiceGateway service for JUSD/JUICE token routing
+  // Initialize JuiceGateway service for JUSD/JUICE/SUSD token routing
+  // SUSD is handled via Gateway's addBridgedToken() mechanism
   const juiceGatewayService = new JuiceGatewayService(providers, logger);
-
-  // Initialize StablecoinBridge service for SUSD ↔ JUSD 1:1 swaps
-  const stablecoinBridgeService = new StablecoinBridgeService(providers, logger);
 
   // Initialize GraphQL resolvers
   initializeResolvers(routerService, logger);
@@ -194,8 +191,8 @@ async function bootstrap() {
   });
 
   // Create endpoint handlers
-  const handleQuote = createQuoteHandler(routerService, logger, juiceGatewayService, stablecoinBridgeService);
-  const handleSwap = createSwapHandler(routerService, logger, juiceGatewayService, stablecoinBridgeService);
+  const handleQuote = createQuoteHandler(routerService, logger, juiceGatewayService);
+  const handleSwap = createSwapHandler(routerService, logger, juiceGatewayService);
   const handleSwappableTokens = createSwappableTokensHandler(logger);
   const handleSwapApprove = createSwapApproveHandler(routerService, logger);
   const handleSwaps = createSwapsHandler(routerService, logger);

@@ -20,7 +20,6 @@ export interface ChainContracts {
   SV_JUSD: string;
   JUICE: string;
   SUSD: string;
-  STABLECOIN_BRIDGE: string;
   WCBTC: string;
   JUICE_SWAP_GATEWAY: string;
   SWAP_ROUTER: string;
@@ -59,7 +58,6 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     SV_JUSD: juiceDollarAddresses.savingsVaultJUSD,
     JUICE: juiceDollarAddresses.equity,
     SUSD: juiceDollarAddresses.startUSD,
-    STABLECOIN_BRIDGE: juiceDollarAddresses.bridgeStartUSD,
     // From @juiceswapxyz/sdk-core
     WCBTC: wcbtc.address,
     JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? '',
@@ -143,19 +141,6 @@ export function isSusdAddress(chainId: number, address: string): boolean {
   const contracts = getChainContracts(chainId);
   if (!contracts || !contracts.SUSD) return false;
   return normalizeAddress(address) === normalizeAddress(contracts.SUSD);
-}
-
-/**
- * Check if a swap is a Stablecoin Bridge swap (SUSD ↔ JUSD)
- */
-export function isStablecoinBridgeSwap(chainId: number, tokenIn: string, tokenOut: string): boolean {
-  const isSusdIn = isSusdAddress(chainId, tokenIn);
-  const isSusdOut = isSusdAddress(chainId, tokenOut);
-  const isJusdIn = isJusdAddress(chainId, tokenIn);
-  const isJusdOut = isJusdAddress(chainId, tokenOut);
-
-  // SUSD → JUSD or JUSD → SUSD
-  return (isSusdIn && isJusdOut) || (isJusdIn && isSusdOut);
 }
 
 /**
