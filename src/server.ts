@@ -101,7 +101,7 @@ async function bootstrap() {
   const routerService = await RouterService.create(providers, logger);
 
   // Initialize JuiceGateway service for JUSD/JUICE/SUSD token routing
-  // SUSD is handled via Gateway's addBridgedToken() mechanism
+  // SUSD is handled via Gateway's registerBridgedToken() mechanism
   const juiceGatewayService = new JuiceGatewayService(providers, logger);
 
   // Initialize GraphQL resolvers

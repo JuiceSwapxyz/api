@@ -148,7 +148,7 @@ export class JuiceGatewayService {
    * Check if a token requires Gateway routing
    * @returns Routing type or null if standard routing should be used
    *
-   * SUSD (StartUSD) is handled via Gateway's addBridgedToken() mechanism.
+   * SUSD (StartUSD) is handled via Gateway's registerBridgedToken() mechanism.
    * When SUSD is registered as a bridged token, the Gateway automatically:
    * - Input: SUSD → bridge.mint() → JUSD → svJUSD
    * - Output: svJUSD → JUSD → bridge.burnAndSend() → SUSD
@@ -180,7 +180,7 @@ export class JuiceGatewayService {
     }
 
     // JUSD or SUSD involved - route through Gateway
-    // SUSD is handled via Gateway's addBridgedToken() mechanism
+    // SUSD is handled via Gateway's registerBridgedToken() mechanism
     if (isJusdIn || isJusdOut || isSusdIn || isSusdOut) {
       return 'GATEWAY_JUSD';
     }

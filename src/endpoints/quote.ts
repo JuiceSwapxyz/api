@@ -294,7 +294,7 @@ export function createQuoteHandler(
       // ============================================
       // JuiceDollar Gateway Routing (JUSD/JUICE/SUSD)
       // ============================================
-      // SUSD is routed through Gateway via addBridgedToken() - no separate bridge service needed
+      // SUSD is routed through Gateway via registerBridgedToken() - no separate bridge service needed
       // Detect if this swap involves JUSD or JUICE tokens that need Gateway routing
       if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
         const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
