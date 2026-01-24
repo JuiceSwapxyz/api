@@ -9,6 +9,7 @@ import { getRPCMonitor } from '../utils/rpcMonitor';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { StablecoinBridgeService } from '../services/StablecoinBridgeService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -82,6 +83,7 @@ export enum Routing {
   GATEWAY_JUSD = 'GATEWAY_JUSD',         // JUSD swap via JuiceSwapGateway
   GATEWAY_JUICE_OUT = 'GATEWAY_JUICE_OUT', // Buy JUICE via Gateway + Equity
   GATEWAY_JUICE_IN = 'GATEWAY_JUICE_IN',   // Sell JUICE via Equity.redeem()
+  STABLECOIN_BRIDGE = 'STABLECOIN_BRIDGE', // 1:1 SUSD ↔ JUSD bridge swap
 }
 
 export interface QuoteResponse {
@@ -131,7 +133,8 @@ export interface QuoteResponse {
 export function createQuoteHandler(
   routerService: RouterService,
   logger: Logger,
-  juiceGatewayService?: JuiceGatewayService
+  juiceGatewayService?: JuiceGatewayService,
+  stablecoinBridgeService?: StablecoinBridgeService
 ) {
   return async function handleQuote(req: Request, res: Response): Promise<void> {
     const startTime = Date.now();
@@ -289,6 +292,95 @@ export function createQuoteHandler(
         res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
         res.json(wrapResponse);
         return;
+      }
+
+      // ============================================
+      // Stablecoin Bridge Routing (SUSD ↔ JUSD)
+      // ============================================
+      // Check for 1:1 SUSD ↔ JUSD bridge swaps BEFORE JuiceDollar Gateway
+      if (stablecoinBridgeService) {
+        const bridgeRoutingType = stablecoinBridgeService.detectRoutingType(chainId, tokenIn, tokenOut);
+
+        if (bridgeRoutingType === 'STABLECOIN_BRIDGE') {
+          log.debug({ tokenIn, tokenOut }, 'Stablecoin Bridge routing detected');
+
+          try {
+            const bridgeQuote = await stablecoinBridgeService.getQuote(
+              chainId,
+              tokenIn,
+              tokenOut,
+              body.amount
+            );
+
+            if (!bridgeQuote) {
+              // Bridge constraints not met (expired, limit exceeded)
+              res.status(404).json({
+                error: 'BRIDGE_UNAVAILABLE',
+                detail: 'Stablecoin Bridge is not available. It may be expired or at capacity.',
+              });
+              return;
+            }
+
+            // Build 1:1 bridge quote response
+            const quoteId = generateQuoteId();
+            const bridgeResponse: QuoteResponse = {
+              requestId: quoteId,
+              routing: Routing.STABLECOIN_BRIDGE,
+              permitData: null,
+              quote: {
+                chainId: chainId,
+                swapper: body.swapper || '0x0000000000000000000000000000000000000000',
+                input: {
+                  amount: bridgeQuote.inputAmount,
+                  token: bridgeQuote.inputToken,
+                },
+                output: {
+                  amount: bridgeQuote.outputAmount, // 1:1 ratio
+                  token: bridgeQuote.outputToken,
+                  recipient: body.swapper || '0x0000000000000000000000000000000000000000',
+                },
+                tradeType: body.type || 'EXACT_INPUT',
+                amount: bridgeQuote.inputAmount,
+                amountDecimals: formatDecimals(bridgeQuote.inputAmount, tokenInDecimals),
+                quote: bridgeQuote.outputAmount,
+                quoteDecimals: formatDecimals(bridgeQuote.outputAmount, tokenOutDecimals),
+                // No gas adjustment needed for simple bridge call
+                quoteGasAdjusted: bridgeQuote.outputAmount,
+                gasUseEstimate: '50000', // Estimate for bridge mint/burn
+                gasUseEstimateUSD: '0.01',
+                gasPriceWei: '1000000000',
+                // Bridge-specific metadata
+                _bridge: {
+                  bridgeFunction: bridgeQuote.bridgeFunction,
+                  bridgeAddress: stablecoinBridgeService.getBridgeAddress(chainId),
+                },
+              },
+            };
+
+            // Cache bridge quotes
+            if (quoteCache.shouldCache(body, bridgeResponse)) {
+              quoteCache.set(body, bridgeResponse);
+            }
+
+            res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
+            log.debug({
+              bridgeFunction: bridgeQuote.bridgeFunction,
+              amount: bridgeQuote.inputAmount,
+              responseTime: Date.now() - startTime,
+            }, 'Stablecoin Bridge quote generated');
+
+            res.json(bridgeResponse);
+            return;
+
+          } catch (error) {
+            log.error({ error }, 'Stablecoin Bridge quote failed');
+            res.status(500).json({
+              error: 'BRIDGE_ERROR',
+              detail: error instanceof Error ? error.message : 'Bridge routing failed',
+            });
+            return;
+          }
+        }
       }
 
       // ============================================

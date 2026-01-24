@@ -5,6 +5,7 @@ import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { StablecoinBridgeService } from '../services/StablecoinBridgeService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -116,7 +117,8 @@ async function getGasPrices(
 export function createSwapHandler(
   routerService: RouterService,
   logger: Logger,
-  juiceGatewayService?: JuiceGatewayService
+  juiceGatewayService?: JuiceGatewayService,
+  stablecoinBridgeService?: StablecoinBridgeService
 ) {
   return async function handleSwap(req: Request, res: Response): Promise<void> {
     const requestId = req.headers['x-request-id'] as string || `swap-${Date.now()}`;
@@ -137,6 +139,14 @@ export function createSwapHandler(
       const tokenIn = body.tokenIn || body.tokenInAddress!;
       const tokenOut = body.tokenOut || body.tokenOutAddress!;
       const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+
+      // Check for Stablecoin Bridge routing (SUSD ↔ JUSD)
+      if (stablecoinBridgeService) {
+        const bridgeRoutingType = stablecoinBridgeService.detectRoutingType(chainId, tokenIn, tokenOut);
+        if (bridgeRoutingType === 'STABLECOIN_BRIDGE') {
+          return await handleStablecoinBridgeSwap(body, res, log, routerService, stablecoinBridgeService);
+        }
+      }
 
       // Check for Gateway routing (JUSD/JUICE)
       if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
@@ -312,6 +322,121 @@ async function handleWrapUnwrap(
     res.json(response);
   } catch (error) {
     log.error({ error }, 'Error in handleWrapUnwrap');
+    res.status(500).json({
+      error: 'Internal server error',
+      detail: error instanceof Error ? error.message : 'Unknown error occurred',
+    });
+  }
+}
+
+/**
+ * Handle Stablecoin Bridge swap operations (SUSD ↔ JUSD)
+ * Uses StablecoinBridge contract for 1:1 swaps
+ */
+async function handleStablecoinBridgeSwap(
+  body: SwapRequestBody,
+  res: Response,
+  log: Logger,
+  routerService: RouterService,
+  stablecoinBridgeService: StablecoinBridgeService
+): Promise<void> {
+  try {
+    const tokenIn = body.tokenIn || body.tokenInAddress!;
+    const tokenOut = body.tokenOut || body.tokenOutAddress!;
+    const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+
+    // Get bridge address
+    const bridgeAddress = stablecoinBridgeService.getBridgeAddress(chainId);
+    if (!bridgeAddress) {
+      res.status(400).json({
+        error: 'BRIDGE_NOT_CONFIGURED',
+        detail: `Stablecoin Bridge not configured for chain ${chainId}`,
+      });
+      return;
+    }
+
+    // Determine bridge direction (mint = SUSD→JUSD, burn = JUSD→SUSD)
+    const bridgeFunction = stablecoinBridgeService.getBridgeFunction(chainId, tokenIn, tokenOut);
+    if (!bridgeFunction) {
+      res.status(400).json({
+        error: 'INVALID_BRIDGE_SWAP',
+        detail: 'Invalid token pair for Stablecoin Bridge',
+      });
+      return;
+    }
+
+    // For mint operations, check bridge constraints
+    if (bridgeFunction === 'mint') {
+      const [isExpired, wouldExceed] = await Promise.all([
+        stablecoinBridgeService.isExpired(chainId),
+        stablecoinBridgeService.wouldExceedLimit(chainId, body.amount),
+      ]);
+
+      if (isExpired) {
+        res.status(503).json({
+          error: 'BRIDGE_EXPIRED',
+          detail: 'Stablecoin Bridge has expired',
+        });
+        return;
+      }
+
+      if (wouldExceed) {
+        res.status(400).json({
+          error: 'BRIDGE_LIMIT_EXCEEDED',
+          detail: 'Mint amount would exceed bridge limit',
+        });
+        return;
+      }
+    }
+
+    // Get RPC provider for gas prices
+    const provider = routerService.getProvider(chainId);
+    if (!provider) {
+      res.status(500).json({
+        error: 'Provider error',
+        detail: 'RPC provider not available',
+      });
+      return;
+    }
+
+    const gasPrices = await getGasPrices(provider, log);
+
+    // Build calldata - use mintTo/burnAndSend if recipient differs from sender
+    const useRecipientVariant = body.recipient.toLowerCase() !== body.from.toLowerCase();
+    const calldata = stablecoinBridgeService.buildSwapCalldata({
+      direction: bridgeFunction,
+      amount: body.amount,
+      recipient: useRecipientVariant ? body.recipient : undefined,
+    });
+
+    // Estimate gas (bridge operations are simple - typically ~60k gas)
+    const gasLimit = 80000; // Conservative estimate for mint/burn
+
+    const swapData = {
+      data: calldata,
+      to: bridgeAddress,
+      value: '0x0', // No ETH value needed for bridge operations
+      from: body.from,
+      maxFeePerGas: gasPrices.maxFeePerGas,
+      maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      gasLimit: gasLimit.toString(),
+      _routingType: Routing.STABLECOIN_BRIDGE,
+      _bridgeFunction: bridgeFunction,
+      _inputAmount: body.amount,
+      _outputAmount: body.amount, // 1:1 ratio
+    };
+
+    log.debug({
+      bridgeFunction,
+      tokenIn,
+      tokenOut,
+      amount: body.amount,
+    }, 'Stablecoin Bridge swap prepared');
+
+    res.json(swapData);
+
+  } catch (error) {
+    log.error({ error }, 'Error in handleStablecoinBridgeSwap');
     res.status(500).json({
       error: 'Internal server error',
       detail: error instanceof Error ? error.message : 'Unknown error occurred',
