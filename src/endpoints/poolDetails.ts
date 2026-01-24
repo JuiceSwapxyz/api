@@ -208,7 +208,7 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
       });
 
       const todaysTimestamp = Math.floor(Date.now() / 1000 / 86400) * 86400;
-      const volumen24h = todaysTimestamp < poolGeneralInfo.poolStats.items[0].timestamp ? poolGeneralInfo.poolStats.items[0].volume0 : 0;
+      const volumen24h = todaysTimestamp < poolGeneralInfo.poolStats.items?.[0]?.timestamp ? poolGeneralInfo.poolStats.items?.[0]?.volume0 : 0;
 
       const response: PoolDetailsResponse = {
         data: {
@@ -277,9 +277,9 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
               }
             },
             token1Supply: parseFloat(formatUnits(token1Balance, tokenInfo.token1.decimals)),
-            txCount: poolGeneralInfo.poolStat.txCount,
+            txCount: poolGeneralInfo.poolStat?.txCount || 0,
             volume24h: {
-              value: volumen24h,
+              value: volumen24h || 0,
             },
             historicalVolume: [],
             totalLiquidity: {
