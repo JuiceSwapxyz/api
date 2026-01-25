@@ -684,11 +684,12 @@ async function handleGatewayLpCreate(
 
   const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
 
-  // Build Gateway.addLiquidity() calldata
   const calldata = juiceGatewayService.buildGatewayAddLiquidityCalldata({
-    tokenA: token0Addr,
-    tokenB: token1Addr,
+    tokenA: position.pool.token0 === ADDRESS_ZERO ? ADDRESS_ZERO : token0Addr,
+    tokenB: position.pool.token1 === ADDRESS_ZERO ? ADDRESS_ZERO : token1Addr,
     fee: position.pool.fee,
+    tickLower,
+    tickUpper,
     amountADesired: amount0Raw,
     amountBDesired: amount1Raw,
     amountAMin: amount0Min,
@@ -724,7 +725,7 @@ async function handleGatewayLpCreate(
       NonfungiblePositionManager.createCallParameters(poolInstance);
 
     // Estimate gas for pool creation
-    let createPoolGasEstimate = ethers.BigNumber.from('500000'); // fallback
+    let createPoolGasEstimate = ethers.BigNumber.from('650000');
     try {
       createPoolGasEstimate = await provider.estimateGas({
         to: positionManagerAddress,
@@ -736,7 +737,7 @@ async function handleGatewayLpCreate(
       log.warn({ error: e }, 'Gas estimation failed for createPool, using fallback');
     }
 
-    const createPoolGasLimit = createPoolGasEstimate.mul(120).div(100);
+    const createPoolGasLimit = createPoolGasEstimate.mul(156).div(100);
     const baseFeeForCreatePool = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
     const maxPriorityFeeForCreatePool = ethers.utils.parseUnits('1', 'gwei');
     const maxFeeForCreatePool = baseFeeForCreatePool.mul(105).div(100).add(maxPriorityFeeForCreatePool);
@@ -760,7 +761,7 @@ async function handleGatewayLpCreate(
     }, 'Building createPool transaction for new svJUSD pool');
   }
 
-  let gasEstimate = isActuallyNewPool ? ethers.BigNumber.from('800000') : ethers.BigNumber.from('500000');
+  let gasEstimate = isActuallyNewPool ? ethers.BigNumber.from('1040000') : ethers.BigNumber.from('650000');
 
   try {
     // Only estimate gas for Gateway tx if pool exists or will be created first
@@ -777,7 +778,7 @@ async function handleGatewayLpCreate(
     log.warn({ error: e }, 'Gas estimation failed for Gateway LP, using fallback');
   }
 
-  const gasLimit = gasEstimate.mul(120).div(100); // 20% buffer for Gateway operations
+  const gasLimit = gasEstimate.mul(156).div(100);
 
   const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
   const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');

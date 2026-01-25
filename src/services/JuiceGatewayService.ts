@@ -9,25 +9,7 @@ import {
   isSusdAddress,
   ChainContracts,
 } from '../config/contracts';
-
-/**
- * ABI fragments for JuiceSwapGateway contract
- */
-const GATEWAY_ABI = [
-  // View functions for conversion rates
-  'function jusdToSvJusd(uint256 jusdAmount) view returns (uint256)',
-  'function svJusdToJusd(uint256 svJusdAmount) view returns (uint256)',
-  'function jusdToJuice(uint256 jusdAmount) view returns (uint256)',
-  'function juiceToJusd(uint256 juiceAmount) view returns (uint256)',
-  // Swap function
-  'function swapExactTokensForTokens(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint256 minAmountOut, address to, uint256 deadline) payable returns (uint256)',
-  // LP functions
-  'function addLiquidity(address tokenA, address tokenB, uint24 fee, uint256 amountADesired, uint256 amountBDesired, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) payable returns (uint256 amountA, uint256 amountB, uint256 liquidity)',
-  'function increaseLiquidity(uint256 tokenId, address tokenA, address tokenB, uint256 amountADesired, uint256 amountBDesired, uint256 amountAMin, uint256 amountBMin, uint256 deadline) payable returns (uint256 amountA, uint256 amountB, uint128 liquidity)',
-  'function removeLiquidity(uint256 tokenId, uint128 liquidityToRemove, address tokenA, address tokenB, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) returns (uint256 amountA, uint256 amountB)',
-  // Settings
-  'function defaultFee() view returns (uint24)',
-];
+import { JuiceSwapGatewayAbi } from '../abi/JuiceSwapGateway';
 
 /**
  * ABI fragments for JUICE Equity contract
@@ -66,6 +48,8 @@ export interface GatewayLpParams {
   tokenA: string;
   tokenB: string;
   fee: number;
+  tickLower: number;
+  tickUpper: number;
   amountADesired: string;
   amountBDesired: string;
   amountAMin: string;
@@ -134,7 +118,7 @@ export class JuiceGatewayService {
   ): void {
     this.gatewayContracts.set(
       chainId,
-      new ethers.Contract(contracts.JUICE_SWAP_GATEWAY, GATEWAY_ABI, provider)
+      new ethers.Contract(contracts.JUICE_SWAP_GATEWAY, JuiceSwapGatewayAbi, provider)
     );
     this.equityContracts.set(
       chainId,
@@ -195,7 +179,7 @@ export class JuiceGatewayService {
     if (!contract) return 3000; // Default 0.3%
 
     try {
-      const fee = await contract.defaultFee();
+      const fee = await contract.DEFAULT_FEE();
       return (fee as ethers.BigNumber).toNumber();
     } catch (error) {
       this.logger.warn({ chainId, error }, 'Failed to get default fee, using 3000');
@@ -306,7 +290,7 @@ export class JuiceGatewayService {
    * Build Gateway swap transaction calldata
    */
   buildGatewaySwapCalldata(params: GatewaySwapParams): string {
-    const iface = new ethers.utils.Interface(GATEWAY_ABI);
+    const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
     return iface.encodeFunctionData('swapExactTokensForTokens', [
       params.tokenIn,
       params.tokenOut,
@@ -500,7 +484,7 @@ export class JuiceGatewayService {
 
   /**
    * Check if tick range is full-range (or near full-range)
-   * Gateway.addLiquidity() only supports full-range positions.
+   * This helper can be used to check if a position covers the full price range.
    *
    * @param tickLower The lower tick
    * @param tickUpper The upper tick
@@ -529,11 +513,13 @@ export class JuiceGatewayService {
    * User provides JUSD amounts, Gateway converts to svJUSD internally
    */
   buildGatewayAddLiquidityCalldata(params: GatewayLpParams): string {
-    const iface = new ethers.utils.Interface(GATEWAY_ABI);
+    const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
     return iface.encodeFunctionData('addLiquidity', [
       params.tokenA,
       params.tokenB,
       params.fee,
+      params.tickLower,
+      params.tickUpper,
       params.amountADesired,
       params.amountBDesired,
       params.amountAMin,
@@ -548,7 +534,7 @@ export class JuiceGatewayService {
    * Increases liquidity for an existing position with automatic JUSD→svJUSD conversion
    */
   buildGatewayIncreaseLiquidityCalldata(params: GatewayIncreaseLiquidityParams): string {
-    const iface = new ethers.utils.Interface(GATEWAY_ABI);
+    const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
     return iface.encodeFunctionData('increaseLiquidity', [
       params.tokenId,
       params.tokenA,
@@ -567,7 +553,7 @@ export class JuiceGatewayService {
    * @param params.liquidityToRemove - Amount of liquidity to remove (0 = remove all)
    */
   buildGatewayRemoveLiquidityCalldata(params: GatewayRemoveLiquidityParams): string {
-    const iface = new ethers.utils.Interface(GATEWAY_ABI);
+    const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
     return iface.encodeFunctionData('removeLiquidity', [
       params.tokenId,
       params.liquidityToRemove,
