@@ -547,16 +547,66 @@ async function handleGatewayLpCreate(
   // Use on-chain pool for calculation, fallback to frontend pool only for truly new pools
   const poolForCalculation = poolForSlippage;
 
+  // Determine which token is JUSD for conversions
+  const isToken0Jusd = token0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+  const isToken1Jusd = token1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+
   // Only use frontend amounts if pool truly doesn't exist on-chain
   if (frontendThinksPoolIsNew && !poolActuallyExistsOnChain) {
-    // Truly new pool - use frontend amounts as-is
-    amount0Raw = independentIsToken0 ? independentAmount : initialDependentAmount!;
-    amount1Raw = independentIsToken0 ? initialDependentAmount! : independentAmount;
+    // Truly new pool - recalculate dependent amount using svJUSD share price
+    // The frontend sends JUSD amounts, but we need to calculate based on svJUSD pool price
+
+    // Convert independent amount from JUSD to svJUSD for calculation
+    let internalIndependentAmount = independentAmount;
+    if ((independentIsToken0 && isToken0Jusd) || (!independentIsToken0 && isToken1Jusd)) {
+      internalIndependentAmount = await juiceGatewayService.jusdToSvJusd(chainId as ChainId, independentAmount);
+    }
+
+    // Calculate dependent amount using the mock pool (with initialPrice)
+    let positionCalc: Position;
+    if (independentIsToken0) {
+      positionCalc = Position.fromAmount0({
+        pool: poolInstance, // Use the mock pool with initialPrice
+        tickLower,
+        tickUpper,
+        amount0: JSBI.BigInt(internalIndependentAmount),
+        useFullPrecision: false,
+      });
+
+      // Convert dependent amount (svJUSD) back to JUSD
+      let dependentAmount = positionCalc.amount1.quotient.toString();
+      if (isToken1Jusd) {
+        dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+      }
+
+      amount0Raw = independentAmount; // User's JUSD amount
+      amount1Raw = dependentAmount;
+    } else {
+      positionCalc = Position.fromAmount1({
+        pool: poolInstance, // Use the mock pool with initialPrice
+        tickLower,
+        tickUpper,
+        amount1: JSBI.BigInt(internalIndependentAmount),
+      });
+
+      // Convert dependent amount (svJUSD) back to JUSD
+      let dependentAmount = positionCalc.amount0.quotient.toString();
+      if (isToken0Jusd) {
+        dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+      }
+
+      amount0Raw = dependentAmount;
+      amount1Raw = independentAmount; // User's JUSD amount
+    }
+
+    log.info({
+      originalDependentAmount: initialDependentAmount,
+      correctedDependentAmount: independentIsToken0 ? amount1Raw : amount0Raw,
+      isToken0Jusd,
+      isToken1Jusd,
+    }, 'Recalculated dependent amount for new JUSD pool using svJUSD share price');
   } else {
     // Pool exists on-chain (or frontend knows it exists) - calculate based on on-chain price
-    const isToken0Jusd = token0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
-    const isToken1Jusd = token1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
-
     let internalIndependentAmount = independentAmount;
 
     // Convert JUSD to svJUSD for position calculation
@@ -604,8 +654,7 @@ async function handleGatewayLpCreate(
 
   // Create Position instance for proper slippage calculation
   // Use internal token amounts (svJUSD) for the position
-  const isToken0Jusd = token0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
-  const isToken1Jusd = token1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+  // Note: isToken0Jusd and isToken1Jusd are defined above
 
   // Convert user amounts (JUSD) to internal amounts (svJUSD) for position calculation
   const internalAmount0 = isToken0Jusd
@@ -745,6 +794,9 @@ async function handleGatewayLpCreate(
   const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
   const gasFee = gasLimit.mul(maxFeePerGas);
 
+  // Get svJUSD share price for frontend validation
+  const svJusdSharePrice = await juiceGatewayService.svJusdToJusd(chainId as ChainId, ethers.utils.parseEther('1').toString());
+
   const response: Record<string, unknown> = {
     requestId: `lp-create-gateway-${Date.now()}`,
     create: {
@@ -759,6 +811,14 @@ async function handleGatewayLpCreate(
     },
     dependentAmount: independentIsToken0 ? amount1Raw : amount0Raw,
     gasFee: ethers.utils.formatEther(gasFee),
+    // svJUSD share price info for frontend display validation
+    svJusdInfo: {
+      sharePrice: svJusdSharePrice,
+      sharePriceDecimals: 18,
+      svJusdAddress: contracts.SV_JUSD,
+      jusdAddress: contracts.JUSD,
+      isJusdPair: true,
+    },
     _routingType: 'GATEWAY_LP',
     _note: 'LP routed through JuiceSwapGateway. JUSD will be converted to svJUSD internally for capital efficiency.',
   };
