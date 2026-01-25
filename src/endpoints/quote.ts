@@ -79,7 +79,7 @@ export enum Routing {
   CLASSIC = 'CLASSIC',
   WRAP = 'WRAP',
   UNWRAP = 'UNWRAP',
-  GATEWAY_JUSD = 'GATEWAY_JUSD',         // JUSD swap via JuiceSwapGateway
+  GATEWAY_JUSD = 'GATEWAY_JUSD',         // JUSD/SUSD swap via JuiceSwapGateway
   GATEWAY_JUICE_OUT = 'GATEWAY_JUICE_OUT', // Buy JUICE via Gateway + Equity
   GATEWAY_JUICE_IN = 'GATEWAY_JUICE_IN',   // Sell JUICE via Equity.redeem()
 }
@@ -292,8 +292,9 @@ export function createQuoteHandler(
       }
 
       // ============================================
-      // JuiceDollar Gateway Routing (JUSD/JUICE)
+      // JuiceDollar Gateway Routing (JUSD/JUICE/SUSD)
       // ============================================
+      // SUSD is routed through Gateway via registerBridgedToken() - no separate bridge service needed
       // Detect if this swap involves JUSD or JUICE tokens that need Gateway routing
       if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
         const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);

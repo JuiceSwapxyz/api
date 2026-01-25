@@ -138,7 +138,8 @@ export function createSwapHandler(
       const tokenOut = body.tokenOut || body.tokenOutAddress!;
       const chainId = (body.chainId || body.tokenInChainId) as ChainId;
 
-      // Check for Gateway routing (JUSD/JUICE)
+      // Check for Gateway routing (JUSD/JUICE/SUSD)
+      // SUSD is routed through Gateway via registerBridgedToken() - no separate bridge service needed
       if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
         const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
 
@@ -320,8 +321,9 @@ async function handleWrapUnwrap(
 }
 
 /**
- * Handle Gateway swap operations (JUSD/JUICE tokens)
+ * Handle Gateway swap operations (JUSD/JUICE/SUSD tokens)
  * Routes through JuiceSwapGateway or Equity contract
+ * SUSD is handled via Gateway's registerBridgedToken() mechanism
  */
 async function handleGatewaySwap(
   body: SwapRequestBody,

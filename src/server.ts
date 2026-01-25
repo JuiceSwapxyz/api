@@ -100,7 +100,8 @@ async function bootstrap() {
   // Initialize router service with Ponder integration
   const routerService = await RouterService.create(providers, logger);
 
-  // Initialize JuiceGateway service for JUSD/JUICE token routing
+  // Initialize JuiceGateway service for JUSD/JUICE/SUSD token routing
+  // SUSD is handled via Gateway's registerBridgedToken() mechanism
   const juiceGatewayService = new JuiceGatewayService(providers, logger);
 
   // Initialize GraphQL resolvers

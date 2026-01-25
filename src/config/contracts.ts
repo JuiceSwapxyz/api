@@ -19,6 +19,7 @@ export interface ChainContracts {
   JUSD: string;
   SV_JUSD: string;
   JUICE: string;
+  SUSD: string;
   WCBTC: string;
   JUICE_SWAP_GATEWAY: string;
   SWAP_ROUTER: string;
@@ -56,6 +57,7 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     JUSD: juiceDollarAddresses.juiceDollar,
     SV_JUSD: juiceDollarAddresses.savingsVaultJUSD,
     JUICE: juiceDollarAddresses.equity,
+    SUSD: juiceDollarAddresses.startUSD,
     // From @juiceswapxyz/sdk-core
     WCBTC: wcbtc.address,
     JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? '',
@@ -133,15 +135,25 @@ export function isJuiceAddress(chainId: number, address: string): boolean {
 }
 
 /**
+ * Check if an address is SUSD (StartUSD)
+ */
+export function isSusdAddress(chainId: number, address: string): boolean {
+  const contracts = getChainContracts(chainId);
+  if (!contracts || !contracts.SUSD) return false;
+  return normalizeAddress(address) === normalizeAddress(contracts.SUSD);
+}
+
+/**
  * Detect which JuiceDollar token type an address is
- * @returns 'JUSD' | 'SV_JUSD' | 'JUICE' | null
+ * @returns 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | null
  */
 export function detectJuiceDollarToken(
   chainId: number,
   address: string
-): 'JUSD' | 'SV_JUSD' | 'JUICE' | null {
+): 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | null {
   if (isJusdAddress(chainId, address)) return 'JUSD';
   if (isSvJusdAddress(chainId, address)) return 'SV_JUSD';
   if (isJuiceAddress(chainId, address)) return 'JUICE';
+  if (isSusdAddress(chainId, address)) return 'SUSD';
   return null;
 }

@@ -6,6 +6,7 @@ import {
   hasJuiceDollarIntegration,
   isJusdAddress,
   isJuiceAddress,
+  isSusdAddress,
   ChainContracts,
 } from '../config/contracts';
 
@@ -146,6 +147,11 @@ export class JuiceGatewayService {
   /**
    * Check if a token requires Gateway routing
    * @returns Routing type or null if standard routing should be used
+   *
+   * SUSD (StartUSD) is handled via Gateway's registerBridgedToken() mechanism.
+   * When SUSD is registered as a bridged token, the Gateway automatically:
+   * - Input: SUSD → bridge.mint() → JUSD → svJUSD
+   * - Output: svJUSD → JUSD → bridge.burnAndSend() → SUSD
    */
   detectRoutingType(
     chainId: number,
@@ -160,6 +166,8 @@ export class JuiceGatewayService {
     const isJusdOut = isJusdAddress(chainId, tokenOut);
     const isJuiceIn = isJuiceAddress(chainId, tokenIn);
     const isJuiceOut = isJuiceAddress(chainId, tokenOut);
+    const isSusdIn = isSusdAddress(chainId, tokenIn);
+    const isSusdOut = isSusdAddress(chainId, tokenOut);
 
     // JUICE as input - route through Equity.redeem()
     if (isJuiceIn) {
@@ -171,8 +179,9 @@ export class JuiceGatewayService {
       return 'GATEWAY_JUICE_OUT';
     }
 
-    // JUSD involved - route through Gateway for svJUSD conversion
-    if (isJusdIn || isJusdOut) {
+    // JUSD or SUSD involved - route through Gateway
+    // SUSD is handled via Gateway's registerBridgedToken() mechanism
+    if (isJusdIn || isJusdOut || isSusdIn || isSusdOut) {
       return 'GATEWAY_JUSD';
     }
 
@@ -401,19 +410,21 @@ export class JuiceGatewayService {
 
     switch (routingType) {
       case 'GATEWAY_JUSD':
-        // JUSD input/output - convert to svJUSD for internal routing
-        if (isJusdAddress(chainId, tokenIn)) {
+        // JUSD or SUSD input/output - convert to svJUSD for internal routing
+        // SUSD is 1:1 with JUSD via StablecoinBridge (both 18 decimals)
+        if (isJusdAddress(chainId, tokenIn) || isSusdAddress(chainId, tokenIn)) {
           internalTokenIn = contracts.SV_JUSD;
           internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
         }
-        if (isJusdAddress(chainId, tokenOut)) {
+        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
           internalTokenOut = contracts.SV_JUSD;
         }
         break;
 
       case 'GATEWAY_JUICE_OUT':
         // Buying JUICE - route to svJUSD first
-        if (isJusdAddress(chainId, tokenIn)) {
+        // Also handle SUSD input (1:1 with JUSD)
+        if (isJusdAddress(chainId, tokenIn) || isSusdAddress(chainId, tokenIn)) {
           internalTokenIn = contracts.SV_JUSD;
           internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
         }
@@ -463,8 +474,9 @@ export class JuiceGatewayService {
   ): Promise<string> {
     switch (routingType) {
       case 'GATEWAY_JUSD':
-        // If output is JUSD, convert from svJUSD
-        if (isJusdAddress(chainId, tokenOut)) {
+        // If output is JUSD or SUSD, convert from svJUSD
+        // SUSD is 1:1 with JUSD (both 18 decimals), so same conversion applies
+        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
           return await this.svJusdToJusd(chainId, routerOutput);
         }
         return routerOutput;
@@ -476,8 +488,8 @@ export class JuiceGatewayService {
       }
 
       case 'GATEWAY_JUICE_IN':
-        // If output is JUSD, convert from svJUSD
-        if (isJusdAddress(chainId, tokenOut)) {
+        // If output is JUSD or SUSD, convert from svJUSD
+        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
           return await this.svJusdToJusd(chainId, routerOutput);
         }
         return routerOutput;
