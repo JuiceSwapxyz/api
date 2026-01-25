@@ -303,16 +303,6 @@ export function createQuoteHandler(
           log.debug({ routingType, tokenIn, tokenOut }, 'Gateway routing detected');
 
           try {
-            // Check if Gateway is paused
-            const isPaused = await juiceGatewayService.isGatewayPaused(chainId);
-            if (isPaused) {
-              res.status(503).json({
-                error: 'GATEWAY_PAUSED',
-                detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
-              });
-              return;
-            }
-
             // Prepare quote with internal token conversions
             const gatewayQuote = await juiceGatewayService.prepareQuote(
               chainId,
