@@ -139,8 +139,8 @@ async function bootstrap() {
       if (corsOrigins.includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
-      // Check if it's a juiceswap.com or juiceswap.xyz subdomain (supports multi-level subdomains)
-      else if (/^https?:\/\/([\w-]+\.)*juiceswap\.(com|xyz)(:\d+)?$/.test(origin)) {
+      // Check if it's a juiceswap.com subdomain (supports multi-level subdomains)
+      else if (/^https?:\/\/([\w-]+\.)*juiceswap\.com(:\d+)?$/.test(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
     } else {
