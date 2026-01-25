@@ -483,32 +483,6 @@ export class JuiceGatewayService {
   }
 
   /**
-   * Check if tick range is full-range (or near full-range)
-   * This helper can be used to check if a position covers the full price range.
-   *
-   * @param tickLower The lower tick
-   * @param tickUpper The upper tick
-   * @param tickSpacing The tick spacing for the fee tier
-   * @returns true if ticks represent a full-range position
-   */
-  isFullRangeTicks(tickLower: number, tickUpper: number, tickSpacing: number): boolean {
-    // Uniswap V3 tick bounds
-    const MIN_TICK = -887272;
-    const MAX_TICK = 887272;
-
-    // Calculate full-range ticks for this spacing
-    const fullRangeLower = Math.ceil(MIN_TICK / tickSpacing) * tickSpacing;
-    const fullRangeUpper = Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
-
-    // Allow some tolerance (within 2 tick spacings of full range)
-    const tolerance = tickSpacing * 2;
-    const isLowerFullRange = Math.abs(tickLower - fullRangeLower) <= tolerance;
-    const isUpperFullRange = Math.abs(tickUpper - fullRangeUpper) <= tolerance;
-
-    return isLowerFullRange && isUpperFullRange;
-  }
-
-  /**
    * Build Gateway.addLiquidity() calldata
    * User provides JUSD amounts, Gateway converts to svJUSD internally
    */
