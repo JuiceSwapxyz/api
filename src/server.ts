@@ -9,6 +9,8 @@ import { initializeProviders, verifyProviders } from './providers/rpcProvider';
 import { createQuoteHandler } from './endpoints/quote';
 import { createSwapHandler } from './endpoints/swap';
 import { JuiceGatewayService } from './services/JuiceGatewayService';
+import { SvJusdPriceService } from './services/SvJusdPriceService';
+import { createSvJusdSharePriceHandler } from './endpoints/svJusdSharePrice';
 import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
@@ -103,6 +105,9 @@ async function bootstrap() {
   // Initialize JuiceGateway service for JUSD/JUICE/SUSD token routing
   // SUSD is handled via Gateway's registerBridgedToken() mechanism
   const juiceGatewayService = new JuiceGatewayService(providers, logger);
+
+  // Initialize svJUSD price service for share price caching
+  const svJusdPriceService = new SvJusdPriceService(providers, logger);
 
   // Initialize GraphQL resolvers
   initializeResolvers(routerService, logger);
@@ -228,6 +233,7 @@ async function bootstrap() {
   const handleValidateLightningAddress = createValidateLightningAddressHandler(logger);
   const handlePositionInfo = createPositionInfoHandler(routerService, logger);
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
+  const handleSvJusdSharePrice = createSvJusdSharePriceHandler(svJusdPriceService, logger);
 
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
@@ -251,6 +257,9 @@ async function bootstrap() {
   app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
   app.post('/v1/lp/increase', generalLimiter, validateBody(LpIncreaseRequestSchema, logger), handleLpIncrease);
   app.post('/v1/lp/decrease', generalLimiter, validateBody(LpDecreaseRequestSchema, logger), handleLpDecrease);
+
+  // svJUSD share price endpoint (for frontend price calculations)
+  app.get('/v1/svjusd/sharePrice', generalLimiter, handleSvJusdSharePrice);
 
   // Lightning invoice endpoint
   app.post('/v1/lightning/invoice', generalLimiter, validateBody(LightningInvoiceRequestSchema, logger), handleLightningInvoice);

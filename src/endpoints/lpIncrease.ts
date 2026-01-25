@@ -388,6 +388,9 @@ async function handleGatewayLpIncrease(params: {
     logger: log,
   });
 
+  // Get svJUSD share price for frontend validation
+  const svJusdSharePrice = await juiceGatewayService.svJusdToJusd(chainId as ChainId, ethers.utils.parseEther('1').toString());
+
   res.status(200).json({
     requestId: `lp-increase-gateway-${Date.now()}`,
     increase: {
@@ -402,6 +405,14 @@ async function handleGatewayLpIncrease(params: {
     },
     dependentAmount: independentIsToken0 ? amount1Raw : amount0Raw,
     gasFee: ethers.utils.formatEther(gasFee),
+    // svJUSD share price info for frontend display validation
+    svJusdInfo: {
+      sharePrice: svJusdSharePrice,
+      sharePriceDecimals: 18,
+      svJusdAddress: contracts.SV_JUSD,
+      jusdAddress: contracts.JUSD,
+      isJusdPair: true,
+    },
     _routingType: 'GATEWAY_LP',
     _note: 'LP increase routed through JuiceSwapGateway. JUSD will be converted to svJUSD internally.',
   });
