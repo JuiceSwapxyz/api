@@ -7,7 +7,7 @@ import { ethers } from 'ethers';
 import { getApproveTxForToken } from '../utils/erc20';
 import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES } from '@juiceswapxyz/sdk-core';
 import { JuiceGatewayService } from '../services/JuiceGatewayService';
-import { hasJuiceDollarIntegration } from '../config/contracts';
+import { hasJuiceDollarIntegration, isJusdAddress } from '../config/contracts';
 
 // Gas limit for ERC721 approve operations
 const ERC721_APPROVE_GAS_LIMIT = 65000;
@@ -131,9 +131,24 @@ export function createLpApproveHandler(
       let token1Approval = null;
 
       if (hasAmounts) {
+        // For JUSD tokens routed through Gateway, use unlimited approval to avoid conversion rate issues
+        let adjustedAmount0 = amount0!;
+        let adjustedAmount1 = amount1!;
+
+        if (routingType === 'GATEWAY') {
+          if (isJusdAddress(chainId, token0)) {
+            adjustedAmount0 = ethers.constants.MaxUint256.toString();
+            log.debug({ original: amount0, adjusted: 'unlimited' }, 'Using unlimited approval for JUSD token0');
+          }
+          if (isJusdAddress(chainId, token1)) {
+            adjustedAmount1 = ethers.constants.MaxUint256.toString();
+            log.debug({ original: amount1, adjusted: 'unlimited' }, 'Using unlimited approval for JUSD token1');
+          }
+        }
+
         [token0Approval, token1Approval] = await Promise.all([
-          getApproveTxForToken(token0, amount0!, walletAddress, spender, provider, chainId, log),
-          getApproveTxForToken(token1, amount1!, walletAddress, spender, provider, chainId, log)
+          getApproveTxForToken(token0, adjustedAmount0, walletAddress, spender, provider, chainId, log),
+          getApproveTxForToken(token1, adjustedAmount1, walletAddress, spender, provider, chainId, log)
         ]);
       }
 
