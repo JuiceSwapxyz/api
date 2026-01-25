@@ -27,7 +27,6 @@ const GATEWAY_ABI = [
   'function removeLiquidity(uint256 tokenId, uint128 liquidityToRemove, address tokenA, address tokenB, uint256 amountAMin, uint256 amountBMin, address to, uint256 deadline) returns (uint256 amountA, uint256 amountB)',
   // Settings
   'function defaultFee() view returns (uint24)',
-  'function paused() view returns (bool)',
 ];
 
 /**
@@ -186,21 +185,6 @@ export class JuiceGatewayService {
     }
 
     return null;
-  }
-
-  /**
-   * Check if Gateway is paused
-   */
-  async isGatewayPaused(chainId: ChainId): Promise<boolean> {
-    const contract = this.gatewayContracts.get(chainId);
-    if (!contract) return true;
-
-    try {
-      return await contract.paused();
-    } catch (error) {
-      this.logger.warn({ chainId, error }, 'Failed to check Gateway paused state');
-      return true; // Assume paused on error
-    }
   }
 
   /**

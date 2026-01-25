@@ -347,16 +347,6 @@ async function handleGatewaySwap(
       return;
     }
 
-    // Check if Gateway is paused before building transaction
-    const isPaused = await juiceGatewayService.isGatewayPaused(chainId);
-    if (isPaused) {
-      res.status(503).json({
-        error: 'GATEWAY_PAUSED',
-        detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
-      });
-      return;
-    }
-
     // Get RPC provider for gas prices
     const provider = routerService.getProvider(chainId);
     if (!provider) {

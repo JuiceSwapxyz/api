@@ -449,16 +449,6 @@ async function handleGatewayLpCreate(
     return;
   }
 
-  // Check if Gateway is paused
-  const isPaused = await juiceGatewayService.isGatewayPaused(chainId as ChainId);
-  if (isPaused) {
-    res.status(503).json({
-      error: 'GATEWAY_PAUSED',
-      detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
-    });
-    return;
-  }
-
   const gatewayAddress = juiceGatewayService.getGatewayAddress(chainId);
   if (!gatewayAddress) {
     res.status(500).json({

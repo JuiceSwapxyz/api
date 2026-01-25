@@ -269,16 +269,6 @@ async function handleGatewayLpIncrease(params: {
     return;
   }
 
-  // Check if Gateway is paused
-  const isPaused = await juiceGatewayService.isGatewayPaused(chainId as ChainId);
-  if (isPaused) {
-    res.status(503).json({
-      error: 'GATEWAY_PAUSED',
-      detail: 'JuiceSwap Gateway is currently paused. Please try again later.',
-    });
-    return;
-  }
-
   const independentIsToken0 = independentToken === 'TOKEN_0';
   const isToken0Jusd = userToken0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
   const isToken1Jusd = userToken1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
