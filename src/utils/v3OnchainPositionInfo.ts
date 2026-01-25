@@ -1,6 +1,7 @@
 import { Contract, providers } from 'ethers';
 import { ChainId, NONFUNGIBLE_POSITION_MANAGER_ADDRESSES, Token } from '@juiceswapxyz/sdk-core';
 import { Pool, Position } from '@juiceswapxyz/v3-sdk';
+import { maxUint128 } from 'viem';
 
 export type V3OnchainPositionInfo = {
   /** Position liquidity (uint128) from NonfungiblePositionManager.positions(tokenId).liquidity */
@@ -19,6 +20,10 @@ export type V3OnchainPositionInfo = {
   amount0: string;
   /** Position amount1 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount1 */
   amount1: string;
+  /** Position amount0 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount0 */
+  token0UncollectedFees: string;
+  /** Position amount1 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount1 */
+  token1UncollectedFees: string;
 };
 
 export type V3OnchainPoolInfo = {
@@ -38,6 +43,9 @@ export type V3OnchainPositionLiquidityInfo = {
   /** Position tick upper (int24) from NonfungiblePositionManager.positions(tokenId).tickUpper */
   tickUpper: string;
   /** Position amount0 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount0 */
+  token0UncollectedFees: string;
+  /** Position amount1 (uint256) from NonfungiblePositionManager.positions(tokenId).amounts.amount1 */
+  token1UncollectedFees: string;
 };
 
 const V3_POOL_ABI = [
@@ -49,6 +57,7 @@ const V3_POOL_ABI = [
 // The full return tuple is UniswapV3-compatible; extra fields are ignored by ethers if we only read `.liquidity`.
 const NONFUNGIBLE_POSITION_MANAGER_ABI = [
   'function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
+  'function collect((uint256 tokenId,address recipient,uint128 amount0Max,uint128 amount1Max)) returns (uint256 amount0,uint256 amount1)',
 ];
 
 export async function fetchV3OnchainPoolInfo(params: {
@@ -82,9 +91,17 @@ export async function fetchV3OnchainPositionLiquidityInfo(params: {
 
   const positionManager = new Contract(positionManagerAddress, NONFUNGIBLE_POSITION_MANAGER_ABI, provider);
   const pos = await positionManager.positions(tokenId);
+  const amounts = await positionManager.callStatic.collect({
+    tokenId,
+    recipient: "0x000000000000000000000000000000000000dEaD",
+    amount0Max: maxUint128,
+    amount1Max: maxUint128,
+  });
+
+  console.log('DANS amounts', amounts);
 
   return {
-    liquidity: pos.liquidity.toString(), tickLower: pos.tickLower.toString(), tickUpper: pos.tickUpper.toString()
+    liquidity: pos.liquidity.toString(), tickLower: pos.tickLower.toString(), tickUpper: pos.tickUpper.toString(), token0UncollectedFees: amounts[0].toString(), token1UncollectedFees: amounts[1].toString()
   };
 }
 
@@ -97,7 +114,7 @@ export async function fetchV3OnchainPositionInfo(params: {
   token1: Token;
   fee: number;
 }): Promise<V3OnchainPositionInfo> {
-  const [{ currentTick, currentPrice, currentLiquidity }, { liquidity, tickLower, tickUpper }] = await Promise.all([
+  const [{ currentTick, currentPrice, currentLiquidity }, { liquidity, tickLower, tickUpper, token0UncollectedFees, token1UncollectedFees }] = await Promise.all([
     fetchV3OnchainPoolInfo({ provider: params.provider, poolAddress: params.poolAddress }),
     fetchV3OnchainPositionLiquidityInfo({
       provider: params.provider,
@@ -131,6 +148,8 @@ export async function fetchV3OnchainPositionInfo(params: {
     tickUpper,
     amount0: position.amount0.quotient.toString(),
     amount1: position.amount1.quotient.toString(),
+    token0UncollectedFees: token0UncollectedFees,
+    token1UncollectedFees: token1UncollectedFees,
   };
 }
 
