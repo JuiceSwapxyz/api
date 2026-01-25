@@ -352,8 +352,8 @@ async function handleGatewayLpIncrease(params: {
   // Build Gateway.increaseLiquidity() calldata
   const calldata = juiceGatewayService.buildGatewayIncreaseLiquidityCalldata({
     tokenId,
-    tokenA: userToken0Addr,
-    tokenB: userToken1Addr,
+    tokenA: body.position.pool.token0 === ADDRESS_ZERO ? ADDRESS_ZERO : userToken0Addr,
+    tokenB: body.position.pool.token1 === ADDRESS_ZERO ? ADDRESS_ZERO : userToken1Addr,
     amountADesired: amount0Raw,
     amountBDesired: amount1Raw,
     amountAMin: amount0Min,
