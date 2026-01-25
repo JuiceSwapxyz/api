@@ -435,20 +435,6 @@ async function handleGatewayLpCreate(
   const tickLower = nearestUsableTick(position.tickLower, tickSpacing);
   const tickUpper = nearestUsableTick(position.tickUpper, tickSpacing);
 
-  // Gateway only supports full-range positions
-  if (!juiceGatewayService.isFullRangeTicks(tickLower, tickUpper, tickSpacing)) {
-    res.status(400).json({
-      message: 'JUSD liquidity provision requires full-range position. For custom tick ranges, please convert JUSD to svJUSD first using the svJUSD vault, then create position with svJUSD directly.',
-      error: 'CustomRangeNotSupported',
-      _hint: {
-        svJusdAddress: contracts.SV_JUSD,
-        jusdAddress: contracts.JUSD,
-        recommendation: 'Use svJUSD vault deposit() to convert JUSD → svJUSD, then use svJUSD for LP',
-      },
-    });
-    return;
-  }
-
   const gatewayAddress = juiceGatewayService.getGatewayAddress(chainId);
   if (!gatewayAddress) {
     res.status(500).json({
