@@ -293,11 +293,30 @@ export function createQuoteHandler(
       }
 
       // ============================================
+      // Check for Launchpad Tokens FIRST
+      // ============================================
+      // Launchpad tokens ALWAYS use V2 pools with JUSD directly (not svJUSD)
+      // They must BYPASS Gateway routing entirely
+      const [isGraduatedIn, isGraduatedOut] = await Promise.all([
+        isGraduatedLaunchpadToken(chainId, tokenIn),
+        isGraduatedLaunchpadToken(chainId, tokenOut),
+      ]);
+      const hasLaunchpadToken = isGraduatedIn || isGraduatedOut;
+
+      if (hasLaunchpadToken) {
+        log.debug(
+          { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
+          'Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD'
+        );
+      }
+
+      // ============================================
       // JuiceDollar Gateway Routing (JUSD/JUICE/SUSD)
       // ============================================
       // SUSD is routed through Gateway via registerBridgedToken() - no separate bridge service needed
       // Detect if this swap involves JUSD or JUICE tokens that need Gateway routing
-      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
+      // NOTE: Launchpad tokens BYPASS Gateway - they use V2 pools with JUSD directly
+      if (!hasLaunchpadToken && juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
         const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
 
         if (routingType) {
@@ -346,27 +365,6 @@ export function createQuoteHandler(
                 .map(p => p.toUpperCase())
                 .filter(p => p === 'V2' || p === 'V3')
                 .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
-            }
-
-            // Auto-detect graduated launchpad tokens and enable V2 routing
-            // Check user-facing tokens (not internal svJUSD)
-            const [isGraduatedIn, isGraduatedOut] = await Promise.all([
-              isGraduatedLaunchpadToken(chainId, tokenIn),
-              isGraduatedLaunchpadToken(chainId, tokenOut),
-            ]);
-
-            if (isGraduatedIn || isGraduatedOut) {
-              log.debug(
-                { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
-                'Graduated launchpad token detected in Gateway route, enabling V2 routing'
-              );
-              if (protocols) {
-                if (!protocols.includes(Protocol.V2)) {
-                  protocols = [...protocols, Protocol.V2];
-                }
-              } else {
-                protocols = [Protocol.V2, Protocol.V3];
-              }
             }
 
             // Get internal route quote
@@ -484,25 +482,15 @@ export function createQuoteHandler(
           .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
       }
 
-      // Auto-detect graduated launchpad tokens and enable V2 routing
-      const [isGraduatedIn, isGraduatedOut] = await Promise.all([
-        isGraduatedLaunchpadToken(chainId, tokenIn),
-        isGraduatedLaunchpadToken(chainId, tokenOut),
-      ]);
-
-      if (isGraduatedIn || isGraduatedOut) {
+      // For launchpad tokens: use V2 ONLY (no V3)
+      // hasLaunchpadToken is already computed above
+      if (hasLaunchpadToken) {
+        // Launchpad tokens ONLY use V2 pools with JUSD - never V3
+        protocols = [Protocol.V2];
         log.debug(
-          { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
-          'Graduated launchpad token detected, enabling V2 routing'
+          { tokenIn, tokenOut, protocols },
+          'Launchpad token: forcing V2-only routing'
         );
-        // Add V2 to protocols (or set to V2+V3 if not specified)
-        if (protocols) {
-          if (!protocols.includes(Protocol.V2)) {
-            protocols = [...protocols, Protocol.V2];
-          }
-        } else {
-          protocols = [Protocol.V2, Protocol.V3];
-        }
       }
 
       // Get quote from router
