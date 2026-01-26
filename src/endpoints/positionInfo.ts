@@ -146,6 +146,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         {
           wherePosition: {
             tokenId: tokenId,
+            chainId: chainId,
           },
         }
       );
@@ -174,6 +175,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         {
           wherePool: {
             address: getAddress(positionData.poolAddress),
+            chainId: chainId,
           }
         }
       );
@@ -228,7 +230,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
       });
 
       const position = {
-        chainId: 5115,
+        chainId: chainId,
         protocolVersion: "PROTOCOL_VERSION_V3",
         case: "v3Position",
         v3Position: {
@@ -239,14 +241,14 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
           tickLower: positionData.tickLower.toString(),
           tickUpper: positionData.tickUpper.toString(),
           token0: {
-            chainId: 5115,
+            chainId: chainId,
             address: token0.address,
             symbol: token0.symbol,
             decimals: token0.decimals,
             name: token0.name,
           },
           token1: {
-            chainId: 5115,
+            chainId: chainId,
             address: token1.address,
             symbol: token1.symbol,
             decimals: token1.decimals,

@@ -70,7 +70,7 @@ function buildChainContracts(chainId: number): ChainContracts | null {
 const CONTRACT_MAP: Record<number, ChainContracts> = {};
 
 // Initialize supported chains
-const SUPPORTED_JUICE_CHAINS = [ChainId.CITREA_TESTNET];
+const SUPPORTED_JUICE_CHAINS = [ChainId.CITREA_TESTNET, ChainId.CITREA_MAINNET];
 for (const chainId of SUPPORTED_JUICE_CHAINS) {
   const contracts = buildChainContracts(chainId);
   if (contracts) {
