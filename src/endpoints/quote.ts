@@ -13,6 +13,7 @@ import {
   getChainContracts,
   hasJuiceDollarIntegration,
 } from '../config/contracts';
+import { isGraduatedLaunchpadToken } from '../services/LaunchpadTokenService';
 import Logger from 'bunyan';
 
 // Helper functions for AWS-compatible response formatting
@@ -347,6 +348,23 @@ export function createQuoteHandler(
                 .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
             }
 
+            // Auto-detect graduated launchpad tokens and enable V2 routing
+            // Check the user-facing output token (not the internal svJUSD token)
+            const isGraduatedOut = await isGraduatedLaunchpadToken(chainId, tokenOut);
+            if (isGraduatedOut) {
+              log.debug(
+                { tokenOut, isGraduatedOut },
+                'Graduated launchpad token detected in Gateway route, enabling V2 routing'
+              );
+              if (protocols) {
+                if (!protocols.includes(Protocol.V2)) {
+                  protocols = [...protocols, Protocol.V2];
+                }
+              } else {
+                protocols = [Protocol.V2, Protocol.V3];
+              }
+            }
+
             // Get internal route quote
             const internalRoute = await routerService.getQuote({
               tokenIn: gatewayQuote.internalTokenIn,
@@ -460,6 +478,27 @@ export function createQuoteHandler(
           .map(p => p.toUpperCase())
           .filter(p => p === 'V2' || p === 'V3')
           .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+      }
+
+      // Auto-detect graduated launchpad tokens and enable V2 routing
+      const [isGraduatedIn, isGraduatedOut] = await Promise.all([
+        isGraduatedLaunchpadToken(chainId, tokenIn),
+        isGraduatedLaunchpadToken(chainId, tokenOut),
+      ]);
+
+      if (isGraduatedIn || isGraduatedOut) {
+        log.debug(
+          { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
+          'Graduated launchpad token detected, enabling V2 routing'
+        );
+        // Add V2 to protocols (or set to V2+V3 if not specified)
+        if (protocols) {
+          if (!protocols.includes(Protocol.V2)) {
+            protocols = [...protocols, Protocol.V2];
+          }
+        } else {
+          protocols = [Protocol.V2, Protocol.V3];
+        }
       }
 
       // Get quote from router

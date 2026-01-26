@@ -9,6 +9,7 @@ import {
   getChainContracts,
   hasJuiceDollarIntegration,
 } from '../config/contracts';
+import { isGraduatedLaunchpadToken } from '../services/LaunchpadTokenService';
 import { ethers } from 'ethers';
 import Logger from 'bunyan';
 import { Routing } from './quote';
@@ -599,6 +600,27 @@ async function handleClassicSwap(
         .map(p => p.toUpperCase())
         .filter(p => p === 'V2' || p === 'V3')
         .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+    }
+
+    // Auto-detect graduated launchpad tokens and enable V2 routing
+    const [isGraduatedIn, isGraduatedOut] = await Promise.all([
+      isGraduatedLaunchpadToken(chainId, validatedTokenIn),
+      isGraduatedLaunchpadToken(chainId, validatedTokenOut),
+    ]);
+
+    if (isGraduatedIn || isGraduatedOut) {
+      log.debug(
+        { tokenIn: validatedTokenIn, tokenOut: validatedTokenOut, isGraduatedIn, isGraduatedOut },
+        'Graduated launchpad token detected, enabling V2 routing'
+      );
+      // Add V2 to protocols (or set to V2+V3 if not specified)
+      if (protocols) {
+        if (!protocols.includes(Protocol.V2)) {
+          protocols = [...protocols, Protocol.V2];
+        }
+      } else {
+        protocols = [Protocol.V2, Protocol.V3];
+      }
     }
 
     log.info(`Swap protocols - body.protocols: ${JSON.stringify(body.protocols)}, parsed: ${JSON.stringify(protocols)}`);
