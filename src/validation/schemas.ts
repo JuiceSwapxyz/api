@@ -265,7 +265,7 @@ export type LpClaimRequest = z.infer<typeof LpClaimRequestSchema>;
 
 // Portfolio endpoint schema
 export const PortfolioQuerySchema = z.object({
-  chainId: z.string().optional().default('5115').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),
+  chainId: z.string().optional().default('4114').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),
 });
 
 export type PortfolioQuery = z.infer<typeof PortfolioQuerySchema>;

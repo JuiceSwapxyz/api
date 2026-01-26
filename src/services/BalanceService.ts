@@ -203,6 +203,15 @@ export class BalanceService {
       };
     }
 
+    if (this.chainId === 4114) {
+      return {
+        name: 'Citrea BTC',
+        symbol: 'cBTC',
+        decimals: 18,
+        logoURI: '',
+      };
+    }
+    
     // Default fallback
     return {
       name: 'Ether',

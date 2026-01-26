@@ -154,7 +154,7 @@ export class RouterService {
       const gasPriceProvider = new EIP1559GasPriceProvider(provider);
 
       // Initialize token info requester
-      const tokenInfoRequester = new TokenInfoRequester(multicallProvider);
+      const tokenInfoRequester = new TokenInfoRequester(multicallProvider, chainId);
       this.tokenInfoRequesters.set(chainId, tokenInfoRequester);
 
       // For Citrea: use custom subgraph providers with static pools and graduated V2 pools
