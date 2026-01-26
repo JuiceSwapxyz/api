@@ -50,6 +50,7 @@ import { getApolloMiddleware } from './adapters/handleGraphQL';
 import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
 import { quoteCache } from './cache/quoteCache';
 import { portfolioCache } from './cache/portfolioCache';
+import { setLaunchpadTokenServiceLogger } from './services/LaunchpadTokenService';
 import { prisma } from './db/prisma';
 import {
   QuoteRequestSchema,
@@ -94,6 +95,9 @@ async function bootstrap() {
 
   // Initialize portfolio cache with logger
   portfolioCache.setLogger(logger);
+
+  // Initialize launchpad token service with logger
+  setLaunchpadTokenServiceLogger(logger);
 
   // Initialize RPC providers
   const providers = initializeProviders(logger);
