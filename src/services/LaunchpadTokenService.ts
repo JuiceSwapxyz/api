@@ -27,6 +27,7 @@ class LaunchpadTokenService {
   private getLogger(): Logger {
     if (!this.logger) {
       // Create a basic logger if none provided
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const bunyan = require('bunyan');
       this.logger = bunyan.createLogger({
         name: 'LaunchpadTokenService',
