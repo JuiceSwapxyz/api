@@ -9,6 +9,7 @@ import {
   getChainContracts,
   hasJuiceDollarIntegration,
 } from '../config/contracts';
+import { isGraduatedLaunchpadToken } from '../services/LaunchpadTokenService';
 import { ethers } from 'ethers';
 import Logger from 'bunyan';
 import { Routing } from './quote';
@@ -138,9 +139,28 @@ export function createSwapHandler(
       const tokenOut = body.tokenOut || body.tokenOutAddress!;
       const chainId = (body.chainId || body.tokenInChainId) as ChainId;
 
+      // ============================================
+      // Check for Launchpad Tokens FIRST
+      // ============================================
+      // Launchpad tokens ALWAYS use V2 pools with JUSD directly (not svJUSD)
+      // They must BYPASS Gateway routing entirely
+      const [isGraduatedIn, isGraduatedOut] = await Promise.all([
+        isGraduatedLaunchpadToken(chainId, tokenIn),
+        isGraduatedLaunchpadToken(chainId, tokenOut),
+      ]);
+      const hasLaunchpadToken = isGraduatedIn || isGraduatedOut;
+
+      if (hasLaunchpadToken) {
+        log.debug(
+          { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
+          'Graduated launchpad token detected - bypassing Gateway, using direct V2 swap with JUSD'
+        );
+      }
+
       // Check for Gateway routing (JUSD/JUICE/SUSD)
       // SUSD is routed through Gateway via registerBridgedToken() - no separate bridge service needed
-      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
+      // NOTE: Launchpad tokens BYPASS Gateway - they use V2 pools with JUSD directly
+      if (!hasLaunchpadToken && juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
         const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
 
         if (routingType) {
@@ -149,7 +169,7 @@ export function createSwapHandler(
       }
 
       // Handle classic swaps (exactIn/exactOut)
-      return await handleClassicSwap(body, res, log, routerService);
+      return await handleClassicSwap(body, res, log, routerService, hasLaunchpadToken);
     } catch (error) {
       log.error({ error }, 'Failed to prepare swap');
       res.status(500).json({
@@ -453,6 +473,8 @@ async function handleGatewaySwap(
     }
 
     // Route internally to get expected output
+    // Note: Launchpad tokens bypass Gateway entirely (checked in createSwapHandler),
+    // so this function only handles non-launchpad swaps with svJUSD
     const internalRoute = await routerService.getQuote({
       tokenIn: gatewayQuote.internalTokenIn,
       tokenOut: gatewayQuote.internalTokenOut,
@@ -531,12 +553,14 @@ async function handleGatewaySwap(
 
 /**
  * Handle classic swap operations (token <-> token)
+ * @param hasLaunchpadToken - Whether a graduated launchpad token is involved (pre-computed by caller)
  */
 async function handleClassicSwap(
   body: SwapRequestBody,
   res: Response,
   log: Logger,
-  routerService: RouterService
+  routerService: RouterService,
+  hasLaunchpadToken: boolean = false
 ): Promise<void> {
   try {
     // Normalize token addresses (Zod validation ensures at least one is present)
@@ -599,6 +623,17 @@ async function handleClassicSwap(
         .map(p => p.toUpperCase())
         .filter(p => p === 'V2' || p === 'V3')
         .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+    }
+
+    // For launchpad tokens: use V2 ONLY (no V3)
+    // hasLaunchpadToken is pre-computed by the caller to avoid redundant API calls
+    if (hasLaunchpadToken) {
+      // Launchpad tokens ONLY use V2 pools with JUSD - never V3
+      protocols = [Protocol.V2];
+      log.debug(
+        { tokenIn: validatedTokenIn, tokenOut: validatedTokenOut, protocols },
+        'Launchpad token: forcing V2-only routing'
+      );
     }
 
     log.info(`Swap protocols - body.protocols: ${JSON.stringify(body.protocols)}, parsed: ${JSON.stringify(protocols)}`);
