@@ -8,11 +8,28 @@ import { RouterService } from './core/RouterService';
 import { initializeProviders, verifyProviders } from './providers/rpcProvider';
 import { createQuoteHandler } from './endpoints/quote';
 import { createSwapHandler } from './endpoints/swap';
+import { JuiceGatewayService } from './services/JuiceGatewayService';
+import { SvJusdPriceService } from './services/SvJusdPriceService';
+import { createSvJusdSharePriceHandler } from './endpoints/svJusdSharePrice';
 import { createSwappableTokensHandler } from './endpoints/swappableTokens';
 import { createSwapsHandler } from './endpoints/swaps';
 import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
+import { createLpIncreaseHandler } from './endpoints/lpIncrease';
+import { createLpDecreaseHandler } from './endpoints/lpDecrease';
+import { createLpClaimHandler } from './endpoints/lpClaim';
 import { createPortfolioHandler } from './endpoints/portfolio';
+import {
+  createLaunchpadTokensHandler,
+  createLaunchpadTokenHandler,
+  createLaunchpadTokenTradesHandler,
+  createLaunchpadStatsHandler,
+  createLaunchpadRecentTradesHandler,
+} from './endpoints/launchpad';
+import {
+  createUploadImageHandler,
+  createUploadMetadataHandler,
+} from './endpoints/launchpadMetadata';
 import {
   createTotalAddressesWithIpHandler,
   createUniqueIpHashesHandler,
@@ -41,11 +58,26 @@ import {
   SwapsQuerySchema,
   LpApproveRequestSchema,
   LpCreateRequestSchema,
+  LpIncreaseRequestSchema,
+  LpDecreaseRequestSchema,
+  LpClaimRequestSchema,
   PortfolioQuerySchema,
   SwapApproveRequestSchema,
+  LaunchpadTokensQuerySchema,
+  LaunchpadTradesQuerySchema,
+  LaunchpadRecentTradesQuerySchema,
+  LightningInvoiceRequestSchema,
+  LightningAddressRequestSchema,
+  LaunchpadUploadMetadataSchema,
+  PositionInfoQuerySchema,
+  PoolDetailsRequestSchema,
 } from './validation/schemas';
 import packageJson from '../package.json';
 import { createSwapApproveHandler } from './endpoints/swapApprove';
+import { createLightningInvoiceHandler } from './endpoints/lightningInvoice';
+import { createValidateLightningAddressHandler } from './endpoints/validateLightningAddress';
+import { createPositionInfoHandler } from './endpoints/positionInfo';
+import { createPoolDetailsHandler } from './endpoints/poolDetails';
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -71,6 +103,13 @@ async function bootstrap() {
 
   // Initialize router service with Ponder integration
   const routerService = await RouterService.create(providers, logger);
+
+  // Initialize JuiceGateway service for JUSD/JUICE/SUSD token routing
+  // SUSD is handled via Gateway's registerBridgedToken() mechanism
+  const juiceGatewayService = new JuiceGatewayService(providers, logger);
+
+  // Initialize svJUSD price service for share price caching
+  const svJusdPriceService = new SvJusdPriceService(providers, logger);
 
   // Initialize GraphQL resolvers
   initializeResolvers(routerService, logger);
@@ -108,8 +147,8 @@ async function bootstrap() {
       if (corsOrigins.includes(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
-      // Check if it's a juiceswap.com or juiceswap.xyz subdomain (supports multi-level subdomains)
-      else if (/^https?:\/\/([\w-]+\.)*juiceswap\.(com|xyz)(:\d+)?$/.test(origin)) {
+      // Check if it's a juiceswap.com subdomain (supports multi-level subdomains)
+      else if (/^https?:\/\/([\w-]+\.)*juiceswap\.com(:\d+)?$/.test(origin)) {
         res.header('Access-Control-Allow-Origin', origin);
       }
     } else {
@@ -159,18 +198,30 @@ async function bootstrap() {
   });
 
   // Create endpoint handlers
-  const handleQuote = createQuoteHandler(routerService, logger);
-  const handleSwap = createSwapHandler(routerService, logger);
+  const handleQuote = createQuoteHandler(routerService, logger, juiceGatewayService);
+  const handleSwap = createSwapHandler(routerService, logger, juiceGatewayService);
   const handleSwappableTokens = createSwappableTokensHandler(logger);
   const handleSwapApprove = createSwapApproveHandler(routerService, logger);
   const handleSwaps = createSwapsHandler(routerService, logger);
-  const handleLpApprove = createLpApproveHandler(routerService, logger);
-  const handleLpCreate = createLpCreateHandler(routerService, logger);
+  const handleLpApprove = createLpApproveHandler(routerService, logger, juiceGatewayService);
+  const handleLpCreate = createLpCreateHandler(routerService, logger, juiceGatewayService);
+  const handleLpIncrease = createLpIncreaseHandler(routerService, logger, juiceGatewayService);
+  const handleLpDecrease = createLpDecreaseHandler(routerService, logger, juiceGatewayService);
+  const handleLpClaim = createLpClaimHandler(routerService, logger, juiceGatewayService);
   const handlePortfolio = createPortfolioHandler(providers, logger);
 
   // User metrics endpoint handlers
   const handleTotalAddressesWithIp = createTotalAddressesWithIpHandler(logger);
   const handleUniqueIpHashes = createUniqueIpHashesHandler(logger);
+
+  // Launchpad endpoint handlers
+  const handleLaunchpadTokens = createLaunchpadTokensHandler(logger);
+  const handleLaunchpadToken = createLaunchpadTokenHandler(logger);
+  const handleLaunchpadTokenTrades = createLaunchpadTokenTradesHandler(logger);
+  const handleLaunchpadStats = createLaunchpadStatsHandler(logger);
+  const handleLaunchpadRecentTrades = createLaunchpadRecentTradesHandler(logger);
+  const handleUploadImage = createUploadImageHandler(logger);
+  const handleUploadMetadata = createUploadMetadataHandler(logger);
 
   // Campaign endpoint handlers
   const handleTwitterStart = createTwitterStartHandler(logger);
@@ -181,6 +232,11 @@ async function bootstrap() {
   const handleDiscordStatus = createDiscordStatusHandler(logger);
   const handleBAppsStatus = createBAppsStatusHandler(logger);
   const handleNFTSignature = createNFTSignatureHandler(logger);
+  const handleLightningInvoice = createLightningInvoiceHandler(logger);
+  const handleValidateLightningAddress = createValidateLightningAddressHandler(logger);
+  const handlePositionInfo = createPositionInfoHandler(routerService, logger);
+  const handlePoolDetails = createPoolDetailsHandler(providers, logger);
+  const handleSvJusdSharePrice = createSvJusdSharePriceHandler(svJusdPriceService, logger);
 
   // API Routes with validation
   app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
@@ -193,9 +249,25 @@ async function bootstrap() {
   // Portfolio endpoint (returns wallet token balances)
   app.get('/v1/portfolio/:address', generalLimiter, validateQuery(PortfolioQuerySchema, logger), handlePortfolio);
 
+  // Position info endpoint (returns liquidity position information)
+  app.get('/v1/positions/:tokenId', generalLimiter, validateQuery(PositionInfoQuerySchema, logger), handlePositionInfo);
+
+  // Pool details endpoint
+  app.post('/v1/pools/v3/details', generalLimiter, validateBody(PoolDetailsRequestSchema, logger), handlePoolDetails);
+
   // LP endpoints
   app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
   app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
+  app.post('/v1/lp/increase', generalLimiter, validateBody(LpIncreaseRequestSchema, logger), handleLpIncrease);
+  app.post('/v1/lp/decrease', generalLimiter, validateBody(LpDecreaseRequestSchema, logger), handleLpDecrease);
+  app.post('/v1/lp/claim', generalLimiter, validateBody(LpClaimRequestSchema, logger), handleLpClaim);
+
+  // svJUSD share price endpoint (for frontend price calculations)
+  app.get('/v1/svjusd/sharePrice', generalLimiter, handleSvJusdSharePrice);
+
+  // Lightning invoice endpoint
+  app.post('/v1/lightning/invoice', generalLimiter, validateBody(LightningInvoiceRequestSchema, logger), handleLightningInvoice);
+  app.post('/v1/lightning/validate', generalLimiter, validateBody(LightningAddressRequestSchema, logger), handleValidateLightningAddress);
 
   // Swaps transaction status endpoint
   app.get('/v1/swaps', validateQuery(SwapsQuerySchema, logger), handleSwaps);
@@ -203,6 +275,17 @@ async function bootstrap() {
   // User metrics endpoints
   app.get('/v1/metrics/users/total-with-ip', handleTotalAddressesWithIp);
   app.get('/v1/metrics/users/unique-ips', handleUniqueIpHashes);
+
+  // Launchpad endpoints (proxies to Ponder)
+  app.get('/v1/launchpad/tokens', generalLimiter, validateQuery(LaunchpadTokensQuerySchema, logger), handleLaunchpadTokens);
+  app.get('/v1/launchpad/token/:address', generalLimiter, handleLaunchpadToken);
+  app.get('/v1/launchpad/token/:address/trades', generalLimiter, validateQuery(LaunchpadTradesQuerySchema, logger), handleLaunchpadTokenTrades);
+  app.get('/v1/launchpad/stats', generalLimiter, handleLaunchpadStats);
+  app.get('/v1/launchpad/recent-trades', generalLimiter, validateQuery(LaunchpadRecentTradesQuerySchema, logger), handleLaunchpadRecentTrades);
+
+  // Launchpad metadata upload endpoints (Pinata IPFS)
+  app.post('/v1/launchpad/upload-image', generalLimiter, handleUploadImage);
+  app.post('/v1/launchpad/upload-metadata', generalLimiter, validateBody(LaunchpadUploadMetadataSchema, logger), handleUploadMetadata);
 
   // Campaign endpoints - Twitter OAuth
   app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
@@ -224,10 +307,11 @@ async function bootstrap() {
   app.use('/v1/graphql', await getApolloMiddleware(logger));
 
   // API Documentation (Swagger UI)
-  app.use('/swagger', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  // Type assertions needed due to @types/swagger-ui-express bundling its own @types/express
+  app.use('/swagger', swaggerUi.serve as any, swaggerUi.setup(swaggerSpec, {
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'JuiceSwap API Documentation',
-  }));
+  }) as any);
 
   // Health check endpoints
   app.get('/healthz', (_req: Request, res: Response) => {

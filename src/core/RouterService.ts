@@ -5,12 +5,17 @@ import {
   SwapRoute,
   SwapType,
   V3PoolProvider,
+  V2PoolProvider,
+  V2QuoteProvider,
   TokenProvider,
   UniswapMulticallProvider,
   CachingTokenProviderWithFallback,
   NodeJSCache,
   EIP1559GasPriceProvider,
   nativeOnChain,
+  ITokenPropertiesProvider,
+  TokenPropertiesResult,
+  setGlobalLogger,
 } from '@juiceswapxyz/smart-order-router';
 import NodeCache from 'node-cache';
 import {
@@ -25,15 +30,34 @@ import { Protocol } from '@juiceswapxyz/router-sdk';
 import { providers } from 'ethers';
 import Logger from 'bunyan';
 import JSBI from 'jsbi';
-import { CitreaStaticV3SubgraphProvider } from '../providers/CitreaStaticV3SubgraphProvider';
+import { GraduatedV2SubgraphProvider } from '../providers/GraduatedV2SubgraphProvider';
+import { FallbackTokenProvider } from '../providers/FallbackTokenProvider';
 import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
 import { TokenInfoRequester } from '../utils/tokenInfoRequester';
+import { CitreaTestnetV3SubgraphProvider } from '../providers/CitreaV3SubgraphProvider';
+
+/**
+ * Simple no-op token properties provider for V2 pools.
+ * Returns empty token properties - not needed for basic V2 routing.
+ */
+class NoopTokenPropertiesProvider implements ITokenPropertiesProvider {
+  async getTokensProperties(
+    _currencies: Currency[],
+    _providerConfig?: any
+  ): Promise<Record<string, TokenPropertiesResult>> {
+    return {};
+  }
+}
 
 export interface QuoteParams {
   tokenIn: string;
   tokenOut: string;
   tokenInDecimals: number;
   tokenOutDecimals: number;
+  tokenInSymbol?: string;
+  tokenInName?: string;
+  tokenOutSymbol?: string;
+  tokenOutName?: string;
   amount: string;
   chainId: ChainId;
   type: 'exactIn' | 'exactOut';
@@ -41,6 +65,7 @@ export interface QuoteParams {
   slippageTolerance?: number;
   protocols?: Protocol[];
   enableUniversalRouter?: boolean;
+  deadline?: number;
 }
 
 export interface SwapParams extends QuoteParams {
@@ -80,6 +105,9 @@ export class RouterService {
   }
 
   private async initialize(): Promise<void> {
+    // Enable smart-order-router internal logging
+    setGlobalLogger(this.logger);
+
     // Initialize routers for each chain with essential providers
     for (const [chainId, provider] of this.providers.entries()) {
       // Initialize multicall provider for efficient batching
@@ -92,7 +120,11 @@ export class RouterService {
       // Initialize token provider with Ponder integration for Citrea
       let tokenProvider;
       if (chainId === ChainId.CITREA_TESTNET) {
-        tokenProvider = await createLocalTokenListProvider(chainId);
+        // Create token list provider from Ponder + static list
+        const tokenListProvider = await createLocalTokenListProvider(chainId);
+        // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
+        // This is needed for graduated launchpad tokens not yet in the token list
+        tokenProvider = new FallbackTokenProvider(chainId, tokenListProvider, multicallProvider);
       } else {
         // Initialize basic token provider for non-Citrea chains
         const baseTokenProvider = new TokenProvider(chainId, multicallProvider);
@@ -112,7 +144,7 @@ export class RouterService {
       // Store token provider for token lookup
       this.tokenProviders.set(chainId, tokenProvider);
 
-      // Initialize V3 pool provider only - no V2 needed
+      // Initialize V3 pool provider
       const v3PoolProvider = new V3PoolProvider(chainId, multicallProvider);
 
       // Store v3PoolProvider for pool address computation
@@ -125,10 +157,26 @@ export class RouterService {
       const tokenInfoRequester = new TokenInfoRequester(multicallProvider);
       this.tokenInfoRequesters.set(chainId, tokenInfoRequester);
 
-      // For Citrea: use custom subgraph provider with static pools
+      // For Citrea: use custom subgraph providers with static pools and graduated V2 pools
       let v3SubgraphProvider = undefined;
+      let v2SubgraphProvider = undefined;
+      let v2PoolProvider = undefined;
+
       if (chainId === ChainId.CITREA_TESTNET) {
-        v3SubgraphProvider = new CitreaStaticV3SubgraphProvider(chainId, v3PoolProvider);
+        // V3 subgraph provider (Ponder)
+        v3SubgraphProvider = new CitreaTestnetV3SubgraphProvider(this.logger);
+
+        // V2 providers for graduated launchpad tokens
+        // GraduatedV2SubgraphProvider fetches pool list from Ponder and on-chain reserves
+        v2SubgraphProvider = new GraduatedV2SubgraphProvider(chainId, this.logger, multicallProvider);
+
+        // V2PoolProvider fetches on-chain data (reserves) for V2 pairs
+        // Use NoopTokenPropertiesProvider since we don't need token fee properties for basic routing
+        v2PoolProvider = new V2PoolProvider(
+          chainId,
+          multicallProvider,
+          new NoopTokenPropertiesProvider()
+        );
       }
 
       // Initialize router with essential providers
@@ -140,6 +188,12 @@ export class RouterService {
         v3PoolProvider,
         gasPriceProvider,
         ...(v3SubgraphProvider && { v3SubgraphProvider }),
+        ...(v2SubgraphProvider && { v2SubgraphProvider }),
+        ...(v2PoolProvider && { v2PoolProvider }),
+        // V2QuoteProvider computes quotes off-chain using pool reserves
+        ...(v2PoolProvider && { v2QuoteProvider: new V2QuoteProvider() }),
+        // Enable V2 routing for Citrea testnet (graduated launchpad pools)
+        ...(chainId === ChainId.CITREA_TESTNET && { v2Supported: [ChainId.CITREA_TESTNET] }),
       }));
     }
   }
@@ -245,6 +299,10 @@ export class RouterService {
       tokenOut,
       tokenInDecimals,
       tokenOutDecimals,
+      tokenInSymbol,
+      tokenInName,
+      tokenOutSymbol,
+      tokenOutName,
       amount,
       chainId,
       type,
@@ -260,8 +318,8 @@ export class RouterService {
 
     // Create currencies using original addresses to properly handle native currency
     // The router will automatically handle native <-> wrapped token conversions
-    const currencyIn = this.createCurrency(tokenIn, chainId, tokenInDecimals);
-    const currencyOut = this.createCurrency(tokenOut, chainId, tokenOutDecimals);
+    const currencyIn = this.createCurrency(tokenIn, chainId, tokenInDecimals, tokenInSymbol, tokenInName);
+    const currencyOut = this.createCurrency(tokenOut, chainId, tokenOutDecimals, tokenOutSymbol, tokenOutName);
 
     const currencyAmount = CurrencyAmount.fromRawAmount(
       currencyIn,
@@ -276,32 +334,37 @@ export class RouterService {
       recipient,
       slippageTolerance: new Percent(Math.round(slippageTolerance * 100), 10000),
       type: SwapType.SWAP_ROUTER_02,
-      deadline: Math.floor(Date.now() / 1000) + 1800,
+      deadline: params.deadline ?? Math.floor(Date.now() / 1000) + 1800,
     };
 
     // Configure routing to enable multi-hop routes
     // Matches main branch DEFAULT_ROUTING_CONFIG_BY_CHAIN defaults
     const routingConfig: Partial<AlphaRouterConfig> = {
-      protocols,
-      v3PoolSelection: {
-        topN: 2,
-        topNDirectSwaps: 2,
-        topNTokenInOut: 3,
-        topNSecondHop: 1,
-        topNWithEachBaseToken: 3,
-        topNWithBaseToken: 5,
-      },
-      maxSwapsPerPath: 3,
-      minSplits: 1,
-      maxSplits: 7,
-      distributionPercent: 5,
-      forceCrossProtocol: false,
-      // Citrea: Disable optimistic cached routes to avoid RPC gas limit errors
-      // The RPC node has a 10M gas limit per eth_call, and optimistic cached routes
-      // can trigger multicalls with 40+ quotes that exceed this limit
-      ...(chainId === ChainId.CITREA_TESTNET ? { optimisticCachedRoutes: false } : {}),
-    };
-
+          protocols,
+          v2PoolSelection: {
+            topN: 3,
+            topNDirectSwaps: 2,
+            topNTokenInOut: 2,
+            topNSecondHop: 1,
+            topNWithEachBaseToken: 3,
+            topNWithBaseToken: 3,
+          },
+          v3PoolSelection: {
+            topN: 2,
+            topNDirectSwaps: 2,
+            topNTokenInOut: 2,
+            topNSecondHop: 1,
+            topNWithEachBaseToken: 1,
+            topNWithBaseToken: 2,
+          },
+          maxSwapsPerPath: 3,
+          minSplits: 1,
+          maxSplits: 3,
+          distributionPercent: 10,
+          forceCrossProtocol: false,
+          optimisticCachedRoutes: false,
+        }
+      
     try {
       this.logger.debug({
         chainId,

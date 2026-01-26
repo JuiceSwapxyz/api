@@ -6,16 +6,43 @@ import { ethers } from 'ethers';
  * Provides runtime validation with type inference
  */
 
+// Helper for token difference validation (used in Quote and Swap schemas)
+const validateTokensDifferent = (data: { tokenIn?: string; tokenInAddress?: string; tokenOut?: string; tokenOutAddress?: string }) => {
+  const tokenIn = (data.tokenIn || data.tokenInAddress)?.toLowerCase();
+  const tokenOut = (data.tokenOut || data.tokenOutAddress)?.toLowerCase();
+  return tokenIn !== tokenOut;
+};
+const TOKEN_DIFFERENCE_ERROR = { message: 'tokenIn and tokenOut must be different tokens', path: ['tokenOut'] };
+
 // Common schemas
 export const AddressSchema = z.string().refine(
   (val) => ethers.utils.isAddress(val),
   'Invalid Ethereum address'
 );
 export const ChainIdSchema = z.number().int().refine(
-  (val) => [1, 11155111, 5115].includes(val),
+  (val) => [1, 11155111, 137, 5115].includes(val),
   'Unsupported chain ID'
 );
-export const AmountSchema = z.string().regex(/^\d+$/, 'Amount must be a positive integer string');
+export const AmountSchema = z.string().regex(/^[1-9]\d*$/, 'Amount must be a positive non-zero integer string');
+
+// For state amounts that can be zero (e.g., accumulated fees)
+export const NonNegativeAmountSchema = z.string().regex(
+  /^(0|[1-9]\d*)$/,
+  'Amount must be a non-negative integer string (no leading zeros)'
+);
+
+// Slippage tolerance validation: must be between 0 and 50 (percentage)
+export const SlippageToleranceSchema = z.coerce
+  .string()
+  .optional()
+  .refine(
+    (val) => {
+      if (val === undefined || val === '') return true;
+      const num = parseFloat(val);
+      return !isNaN(num) && num >= 0 && num <= 50;
+    },
+    { message: 'slippageTolerance must be between 0 and 50' }
+  );
 
 // Quote endpoint schema
 export const QuoteRequestSchema = z.object({
@@ -30,7 +57,7 @@ export const QuoteRequestSchema = z.object({
   amount: AmountSchema,
   type: z.enum(['EXACT_INPUT', 'EXACT_OUTPUT']).optional(),
   swapper: AddressSchema.optional(),
-  slippageTolerance: z.coerce.string().optional(),
+  slippageTolerance: SlippageToleranceSchema,
   deadline: z.coerce.number().int().positive().optional(),
   enableUniversalRouter: z.boolean().optional(),
   protocols: z.array(z.string()).optional(),
@@ -46,9 +73,20 @@ export const QuoteRequestSchema = z.object({
     message: 'Either tokenOut or tokenOutAddress must be provided',
     path: ['tokenOutAddress'],
   }
-);
+).refine(validateTokensDifferent, TOKEN_DIFFERENCE_ERROR);
 
 export type QuoteRequest = z.infer<typeof QuoteRequestSchema>;
+
+// Required slippage tolerance validation for swap endpoint
+const RequiredSlippageToleranceSchema = z.coerce
+  .string()
+  .refine(
+    (val) => {
+      const num = parseFloat(val);
+      return !isNaN(num) && num >= 0 && num <= 50;
+    },
+    { message: 'slippageTolerance must be between 0 and 50' }
+  );
 
 // Swap endpoint schema
 export const SwapRequestSchema = z.object({
@@ -63,12 +101,13 @@ export const SwapRequestSchema = z.object({
   tokenOutDecimals: z.coerce.number().int().positive().optional(),
   amount: AmountSchema,
   recipient: AddressSchema,
-  slippageTolerance: z.coerce.string(),
+  slippageTolerance: RequiredSlippageToleranceSchema,
   deadline: z.coerce.string().optional(),
   from: AddressSchema,
   chainId: ChainIdSchema.optional(),
   enableUniversalRouter: z.boolean().optional(),
   simulate: z.boolean().optional(),
+  protocols: z.array(z.string()).optional(),
 }).refine(
   (data) => data.tokenIn || data.tokenInAddress,
   {
@@ -81,7 +120,7 @@ export const SwapRequestSchema = z.object({
     message: 'Either tokenOut or tokenOutAddress must be provided',
     path: ['tokenOutAddress'],
   }
-);
+).refine(validateTokensDifferent, TOKEN_DIFFERENCE_ERROR);
 
 export type SwapRequest = z.infer<typeof SwapRequestSchema>;
 
@@ -111,17 +150,31 @@ export const SwapApproveRequestSchema = z.object({
 
 export type SwapApproveRequest = z.infer<typeof SwapApproveRequestSchema>;
 
-// LP Approve schema
+// LP Approve schema - supports two modes:
+// 1. Token approval mode: token0/token1/amount0/amount1 (for increase liquidity)
+// 2. NFT-only approval mode: token0/token1/tokenId without amounts (for decrease liquidity)
 export const LpApproveRequestSchema = z.object({
   simulateTransaction: z.boolean().optional(),
   walletAddress: AddressSchema,
   chainId: ChainIdSchema,
   protocol: z.literal('V3'),
-  token0: AddressSchema,
-  token1: AddressSchema,
-  amount0: AmountSchema,
-  amount1: AmountSchema,
-});
+  token0: AddressSchema,       // Always required (for Gateway routing detection)
+  token1: AddressSchema,       // Always required (for Gateway routing detection)
+  amount0: AmountSchema.optional(),  // Optional for NFT-only mode
+  amount1: AmountSchema.optional(),  // Optional for NFT-only mode
+  tokenId: z.coerce.number().int().positive().optional(),
+}).refine(
+  (data) => {
+    // Either both amounts are provided (increase liquidity)
+    // OR tokenId is provided without amounts (decrease liquidity / NFT-only approval)
+    const hasAmounts = data.amount0 && data.amount1;
+    const hasTokenId = data.tokenId !== undefined;
+    return hasAmounts || hasTokenId;
+  },
+  {
+    message: 'Either provide amount0/amount1 (for token approvals) or tokenId without amounts (for NFT-only approval)',
+  }
+);
 
 export type LpApproveRequest = z.infer<typeof LpApproveRequestSchema>;
 
@@ -165,9 +218,162 @@ export const LpCreateRequestSchema = z.object({
 
 export type LpCreateRequest = z.infer<typeof LpCreateRequestSchema>;
 
+// LP Increase schema
+export const LpIncreaseRequestSchema = z.object({
+  simulateTransaction: z.boolean().optional(),
+  protocol: z.literal('V3'),
+  walletAddress: AddressSchema,
+  chainId: ChainIdSchema,
+  tokenId: z.number().int().positive(),
+  independentAmount: AmountSchema,
+  independentToken: z.enum(['TOKEN_0', 'TOKEN_1']),
+  position: PositionInfoSchema,
+});
+
+export type LpIncreaseRequest = z.infer<typeof LpIncreaseRequestSchema>;
+
+// LP Decrease schema
+export const LpDecreaseRequestSchema = z.object({
+  simulateTransaction: z.boolean().optional(),
+  protocol: z.literal('V3'),
+  tokenId: z.number().int().positive(),
+  chainId: ChainIdSchema,
+  walletAddress: AddressSchema,
+  liquidityPercentageToDecrease: z.number().positive().max(100),
+  positionLiquidity: AmountSchema,
+  expectedTokenOwed0RawAmount: NonNegativeAmountSchema,
+  expectedTokenOwed1RawAmount: NonNegativeAmountSchema,
+  position: PositionInfoSchema,
+});
+
+export type LpDecreaseRequest = z.infer<typeof LpDecreaseRequestSchema>;
+
+// LP Claim schema
+export const LpClaimRequestSchema = z.object({
+  simulateTransaction: z.boolean().optional(),
+  protocol: z.literal('V3'),
+  tokenId: z.number().int().positive(),
+  walletAddress: AddressSchema,
+  chainId: ChainIdSchema,
+  position: PositionInfoSchema,
+  expectedTokenOwed0RawAmount: NonNegativeAmountSchema,
+  expectedTokenOwed1RawAmount: NonNegativeAmountSchema,
+  collectAsWETH: z.boolean(),
+});
+
+export type LpClaimRequest = z.infer<typeof LpClaimRequestSchema>;
+
 // Portfolio endpoint schema
 export const PortfolioQuerySchema = z.object({
   chainId: z.string().optional().default('5115').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),
 });
 
 export type PortfolioQuery = z.infer<typeof PortfolioQuerySchema>;
+
+// Launchpad tokens list query schema
+export const LaunchpadTokensQuerySchema = z.object({
+  filter: z.enum(['all', 'active', 'graduating', 'graduated']).optional().default('all'),
+  page: z.string().optional().default('0').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(0)),
+  limit: z.string().optional().default('20').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(1).max(100)),
+  sort: z.enum(['newest', 'volume', 'trades']).optional().default('newest'),
+});
+
+export type LaunchpadTokensQuery = z.infer<typeof LaunchpadTokensQuerySchema>;
+
+// Launchpad trades query schema
+export const LaunchpadTradesQuerySchema = z.object({
+  limit: z.string().optional().default('50').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(1).max(100)),
+  page: z.string().optional().default('0').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(0)),
+});
+
+export type LaunchpadTradesQuery = z.infer<typeof LaunchpadTradesQuerySchema>;
+
+// Launchpad recent trades query schema
+export const LaunchpadRecentTradesQuerySchema = z.object({
+  limit: z.string().optional().default('20').transform((val) => parseInt(val, 10)).pipe(z.number().int().min(1).max(50)),
+});
+
+export type LaunchpadRecentTradesQuery = z.infer<typeof LaunchpadRecentTradesQuerySchema>;
+
+// Lightning address validation schema
+export const LightningAddressRequestSchema = z.object({
+  lnLikeAddress: z.string().min(1, 'lnLikeAddress is required').refine(
+    (val) => {
+      // Lightning address format: user@domain.com
+      if (val.includes('@')) {
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        return emailRegex.test(val);
+      }
+      // LNURL format: starts with lnurl
+      return val.toLowerCase().startsWith('lnurl');
+    },
+    'Must be a valid Lightning address (user@domain.com) or LNURL'
+  ),
+});
+
+export type LightningAddressRequest = z.infer<typeof LightningAddressRequestSchema>;
+
+// Lightning invoice request schema
+export const LightningInvoiceRequestSchema = z.object({
+  amount: AmountSchema,
+  lnLikeAddress: z.string().min(1, 'lnLikeAddress is required').refine(
+    (val) => {
+      // Lightning address format: user@domain.com
+      if (val.includes('@')) {
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        return emailRegex.test(val);
+      }
+      // LNURL format: starts with lnurl
+      return val.toLowerCase().startsWith('lnurl');
+    },
+    'Must be a valid Lightning address (user@domain.com) or LNURL'
+  ),
+});
+
+export type LightningInvoiceRequest = z.infer<typeof LightningInvoiceRequestSchema>;
+
+// Launchpad metadata upload schemas
+export const LaunchpadUploadMetadataSchema = z.object({
+  name: z.string()
+    .min(1, 'Name is required')
+    .max(100, 'Name must be 100 characters or less')
+    .transform(val => val.trim()),
+  description: z.string()
+    .min(1, 'Description is required')
+    .max(500, 'Description must be 500 characters or less')
+    .transform(val => val.trim()),
+  imageURI: z.string()
+    .min(1, 'Image URI is required')
+    .refine(
+      (val) => val.startsWith('ipfs://') || val.startsWith('ar://') || val.startsWith('https://'),
+      'Image URI must start with ipfs://, ar://, or https://'
+    ),
+  website: z.string()
+    .url('Invalid website URL')
+    .optional()
+    .or(z.literal('')),
+  twitter: z.string()
+    .max(100, 'Twitter handle must be 100 characters or less')
+    .optional()
+    .or(z.literal('')),
+  telegram: z.string()
+    .max(100, 'Telegram handle must be 100 characters or less')
+    .optional()
+    .or(z.literal('')),
+});
+
+export type LaunchpadUploadMetadataRequest = z.infer<typeof LaunchpadUploadMetadataSchema>;
+
+// Position Info query schema
+export const PositionInfoQuerySchema = z.object({
+  chainId: z.string().optional().default('5115').transform((val) => parseInt(val, 10)).pipe(ChainIdSchema),
+  protocol: z.enum(['V2', 'V3']).optional().default('V3'),
+});
+
+// Pool details endpoint schema
+export const PoolDetailsRequestSchema = z.object({
+  address: AddressSchema,
+  chainId: z.number().int().positive(),
+});
+
+export type PositionInfoQuery = z.infer<typeof PositionInfoQuerySchema>;

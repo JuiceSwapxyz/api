@@ -29,8 +29,8 @@ interface SwapApproveRequestBody {
  *             walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
  *             chainId: 5115
  *             protocol: "V3"
- *             token0: "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0"
- *             token1: "0x4370e27F7d91D9341bFf232d7Ee8bdfE3a9933a0"
+ *             token0: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
+ *             token1: "0x8d0c9d1c17aE5e40ffF9bE350f57840E9E66Cd93"
  *             amount0: "1000000000000000000"
  *             amount1: "1000000000000000000"
  *             simulateTransaction: false

@@ -23,8 +23,8 @@
  *       properties:
  *         type:
  *           type: string
- *           enum: [v3-pool]
- *           description: Pool type
+ *           enum: [v2-pool, v3-pool]
+ *           description: Pool type (v2-pool for Uniswap V2, v3-pool for Uniswap V3)
  *         address:
  *           type: string
  *           description: Pool contract address
@@ -34,16 +34,34 @@
  *           $ref: '#/components/schemas/Token'
  *         fee:
  *           type: string
- *           description: Pool fee tier (e.g., 3000 for 0.3%)
+ *           description: Pool fee tier in bps (V3 only, e.g., 3000 for 0.3%)
  *         liquidity:
  *           type: string
- *           description: Pool liquidity
+ *           description: Pool liquidity (V3 only)
  *         sqrtRatioX96:
  *           type: string
- *           description: Current sqrt price ratio
+ *           description: Current sqrt price ratio (V3 only)
  *         tickCurrent:
  *           type: string
- *           description: Current tick
+ *           description: Current tick (V3 only)
+ *         reserve0:
+ *           type: object
+ *           description: Reserve of token0 with token info (V2 only)
+ *           properties:
+ *             token:
+ *               $ref: '#/components/schemas/Token'
+ *             quotient:
+ *               type: string
+ *               description: Reserve amount in wei
+ *         reserve1:
+ *           type: object
+ *           description: Reserve of token1 with token info (V2 only)
+ *           properties:
+ *             token:
+ *               $ref: '#/components/schemas/Token'
+ *             quotient:
+ *               type: string
+ *               description: Reserve amount in wei
  *         amountIn:
  *           type: string
  *           description: Input amount for this pool (if first pool)
@@ -294,6 +312,31 @@
  *           type: string
  *           description: Estimated gas fee in ETH
  *
+ *     LpIncreaseResponse:
+ *       type: object
+ *       properties:
+ *         requestId:
+ *           type: string
+ *         increase:
+ *           $ref: '#/components/schemas/SwapTransaction'
+ *         dependentAmount:
+ *           type: string
+ *           description: Calculated amount for the dependent token
+ *         gasFee:
+ *           type: string
+ *           description: Estimated gas fee in ETH
+ *
+ *     LpDecreaseResponse:
+ *       type: object
+ *       properties:
+ *         requestId:
+ *           type: string
+ *         decrease:
+ *           $ref: '#/components/schemas/SwapTransaction'
+ *         gasFee:
+ *           type: string
+ *           description: Estimated gas fee in ETH
+ *
  *     QuoteRequest:
  *       type: object
  *       required:
@@ -334,6 +377,8 @@
  *           type: array
  *           items:
  *             type: string
+ *             enum: [V2, V3]
+ *           description: Routing protocols to use (defaults to all available)
  *
  *     SwapRequest:
  *       type: object
@@ -409,6 +454,9 @@
  *           type: string
  *         amount1:
  *           type: string
+ *         tokenId:
+ *           type: integer
+ *           description: NFT position token ID (for increase/decrease liquidity)
  *
  *     LpCreateRequest:
  *       type: object
@@ -464,6 +512,240 @@
  *                   type: string
  *                 fee:
  *                   type: integer
+ *
+ *     LpIncreaseRequest:
+ *       type: object
+ *       required:
+ *         - protocol
+ *         - walletAddress
+ *         - chainId
+ *         - tokenId
+ *         - independentAmount
+ *         - independentToken
+ *         - position
+ *       properties:
+ *         simulateTransaction:
+ *           type: boolean
+ *         protocol:
+ *           type: string
+ *           enum: [V3]
+ *         walletAddress:
+ *           type: string
+ *         chainId:
+ *           type: integer
+ *         tokenId:
+ *           type: string
+ *           description: NFT tokenId of the position to increase
+ *         independentAmount:
+ *           type: string
+ *         independentToken:
+ *           type: string
+ *           enum: [TOKEN_0, TOKEN_1]
+ *         position:
+ *           type: object
+ *           required:
+ *             - tickLower
+ *             - tickUpper
+ *             - pool
+ *           properties:
+ *             tickLower:
+ *               type: integer
+ *             tickUpper:
+ *               type: integer
+ *             pool:
+ *               type: object
+ *               required:
+ *                 - token0
+ *                 - token1
+ *                 - fee
+ *               properties:
+ *                 tickSpacing:
+ *                   type: integer
+ *                 token0:
+ *                   type: string
+ *                 token1:
+ *                   type: string
+ *                 fee:
+ *                   type: integer
+ *
+ *     LpDecreaseRequest:
+ *       type: object
+ *       required:
+ *         - simulateTransaction
+ *         - protocol
+ *         - tokenId
+ *         - chainId
+ *         - walletAddress
+ *         - liquidityPercentageToDecrease
+ *         - positionLiquidity
+ *         - expectedTokenOwed0RawAmount
+ *         - expectedTokenOwed1RawAmount
+ *         - position
+ *       properties:
+ *         simulateTransaction:
+ *           type: boolean
+ *         protocol:
+ *           type: string
+ *           enum: [V3]
+ *         tokenId:
+ *           type: integer
+ *         chainId:
+ *           type: integer
+ *         walletAddress:
+ *           type: string
+ *         liquidityPercentageToDecrease:
+ *           type: number
+ *           description: Percent (0-100) of position liquidity to remove
+ *         positionLiquidity:
+ *           type: string
+ *           description: Raw liquidity of the position (as integer string)
+ *         expectedTokenOwed0RawAmount:
+ *           type: string
+ *         expectedTokenOwed1RawAmount:
+ *           type: string
+ *         position:
+ *           type: object
+ *           required:
+ *             - tickLower
+ *             - tickUpper
+ *             - pool
+ *           properties:
+ *             tickLower:
+ *               type: integer
+ *             tickUpper:
+ *               type: integer
+ *             pool:
+ *               type: object
+ *               required:
+ *                 - token0
+ *                 - token1
+ *                 - fee
+ *               properties:
+ *                 tickSpacing:
+ *                   type: integer
+ *                 token0:
+ *                   type: string
+ *                 token1:
+ *                   type: string
+ *                 fee:
+ *                   type: integer
+ *
+ *     LaunchpadToken:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: Token address (primary key)
+ *         address:
+ *           type: string
+ *           description: Token contract address
+ *         chainId:
+ *           type: integer
+ *           description: Chain ID
+ *         name:
+ *           type: string
+ *           description: Token name
+ *         symbol:
+ *           type: string
+ *           description: Token symbol
+ *         creator:
+ *           type: string
+ *           description: Creator wallet address
+ *         baseAsset:
+ *           type: string
+ *           description: Base asset address (e.g., WBTC)
+ *         createdAt:
+ *           type: string
+ *           description: Creation timestamp (bigint as string)
+ *         createdAtBlock:
+ *           type: string
+ *           description: Creation block number
+ *         txHash:
+ *           type: string
+ *           description: Creation transaction hash
+ *         graduated:
+ *           type: boolean
+ *           description: Whether token has graduated to V2 pool
+ *         canGraduate:
+ *           type: boolean
+ *           description: Whether token is ready to graduate
+ *         v2Pair:
+ *           type: string
+ *           nullable: true
+ *           description: V2 pair address after graduation
+ *         graduatedAt:
+ *           type: string
+ *           nullable: true
+ *           description: Graduation timestamp
+ *         totalBuys:
+ *           type: integer
+ *           description: Total number of buy transactions
+ *         totalSells:
+ *           type: integer
+ *           description: Total number of sell transactions
+ *         totalVolumeBase:
+ *           type: string
+ *           description: Total trading volume in base asset (wei as string)
+ *         lastTradeAt:
+ *           type: string
+ *           nullable: true
+ *           description: Last trade timestamp
+ *
+ *     LaunchpadTrade:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: Trade ID (txHash-logIndex)
+ *         tokenAddress:
+ *           type: string
+ *           description: Token contract address
+ *         trader:
+ *           type: string
+ *           description: Trader wallet address
+ *         isBuy:
+ *           type: boolean
+ *           description: Whether this is a buy (true) or sell (false)
+ *         baseAmount:
+ *           type: string
+ *           description: Base asset amount (wei as string)
+ *         tokenAmount:
+ *           type: string
+ *           description: Token amount (wei as string)
+ *         timestamp:
+ *           type: string
+ *           description: Trade timestamp
+ *         txHash:
+ *           type: string
+ *           description: Transaction hash
+ *         tokenName:
+ *           type: string
+ *           description: Token name (only in recent-trades endpoint)
+ *         tokenSymbol:
+ *           type: string
+ *           description: Token symbol (only in recent-trades endpoint)
+ *
+ *     LaunchpadStats:
+ *       type: object
+ *       properties:
+ *         totalTokens:
+ *           type: integer
+ *           description: Total number of tokens created
+ *         graduatedTokens:
+ *           type: integer
+ *           description: Number of graduated tokens
+ *         activeTokens:
+ *           type: integer
+ *           description: Number of active (not graduating) tokens
+ *         graduatingTokens:
+ *           type: integer
+ *           description: Number of tokens ready to graduate
+ *         totalTrades:
+ *           type: integer
+ *           description: Total number of trades
+ *         totalVolumeBase:
+ *           type: string
+ *           description: Total trading volume in base asset (wei as string)
  */
 
 // This file provides OpenAPI schema definitions via JSDoc comments
