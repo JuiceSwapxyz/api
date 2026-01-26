@@ -17,6 +17,7 @@ import { createLpApproveHandler } from './endpoints/lpApprove';
 import { createLpCreateHandler } from './endpoints/lpCreate';
 import { createLpIncreaseHandler } from './endpoints/lpIncrease';
 import { createLpDecreaseHandler } from './endpoints/lpDecrease';
+import { createLpClaimHandler } from './endpoints/lpClaim';
 import { createPortfolioHandler } from './endpoints/portfolio';
 import {
   createLaunchpadTokensHandler,
@@ -59,6 +60,7 @@ import {
   LpCreateRequestSchema,
   LpIncreaseRequestSchema,
   LpDecreaseRequestSchema,
+  LpClaimRequestSchema,
   PortfolioQuerySchema,
   SwapApproveRequestSchema,
   LaunchpadTokensQuerySchema,
@@ -205,6 +207,7 @@ async function bootstrap() {
   const handleLpCreate = createLpCreateHandler(routerService, logger, juiceGatewayService);
   const handleLpIncrease = createLpIncreaseHandler(routerService, logger, juiceGatewayService);
   const handleLpDecrease = createLpDecreaseHandler(routerService, logger, juiceGatewayService);
+  const handleLpClaim = createLpClaimHandler(routerService, logger, juiceGatewayService);
   const handlePortfolio = createPortfolioHandler(providers, logger);
 
   // User metrics endpoint handlers
@@ -257,6 +260,7 @@ async function bootstrap() {
   app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
   app.post('/v1/lp/increase', generalLimiter, validateBody(LpIncreaseRequestSchema, logger), handleLpIncrease);
   app.post('/v1/lp/decrease', generalLimiter, validateBody(LpDecreaseRequestSchema, logger), handleLpDecrease);
+  app.post('/v1/lp/claim', generalLimiter, validateBody(LpClaimRequestSchema, logger), handleLpClaim);
 
   // svJUSD share price endpoint (for frontend price calculations)
   app.get('/v1/svjusd/sharePrice', generalLimiter, handleSvJusdSharePrice);
