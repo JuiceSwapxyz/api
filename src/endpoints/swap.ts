@@ -169,7 +169,7 @@ export function createSwapHandler(
       }
 
       // Handle classic swaps (exactIn/exactOut)
-      return await handleClassicSwap(body, res, log, routerService);
+      return await handleClassicSwap(body, res, log, routerService, hasLaunchpadToken);
     } catch (error) {
       log.error({ error }, 'Failed to prepare swap');
       res.status(500).json({
@@ -472,22 +472,9 @@ async function handleGatewaySwap(
       return;
     }
 
-    // Auto-detect graduated launchpad tokens and enable V2 routing
-    const [isGraduatedIn, isGraduatedOut] = await Promise.all([
-      isGraduatedLaunchpadToken(chainId, tokenIn),
-      isGraduatedLaunchpadToken(chainId, tokenOut),
-    ]);
-
-    let gatewayProtocols: Protocol[] | undefined = undefined;
-    if (isGraduatedIn || isGraduatedOut) {
-      log.debug(
-        { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
-        'Graduated launchpad token detected in Gateway swap, enabling V2 routing'
-      );
-      gatewayProtocols = [Protocol.V2, Protocol.V3];
-    }
-
     // Route internally to get expected output
+    // Note: Launchpad tokens bypass Gateway entirely (checked in createSwapHandler),
+    // so this function only handles non-launchpad swaps with svJUSD
     const internalRoute = await routerService.getQuote({
       tokenIn: gatewayQuote.internalTokenIn,
       tokenOut: gatewayQuote.internalTokenOut,
@@ -496,7 +483,6 @@ async function handleGatewaySwap(
       amount: gatewayQuote.internalAmountIn,
       chainId,
       type: 'exactIn',
-      protocols: gatewayProtocols,
     });
 
     if (!internalRoute) {
@@ -567,12 +553,14 @@ async function handleGatewaySwap(
 
 /**
  * Handle classic swap operations (token <-> token)
+ * @param hasLaunchpadToken - Whether a graduated launchpad token is involved (pre-computed by caller)
  */
 async function handleClassicSwap(
   body: SwapRequestBody,
   res: Response,
   log: Logger,
-  routerService: RouterService
+  routerService: RouterService,
+  hasLaunchpadToken: boolean = false
 ): Promise<void> {
   try {
     // Normalize token addresses (Zod validation ensures at least one is present)
@@ -638,12 +626,8 @@ async function handleClassicSwap(
     }
 
     // For launchpad tokens: use V2 ONLY (no V3)
-    const [isGraduatedIn, isGraduatedOut] = await Promise.all([
-      isGraduatedLaunchpadToken(chainId, validatedTokenIn),
-      isGraduatedLaunchpadToken(chainId, validatedTokenOut),
-    ]);
-
-    if (isGraduatedIn || isGraduatedOut) {
+    // hasLaunchpadToken is pre-computed by the caller to avoid redundant API calls
+    if (hasLaunchpadToken) {
       // Launchpad tokens ONLY use V2 pools with JUSD - never V3
       protocols = [Protocol.V2];
       log.debug(
