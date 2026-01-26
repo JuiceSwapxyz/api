@@ -870,10 +870,10 @@ export function createNFTSignatureHandler(logger: Logger) {
 
       // Check if NFT already claimed (query contract)
       try {
-        if (!process.env.CITREA_RPC_URL) {
-          throw new Error('CITREA_RPC_URL environment variable is required');
+        if (!process.env.CITREA_5115_RPC_URL) {
+          throw new Error('CITREA_5115_RPC_URL environment variable is required');
         }
-        const provider = new ethers.providers.JsonRpcProvider(process.env.CITREA_RPC_URL);
+        const provider = new ethers.providers.JsonRpcProvider(process.env.CITREA_5115_RPC_URL);
         const nftContract = new ethers.Contract(
           contractAddress,
           ['function hasClaimed(address) view returns (bool)'],
