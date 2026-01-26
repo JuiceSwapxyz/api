@@ -349,11 +349,15 @@ export function createQuoteHandler(
             }
 
             // Auto-detect graduated launchpad tokens and enable V2 routing
-            // Check the user-facing output token (not the internal svJUSD token)
-            const isGraduatedOut = await isGraduatedLaunchpadToken(chainId, tokenOut);
-            if (isGraduatedOut) {
+            // Check user-facing tokens (not internal svJUSD)
+            const [isGraduatedIn, isGraduatedOut] = await Promise.all([
+              isGraduatedLaunchpadToken(chainId, tokenIn),
+              isGraduatedLaunchpadToken(chainId, tokenOut),
+            ]);
+
+            if (isGraduatedIn || isGraduatedOut) {
               log.debug(
-                { tokenOut, isGraduatedOut },
+                { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
                 'Graduated launchpad token detected in Gateway route, enabling V2 routing'
               );
               if (protocols) {

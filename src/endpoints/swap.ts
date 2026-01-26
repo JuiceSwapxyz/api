@@ -453,6 +453,21 @@ async function handleGatewaySwap(
       return;
     }
 
+    // Auto-detect graduated launchpad tokens and enable V2 routing
+    const [isGraduatedIn, isGraduatedOut] = await Promise.all([
+      isGraduatedLaunchpadToken(chainId, tokenIn),
+      isGraduatedLaunchpadToken(chainId, tokenOut),
+    ]);
+
+    let gatewayProtocols: Protocol[] | undefined = undefined;
+    if (isGraduatedIn || isGraduatedOut) {
+      log.debug(
+        { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
+        'Graduated launchpad token detected in Gateway swap, enabling V2 routing'
+      );
+      gatewayProtocols = [Protocol.V2, Protocol.V3];
+    }
+
     // Route internally to get expected output
     const internalRoute = await routerService.getQuote({
       tokenIn: gatewayQuote.internalTokenIn,
@@ -462,6 +477,7 @@ async function handleGatewaySwap(
       amount: gatewayQuote.internalAmountIn,
       chainId,
       type: 'exactIn',
+      protocols: gatewayProtocols,
     });
 
     if (!internalRoute) {
