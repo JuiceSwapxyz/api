@@ -20,7 +20,7 @@ export const AddressSchema = z.string().refine(
   'Invalid Ethereum address'
 );
 export const ChainIdSchema = z.number().int().refine(
-  (val) => [1, 11155111, 137, 5115].includes(val),
+  (val) => [1, 11155111, 137, 5115, 4114].includes(val),
   'Unsupported chain ID'
 );
 export const AmountSchema = z.string().regex(/^[1-9]\d*$/, 'Amount must be a positive non-zero integer string');

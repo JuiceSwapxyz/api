@@ -146,7 +146,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         {
           wherePosition: {
             tokenId: tokenId,
-            chainId: chainId,
+            chainId: parseInt(chainId.toString()),
           },
         }
       );
@@ -175,7 +175,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         {
           wherePool: {
             address: getAddress(positionData.poolAddress),
-            chainId: chainId,
+            chainId: chainId.toString(),
           }
         }
       );
