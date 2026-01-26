@@ -123,7 +123,7 @@ ALCHEMY_11155111=your-alchemy-api-key   # Sepolia Testnet
 ALCHEMY_5115=none                       # Citrea Testnet (uses custom RPC)
 
 # Citrea RPC URL
-CITREA_RPC_URL=https://rpc.testnet.juiceswap.com
+CITREA_5115_RPC_URL=https://rpc.testnet.juiceswap.com
 
 # Cache
 CACHE_TTL_SECONDS=30
