@@ -45,7 +45,7 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
             {
                 tokenIn: tokenInAddress,
                 tokenOut: tokenOutAddress,
-                chainId: this.chainId,
+                chainId: this.chainId.toString(),
             }   
         )
 
