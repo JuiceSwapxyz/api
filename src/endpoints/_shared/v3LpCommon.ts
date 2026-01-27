@@ -202,9 +202,10 @@ export async function estimateEip1559Gas(params: {
   let gasLimit = gasEstimate.mul(110).div(100);
 
   // Cap gas limit for Citrea chains (4114 mainnet, 5115 testnet) to stay under block gas limit
-  if (chainId === 4114 || chainId === 5115) {
+  const chainIdNum = Number(chainId);
+  if (chainIdNum === 4114 || chainIdNum === 5115) {
     if (gasLimit.gt(CITREA_MAX_GAS_LIMIT)) {
-      logger.warn({ chainId, estimated: gasLimit.toString(), capped: CITREA_MAX_GAS_LIMIT.toString() },
+      logger.warn({ chainId: chainIdNum, estimated: gasLimit.toString(), capped: CITREA_MAX_GAS_LIMIT.toString() },
         'Gas limit exceeded Citrea block limit, capping');
       gasLimit = CITREA_MAX_GAS_LIMIT;
     }
