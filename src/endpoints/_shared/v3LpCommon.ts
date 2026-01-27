@@ -174,8 +174,9 @@ export async function getV3LpContext(params: {
   };
 }
 
-// Citrea has a block gas limit of 10M, so we cap at 9.5M to be safe
-const CITREA_MAX_GAS_LIMIT = ethers.BigNumber.from('9500000');
+// Citrea's estimateGas returns extremely inflated values (e.g. 7.7M when actual usage is ~182k)
+// Use a reasonable gas limit for LP operations instead of trusting the estimate
+const CITREA_LP_GAS_LIMIT = ethers.BigNumber.from('500000');
 
 export async function estimateEip1559Gas(params: {
   provider: any;
@@ -201,14 +202,12 @@ export async function estimateEip1559Gas(params: {
 
   let gasLimit = gasEstimate.mul(110).div(100);
 
-  // Cap gas limit for Citrea chains (4114 mainnet, 5115 testnet) to stay under block gas limit
+  // Citrea's estimateGas is unreliable - use fixed gas limit for LP operations
   const chainIdNum = Number(chainId);
   if (chainIdNum === 4114 || chainIdNum === 5115) {
-    if (gasLimit.gt(CITREA_MAX_GAS_LIMIT)) {
-      logger.warn({ chainId: chainIdNum, estimated: gasLimit.toString(), capped: CITREA_MAX_GAS_LIMIT.toString() },
-        'Gas limit exceeded Citrea block limit, capping');
-      gasLimit = CITREA_MAX_GAS_LIMIT;
-    }
+    logger.info({ chainId: chainIdNum, estimated: gasLimit.toString(), using: CITREA_LP_GAS_LIMIT.toString() },
+      'Using fixed gas limit for Citrea LP operation');
+    gasLimit = CITREA_LP_GAS_LIMIT;
   }
 
   const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
