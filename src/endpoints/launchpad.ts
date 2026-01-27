@@ -43,6 +43,11 @@ import { getPonderClient } from '../services/PonderClient';
  *           enum: [newest, volume, trades]
  *           default: newest
  *         description: Sort order
+ *       - in: query
+ *         name: chainId
+ *         schema:
+ *           type: integer
+ *         description: Filter by chain ID
  *     responses:
  *       200:
  *         description: List of launchpad tokens
@@ -73,12 +78,13 @@ export function createLaunchpadTokensHandler(logger: Logger) {
 
     try {
       // Build query string from validated params
-      const { filter, page, limit, sort } = req.query;
+      const { filter, page, limit, sort, chainId } = req.query;
       const params = new URLSearchParams();
       if (filter) params.append('filter', String(filter));
       if (page !== undefined) params.append('page', String(page));
       if (limit !== undefined) params.append('limit', String(limit));
       if (sort) params.append('sort', String(sort));
+      if (chainId) params.append('chainId', String(chainId));
 
       const queryString = params.toString();
       const path = `/launchpad/tokens${queryString ? `?${queryString}` : ''}`;
@@ -245,6 +251,12 @@ export function createLaunchpadTokenTradesHandler(logger: Logger) {
  *     tags: [Launchpad]
  *     summary: Get overall launchpad statistics
  *     description: Fetches aggregate statistics for the launchpad
+ *     parameters:
+ *       - in: query
+ *         name: chainId
+ *         schema:
+ *           type: integer
+ *         description: Filter by chain ID
  *     responses:
  *       200:
  *         description: Launchpad statistics
@@ -273,11 +285,17 @@ export function createLaunchpadTokenTradesHandler(logger: Logger) {
  *                   description: Total trading volume in base asset (wei)
  */
 export function createLaunchpadStatsHandler(logger: Logger) {
-  return async function handleLaunchpadStats(_req: Request, res: Response): Promise<void> {
+  return async function handleLaunchpadStats(req: Request, res: Response): Promise<void> {
     const log = logger.child({ endpoint: 'launchpad/stats' });
 
     try {
-      const path = '/launchpad/stats';
+      // Build query string with optional chainId
+      const { chainId } = req.query;
+      const params = new URLSearchParams();
+      if (chainId) params.append('chainId', String(chainId));
+
+      const queryString = params.toString();
+      const path = `/launchpad/stats${queryString ? `?${queryString}` : ''}`;
       log.debug({ path }, 'Fetching launchpad stats from Ponder');
 
       const ponderClient = getPonderClient(logger);
@@ -308,6 +326,11 @@ export function createLaunchpadStatsHandler(logger: Logger) {
  *           default: 20
  *           maximum: 50
  *         description: Number of trades to return
+ *       - in: query
+ *         name: chainId
+ *         schema:
+ *           type: integer
+ *         description: Filter by chain ID
  *     responses:
  *       200:
  *         description: List of recent trades with token info
@@ -334,9 +357,10 @@ export function createLaunchpadRecentTradesHandler(logger: Logger) {
 
     try {
       // Build query string from validated params
-      const { limit } = req.query;
+      const { limit, chainId } = req.query;
       const params = new URLSearchParams();
       if (limit !== undefined) params.append('limit', String(limit));
+      if (chainId) params.append('chainId', String(chainId));
 
       const queryString = params.toString();
       const path = `/launchpad/recent-trades${queryString ? `?${queryString}` : ''}`;
