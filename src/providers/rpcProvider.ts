@@ -12,20 +12,19 @@ export interface ChainConfig {
   rpcUrl: string;
 }
 
-// Build Alchemy RPC URL from API key
 function buildAlchemyUrl(chainId: ChainId): string {
-  const alchemyKey = process.env[`ALCHEMY_${chainId}`];
-  if (!alchemyKey) return '';
-
-  // Citrea uses custom Azure RPC node
-  if (alchemyKey === 'none' || chainId === ChainId.CITREA_TESTNET) {
-    if (!process.env.CITREA_RPC_URL) {
-      throw new Error('CITREA_RPC_URL environment variable is required for Citrea');
-    }
-    return process.env.CITREA_RPC_URL;
+  switch (chainId) {
+    case ChainId.CITREA_MAINNET:
+      return process.env.CITREA_4114_RPC_URL || 'https://rpc.citreascan.com/';
+    case ChainId.CITREA_TESTNET:
+      return process.env.CITREA_5115_RPC_URL || 'https://rpc.testnet.juiceswap.com/';
   }
 
-  // Build Alchemy URL based on chain
+  const alchemyKey = process.env[`ALCHEMY_${chainId}`];
+  if (!alchemyKey) {
+    return '';
+  }
+
   switch (chainId) {
     case ChainId.MAINNET:
       return `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`;
@@ -59,6 +58,11 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     chainId: ChainId.CITREA_TESTNET,
     name: 'Citrea Testnet',
     rpcUrl: buildAlchemyUrl(ChainId.CITREA_TESTNET),
+  },
+  {
+    chainId: ChainId.CITREA_MAINNET,
+    name: 'Citrea Mainnet',
+    rpcUrl: buildAlchemyUrl(ChainId.CITREA_MAINNET),
   },
 ];
 

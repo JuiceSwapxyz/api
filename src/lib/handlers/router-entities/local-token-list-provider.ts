@@ -3,20 +3,23 @@ import { CachingTokenListProvider, NodeJSCache } from '@juiceswapxyz/smart-order
 import { ChainId } from '@juiceswapxyz/sdk-core';
 import NodeCache from 'node-cache';
 import { getJuiceswapLatestTokens } from './getJuiceswapLatestTokens';
-import { citreaTestnetTokenList } from '../../../config/citrea-testnet.tokenlist';
 
 export async function createLocalTokenListProvider(chainId: ChainId) {
   const tokenCache = new NodeCache({ stdTTL: 360, useClones: false });
 
-  if (chainId === ChainId.CITREA_TESTNET) {
-    const juiceswapLatestTokens = await getJuiceswapLatestTokens();
+  if (chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) {
+    const juiceswapLatestTokens = await getJuiceswapLatestTokens(chainId);
     const map = new Map<string, any>();
 
-    juiceswapLatestTokens.forEach(token => map.set(token.address, token));
-    citreaTestnetTokenList.tokens.forEach((token: any) => map.set(token.address, token));
+    juiceswapLatestTokens.forEach((token: { address: string; chainId: number; decimals: number; name: string; symbol: string }) => map.set(token.address, token));
 
     const aggregatedTokenList = {
-      ...citreaTestnetTokenList,
+      name: `Juiceswap Token List for ${chainId}`,
+      version: {
+        major: 1,
+        minor: 0,
+        patch: 0
+      },
       tokens: Array.from(map.values()),
     };
 

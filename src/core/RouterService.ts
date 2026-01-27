@@ -34,7 +34,7 @@ import { GraduatedV2SubgraphProvider } from '../providers/GraduatedV2SubgraphPro
 import { FallbackTokenProvider } from '../providers/FallbackTokenProvider';
 import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
 import { TokenInfoRequester } from '../utils/tokenInfoRequester';
-import { CitreaTestnetV3SubgraphProvider } from '../providers/CitreaV3SubgraphProvider';
+import { CitreaV3SubgraphProvider } from '../providers/CitreaV3SubgraphProvider';
 
 /**
  * Simple no-op token properties provider for V2 pools.
@@ -119,7 +119,7 @@ export class RouterService {
 
       // Initialize token provider with Ponder integration for Citrea
       let tokenProvider;
-      if (chainId === ChainId.CITREA_TESTNET) {
+      if (chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) {
         // Create token list provider from Ponder + static list
         const tokenListProvider = await createLocalTokenListProvider(chainId);
         // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
@@ -154,7 +154,7 @@ export class RouterService {
       const gasPriceProvider = new EIP1559GasPriceProvider(provider);
 
       // Initialize token info requester
-      const tokenInfoRequester = new TokenInfoRequester(multicallProvider);
+      const tokenInfoRequester = new TokenInfoRequester(multicallProvider, chainId);
       this.tokenInfoRequesters.set(chainId, tokenInfoRequester);
 
       // For Citrea: use custom subgraph providers with static pools and graduated V2 pools
@@ -162,9 +162,9 @@ export class RouterService {
       let v2SubgraphProvider = undefined;
       let v2PoolProvider = undefined;
 
-      if (chainId === ChainId.CITREA_TESTNET) {
+      if (chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) {
         // V3 subgraph provider (Ponder)
-        v3SubgraphProvider = new CitreaTestnetV3SubgraphProvider(this.logger);
+        v3SubgraphProvider = new CitreaV3SubgraphProvider(this.logger, chainId);
 
         // V2 providers for graduated launchpad tokens
         // GraduatedV2SubgraphProvider fetches pool list from Ponder and on-chain reserves
@@ -192,8 +192,8 @@ export class RouterService {
         ...(v2PoolProvider && { v2PoolProvider }),
         // V2QuoteProvider computes quotes off-chain using pool reserves
         ...(v2PoolProvider && { v2QuoteProvider: new V2QuoteProvider() }),
-        // Enable V2 routing for Citrea testnet (graduated launchpad pools)
-        ...(chainId === ChainId.CITREA_TESTNET && { v2Supported: [ChainId.CITREA_TESTNET] }),
+        // Enable V2 routing for Citrea chains (graduated launchpad pools)
+        ...((chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) && { v2Supported: [chainId] }),
       }));
     }
   }

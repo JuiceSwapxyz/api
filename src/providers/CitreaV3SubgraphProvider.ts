@@ -12,10 +12,12 @@ interface PonderPool {
     tickSpacing: number;
 }
 
-export class CitreaTestnetV3SubgraphProvider implements IV3SubgraphProvider {
+export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
     private ponderClient: PonderClient;
+    private chainId: ChainId;
 
-    constructor(logger: Logger) {
+    constructor(logger: Logger, chainId: ChainId) {
+        this.chainId = chainId;
         this.ponderClient = getPonderClient(logger);
     }
 
@@ -43,7 +45,7 @@ export class CitreaTestnetV3SubgraphProvider implements IV3SubgraphProvider {
             {
                 tokenIn: tokenInAddress,
                 tokenOut: tokenOutAddress,
-                chainId: ChainId.CITREA_TESTNET.toString(),
+                chainId: this.chainId.toString(),
             }   
         )
 
