@@ -25,6 +25,20 @@ const NPM_IFACE = new ethers.utils.Interface([
   'function refundETH()',
 ]);
 
+// Citrea's estimateGas returns unreliable values that can exceed the 10M block gas limit.
+// Cap at 6M to handle pool creation while staying under 10M block limit.
+const CITREA_MAX_GAS_LIMIT = ethers.BigNumber.from('6000000');
+const CITREA_CHAIN_IDS = [4114, 5115]; // mainnet, testnet
+
+function capGasLimitForCitrea(gasLimit: ethers.BigNumber, chainId: number, log: Logger): ethers.BigNumber {
+  if (CITREA_CHAIN_IDS.includes(chainId) && gasLimit.gt(CITREA_MAX_GAS_LIMIT)) {
+    log.warn({ chainId, estimated: gasLimit.toString(), capped: CITREA_MAX_GAS_LIMIT.toString() },
+      'Gas limit exceeded Citrea max, capping to 6M');
+    return CITREA_MAX_GAS_LIMIT;
+  }
+  return gasLimit;
+}
+
 const getTokenAddress = (token: string, chainId: number) => {
   const address = token === ADDRESS_ZERO ? WETH9[chainId].address : token;
   return ethers.utils.getAddress(address);
@@ -343,7 +357,8 @@ export function createLpCreateHandler(
         log.warn('Gas estimation failed, using fallback');
       }
 
-      const gasLimit = gasEstimate.mul(110).div(100);
+      let gasLimit = gasEstimate.mul(110).div(100);
+      gasLimit = capGasLimitForCitrea(gasLimit, chainId, log);
 
       const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
       const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
@@ -723,7 +738,8 @@ async function handleGatewayLpCreate(
       log.warn({ error: e }, 'Gas estimation failed for createPool, using fallback');
     }
 
-    const createPoolGasLimit = createPoolGasEstimate.mul(156).div(100);
+    let createPoolGasLimit = createPoolGasEstimate.mul(156).div(100);
+    createPoolGasLimit = capGasLimitForCitrea(createPoolGasLimit, chainId, log);
     const baseFeeForCreatePool = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
     const maxPriorityFeeForCreatePool = ethers.utils.parseUnits('1', 'gwei');
     const maxFeeForCreatePool = baseFeeForCreatePool.mul(105).div(100).add(maxPriorityFeeForCreatePool);
@@ -764,7 +780,8 @@ async function handleGatewayLpCreate(
     log.warn({ error: e }, 'Gas estimation failed for Gateway LP, using fallback');
   }
 
-  const gasLimit = gasEstimate.mul(156).div(100);
+  let gasLimit = gasEstimate.mul(156).div(100);
+  gasLimit = capGasLimitForCitrea(gasLimit, chainId, log);
 
   const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
   const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
