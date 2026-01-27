@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Logger from 'bunyan';
+import { citreaMainnetTokenList } from '../config/citrea-mainnet.tokenlist';
 import { citreaTestnetTokenList } from '../config/citrea-testnet.tokenlist';
 
 interface Token {
@@ -10,6 +11,12 @@ interface Token {
   symbol: string;
   logoURI?: string;
 }
+
+// Map chainId to token list
+const TOKEN_LISTS: Record<number, { tokens: Token[] }> = {
+  4114: citreaMainnetTokenList as { tokens: Token[] },
+  5115: citreaTestnetTokenList as { tokens: Token[] },
+};
 
 /**
  * @swagger
@@ -56,14 +63,15 @@ export function createSwappableTokensHandler(logger: Logger) {
 
       const chainId = parseInt(tokenInChainId.toString());
 
-      // For now, only support Citrea Testnet (5115)
-      if (chainId !== 5115) {
+      // Get token list for the chain (supports Citrea Mainnet 4114 and Testnet 5115)
+      const tokenList = TOKEN_LISTS[chainId];
+      if (!tokenList) {
         res.status(200).json({ tokens: [] });
         return;
       }
 
       // Get all tokens from the token list
-      let tokens: Token[] = citreaTestnetTokenList.tokens as Token[];
+      let tokens: Token[] = tokenList.tokens;
 
       // Filter out the input token if specified
       if (tokenIn) {
