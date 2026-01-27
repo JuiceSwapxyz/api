@@ -200,6 +200,7 @@ export function createLpIncreaseHandler(
           value,
         },
         logger: log,
+        chainId,
       });
 
       res.status(200).json({
@@ -376,6 +377,7 @@ async function handleGatewayLpIncrease(params: {
       value: nativeValue,
     },
     logger: log,
+    chainId,
   });
 
   // Get svJUSD share price for frontend validation

@@ -149,6 +149,7 @@ export function createLpClaimHandler(
           value,
         },
         logger: log,
+        chainId,
       });
 
       res.status(200).json({

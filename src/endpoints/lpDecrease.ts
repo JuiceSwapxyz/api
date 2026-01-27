@@ -185,6 +185,7 @@ export function createLpDecreaseHandler(
           value,
         },
         logger: log,
+        chainId,
       });
 
       res.status(200).json({
@@ -320,6 +321,7 @@ async function handleGatewayLpDecrease(params: {
       value: ethers.BigNumber.from('0'), // No ETH value needed for remove
     },
     logger: log,
+    chainId,
   });
 
   // Get svJUSD share price for frontend validation
