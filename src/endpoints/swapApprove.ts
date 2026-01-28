@@ -77,9 +77,6 @@ export function createSwapApproveHandler(routerService: RouterService, logger: L
 
       const tokenApproval = await getApproveTxForToken(tokenIn, ethers.constants.MaxUint256.toString(), walletAddress, spenderAddress, provider, chainId, log)
 
-      // Get fee data for gas estimation
-      const feeData = await provider.getFeeData();
-      
       let gasEstimate = ethers.BigNumber.from('100000'); // Default gas estimate for approval
       try {
         gasEstimate = await provider.estimateGas({
