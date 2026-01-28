@@ -93,11 +93,24 @@ export function createSwapApproveHandler(routerService: RouterService, logger: L
 
       const gasLimit = gasEstimate.mul(110).div(100);
 
-      const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
-      const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
-      const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
+      // Use actual gas price from the provider for accurate estimation
+      // EIP-1559 fee data can be inflated on some chains, so we prefer legacy gasPrice
+      const gasPrice = await provider.getGasPrice();
 
-      const gasFee = gasLimit.mul(maxFeePerGas);
+      // Use legacy gas price with small buffer for maxFeePerGas
+      // This is more accurate for low-gas chains like Citrea
+      const maxFeePerGas = gasPrice.mul(120).div(100); // 20% buffer
+      const maxPriorityFeePerGas = gasPrice.mul(10).div(100); // 10% of gas price
+
+      // Calculate gas fee using actual gas price (not inflated EIP-1559 values)
+      const gasFee = gasLimit.mul(gasPrice);
+
+      log.info({
+        gasLimit: gasLimit.toString(),
+        maxFeePerGas: maxFeePerGas.toString(),
+        maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+        gasFee: gasFee.toString(),
+      }, 'Approval gas calculation');
 
       res.status(200).json({
         requestId: `swap-approve-${Date.now()}`,
