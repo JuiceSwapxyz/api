@@ -4,7 +4,7 @@ import { Protocol } from '@juiceswapxyz/router-sdk';
 import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { JuiceGatewayService, BridgeLiquidityError } from '../services/JuiceGatewayService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -646,6 +646,17 @@ async function handleGatewaySwap(
     });
 
   } catch (error) {
+    // Bridge liquidity error - fall through to classic V3 routing
+    // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
+    if (error instanceof BridgeLiquidityError) {
+      log.info(
+        { error: error.message, available: error.available, required: error.required },
+        'Bridge liquidity insufficient, falling through to classic routing'
+      );
+      // Fall through to classic swap instead of returning error
+      return handleClassicSwap(body, res, log, routerService);
+    }
+
     log.error({ error }, 'Error in handleGatewaySwap');
     res.status(500).json({
       error: 'Internal server error',

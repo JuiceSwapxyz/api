@@ -83,6 +83,28 @@ export interface GatewayRemoveLiquidityParams {
   deadline: number;
 }
 
+export interface BridgeStatus {
+  canMint: boolean;
+  canBurn: boolean;
+  mintCapacity: string;
+  burnCapacity: string;
+  mintBlockReason: string;
+  burnBlockReason: string;
+}
+
+export class BridgeLiquidityError extends Error {
+  code = 'INSUFFICIENT_BRIDGE_LIQUIDITY';
+  available?: string;
+  required?: string;
+
+  constructor(reason?: string, available?: string, required?: string) {
+    super(reason || 'Insufficient bridge liquidity');
+    this.name = 'BridgeLiquidityError';
+    this.available = available;
+    this.required = required;
+  }
+}
+
 /**
  * JuiceGatewayService - Handles JuiceDollar integration for swaps
  *
@@ -356,6 +378,67 @@ export class JuiceGatewayService {
     return contracts?.JUSD || null;
   }
 
+  /**
+   * Get bridge status for a bridged token
+   */
+  async getBridgeStatus(chainId: ChainId, bridgedToken: string): Promise<BridgeStatus> {
+    const contract = this.gatewayContracts.get(chainId);
+    if (!contract) {
+      throw new Error(`No Gateway contract for chain ${chainId}`);
+    }
+
+    try {
+      const status = await contract.getBridgeStatus(bridgedToken);
+      return {
+        canMint: status.canMint,
+        canBurn: status.canBurn,
+        mintCapacity: status.mintCapacity.toString(),
+        burnCapacity: status.burnCapacity.toString(),
+        mintBlockReason: status.mintBlockReason,
+        burnBlockReason: status.burnBlockReason,
+      };
+    } catch (error) {
+      this.logger.error({ chainId, bridgedToken, error }, 'getBridgeStatus failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Check if bridge has sufficient liquidity for a swap
+   * @param direction 'burn' for JUSD→bridged, 'mint' for bridged→JUSD
+   */
+  async checkBridgeLiquidity(
+    chainId: ChainId,
+    bridgedToken: string,
+    amount: string,
+    direction: 'mint' | 'burn'
+  ): Promise<void> {
+    const status = await this.getBridgeStatus(chainId, bridgedToken);
+
+    if (direction === 'burn') {
+      // JUSD → bridged token
+      if (!status.canBurn) {
+        throw new BridgeLiquidityError(status.burnBlockReason || 'Bridge burn not available');
+      }
+      const available = ethers.BigNumber.from(status.burnCapacity);
+      const required = ethers.BigNumber.from(amount);
+      if (required.gt(available)) {
+        throw new BridgeLiquidityError(
+          'Insufficient bridge liquidity',
+          status.burnCapacity,
+          amount
+        );
+      }
+    } else {
+      // bridged token → JUSD
+      if (!status.canMint) {
+        throw new BridgeLiquidityError(status.mintBlockReason || 'Bridge mint not available');
+      }
+      // Note: For mint, we'd need to convert amount to JUSD to compare against mintCapacity
+      // For now, checking canMint is sufficient as limit checks are complex
+    }
+  }
+
   // ============================================
   // Quote Preparation
   // ============================================
@@ -428,6 +511,7 @@ export class JuiceGatewayService {
     if (routingType === 'GATEWAY_JUSD' && this.isDirectUsdConversion(chainId, tokenIn, tokenOut)) {
       // Direct conversion between USD tokens using Gateway view functions
       // Chain the appropriate conversions based on token types
+      // Bridge liquidity is checked inline to avoid duplicate RPC calls
       let expectedOutput: string;
 
       const isBridgedIn = isBridgedStablecoin(chainId, tokenIn);
@@ -438,28 +522,34 @@ export class JuiceGatewayService {
       const isSvJusdOut = isSvJusdAddress(chainId, tokenOut);
 
       if (isBridgedIn && isBridgedOut) {
-        // Bridged → Bridged: bridgedToSvJusd() then svJusdToBridged()
+        // Bridged → Bridged: check mint, convert, check burn
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
         const svJusdAmount = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
         expectedOutput = await this.svJusdToBridged(chainId, tokenOut, svJusdAmount);
+        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
       } else if (isBridgedIn && isJusdOut) {
-        // Bridged → JUSD: bridgedToSvJusd() then svJusdToJusd()
+        // Bridged → JUSD: check mint, convert
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
         const svJusdAmount = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
         expectedOutput = await this.svJusdToJusd(chainId, svJusdAmount);
       } else if (isBridgedIn && isSvJusdOut) {
-        // Bridged → svJUSD: bridgedToSvJusd()
+        // Bridged → svJUSD: check mint, convert
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
         expectedOutput = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
       } else if (isJusdIn && isBridgedOut) {
-        // JUSD → Bridged: jusdToSvJusd() then svJusdToBridged()
+        // JUSD → Bridged: convert, check burn
         const svJusdAmount = await this.jusdToSvJusd(chainId, amountIn);
         expectedOutput = await this.svJusdToBridged(chainId, tokenOut, svJusdAmount);
+        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
       } else if (isSvJusdIn && isBridgedOut) {
-        // svJUSD → Bridged: svJusdToBridged()
+        // svJUSD → Bridged: convert, check burn
         expectedOutput = await this.svJusdToBridged(chainId, tokenOut, amountIn);
+        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
       } else if (isJusdIn && isSvJusdOut) {
-        // JUSD → svJUSD
+        // JUSD → svJUSD (no bridge involved)
         expectedOutput = await this.jusdToSvJusd(chainId, amountIn);
       } else if (isSvJusdIn && isJusdOut) {
-        // svJUSD → JUSD
+        // svJUSD → JUSD (no bridge involved)
         expectedOutput = await this.svJusdToJusd(chainId, amountIn);
       } else {
         // Same token (JUSD→JUSD, svJUSD→svJUSD) — amount stays the same

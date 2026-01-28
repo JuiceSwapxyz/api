@@ -8,7 +8,7 @@ import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { JuiceGatewayService, BridgeLiquidityError } from '../services/JuiceGatewayService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -519,12 +519,22 @@ export function createQuoteHandler(
             return;
 
           } catch (error) {
-            log.error({ error, routingType }, 'Gateway quote failed');
-            res.status(500).json({
-              error: 'GATEWAY_ERROR',
-              detail: error instanceof Error ? error.message : 'Gateway routing failed',
-            });
-            return;
+            // Bridge liquidity error - fall through to classic V3 routing
+            // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
+            if (error instanceof BridgeLiquidityError) {
+              log.info(
+                { error: error.message, available: error.available, required: error.required, tokenIn, tokenOut },
+                'Bridge liquidity insufficient, falling through to classic routing'
+              );
+              // Don't return - fall through to classic routing below
+            } else {
+              log.error({ error, routingType }, 'Gateway quote failed');
+              res.status(500).json({
+                error: 'GATEWAY_ERROR',
+                detail: error instanceof Error ? error.message : 'Gateway routing failed',
+              });
+              return;
+            }
           }
         }
       }
