@@ -20,6 +20,9 @@ export interface ChainContracts {
   SV_JUSD: string;
   JUICE: string;
   SUSD: string;
+  USDC: string;
+  USDT: string;
+  CTUSD: string;
   WCBTC: string;
   JUICE_SWAP_GATEWAY: string;
   SWAP_ROUTER: string;
@@ -58,6 +61,9 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     SV_JUSD: juiceDollarAddresses.savingsVaultJUSD,
     JUICE: juiceDollarAddresses.equity,
     SUSD: juiceDollarAddresses.startUSD,
+    USDC: juiceDollarAddresses.USDC ?? '',
+    USDT: juiceDollarAddresses.USDT ?? '',
+    CTUSD: juiceDollarAddresses.CTUSD ?? '',
     // From @juiceswapxyz/sdk-core
     WCBTC: wcbtc.address,
     JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? '',
@@ -144,16 +150,72 @@ export function isSusdAddress(chainId: number, address: string): boolean {
 }
 
 /**
+ * Check if an address is USDC
+ */
+export function isUsdcAddress(chainId: number, address: string): boolean {
+  const contracts = getChainContracts(chainId);
+  if (!contracts || !contracts.USDC) return false;
+  return normalizeAddress(address) === normalizeAddress(contracts.USDC);
+}
+
+/**
+ * Check if an address is USDT
+ */
+export function isUsdtAddress(chainId: number, address: string): boolean {
+  const contracts = getChainContracts(chainId);
+  if (!contracts || !contracts.USDT) return false;
+  return normalizeAddress(address) === normalizeAddress(contracts.USDT);
+}
+
+/**
+ * Check if an address is CTUSD
+ */
+export function isCtusdAddress(chainId: number, address: string): boolean {
+  const contracts = getChainContracts(chainId);
+  if (!contracts || !contracts.CTUSD) return false;
+  return normalizeAddress(address) === normalizeAddress(contracts.CTUSD);
+}
+
+/**
+ * Check if an address is a bridged stablecoin (SUSD, USDC, USDT, CTUSD)
+ * These are stablecoins that bridge to JUSD via registered bridges on the Gateway
+ */
+export function isBridgedStablecoin(chainId: number, address: string): boolean {
+  return (
+    isSusdAddress(chainId, address) ||
+    isUsdcAddress(chainId, address) ||
+    isUsdtAddress(chainId, address) ||
+    isCtusdAddress(chainId, address)
+  );
+}
+
+/**
+ * Check if an address is any USD-pegged token (JUSD, svJUSD, or bridged stablecoins)
+ * This includes all tokens that can be swapped 1:1 via the Gateway
+ */
+export function isUsdToken(chainId: number, address: string): boolean {
+  return (
+    isJusdAddress(chainId, address) ||
+    isSvJusdAddress(chainId, address) ||
+    isBridgedStablecoin(chainId, address)
+  );
+}
+
+/**
  * Detect which JuiceDollar token type an address is
- * @returns 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | null
+ * @returns 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | 'USDC' | 'USDT' | 'CTUSD' | null
  */
 export function detectJuiceDollarToken(
   chainId: number,
   address: string
-): 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | null {
+): 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | 'USDC' | 'USDT' | 'CTUSD' | null {
   if (isJusdAddress(chainId, address)) return 'JUSD';
   if (isSvJusdAddress(chainId, address)) return 'SV_JUSD';
   if (isJuiceAddress(chainId, address)) return 'JUICE';
   if (isSusdAddress(chainId, address)) return 'SUSD';
+  if (isUsdcAddress(chainId, address)) return 'USDC';
+  if (isUsdtAddress(chainId, address)) return 'USDT';
+  if (isCtusdAddress(chainId, address)) return 'CTUSD';
   return null;
 }
+

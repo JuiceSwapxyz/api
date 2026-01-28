@@ -472,6 +472,49 @@ async function handleGatewaySwap(
       return;
     }
 
+    // Handle direct USD↔USD conversions (no pool routing needed)
+    if (gatewayQuote.isDirectConversion) {
+      // For direct conversions, the expectedOutput is already computed via Gateway view functions
+      const userOutputBN = ethers.BigNumber.from(gatewayQuote.expectedOutput);
+      const minAmountOut = userOutputBN.mul(BASIS_POINTS_DENOMINATOR - slippageBps).div(BASIS_POINTS_DENOMINATOR);
+
+      // Build Gateway calldata for direct conversion
+      const calldata = juiceGatewayService.buildGatewaySwapCalldata({
+        tokenIn,
+        tokenOut,
+        fee,
+        amountIn: body.amount,
+        minAmountOut: minAmountOut.toString(),
+        recipient: body.recipient,
+        deadline,
+      });
+
+      const swapData = {
+        data: calldata,
+        to: gatewayAddress,
+        value: '0x0',
+        from: body.from,
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        _routingType: routingType,
+        _isDirectConversion: true,
+        _expectedOutput: gatewayQuote.expectedOutput,
+        _minAmountOut: minAmountOut.toString(),
+      };
+
+      log.debug({
+        routingType,
+        tokenIn,
+        tokenOut,
+        isDirectConversion: true,
+        expectedOutput: gatewayQuote.expectedOutput,
+        minAmountOut: minAmountOut.toString(),
+      }, 'Gateway direct conversion swap prepared');
+
+      res.json(swapData);
+      return;
+    }
+
     // Route internally to get expected output
     // Note: Launchpad tokens bypass Gateway entirely (checked in createSwapHandler),
     // so this function only handles non-launchpad swaps with svJUSD
