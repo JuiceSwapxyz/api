@@ -8,7 +8,7 @@ import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { JuiceGatewayService, BridgeLiquidityError } from '../services/JuiceGatewayService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -342,6 +342,62 @@ export function createQuoteHandler(
               return;
             }
 
+            // Handle direct USD↔USD conversions (no pool routing needed)
+            if (gatewayQuote.isDirectConversion) {
+              const quoteId = generateQuoteId();
+              const inputAmountDecimals = formatDecimals(body.amount, tokenInDecimals);
+              const outputAmountDecimals = formatDecimals(gatewayQuote.expectedOutput, tokenOutDecimals);
+
+              const directConversionResponse: QuoteResponse = {
+                requestId: quoteId,
+                routing: Routing.GATEWAY_JUSD,
+                permitData: null,
+                quote: {
+                  chainId: chainId,
+                  swapper: body.swapper || '0x0000000000000000000000000000000000000000',
+                  input: {
+                    amount: body.amount,
+                    token: tokenIn,
+                  },
+                  output: {
+                    amount: gatewayQuote.expectedOutput,
+                    token: tokenOut,
+                    recipient: body.swapper || '0x0000000000000000000000000000000000000000',
+                  },
+                  tradeType: body.type || 'EXACT_INPUT',
+                  amount: body.amount,
+                  amountDecimals: inputAmountDecimals,
+                  quote: gatewayQuote.expectedOutput,
+                  quoteDecimals: outputAmountDecimals,
+                  quoteGasAdjusted: gatewayQuote.expectedOutput,
+                  gasUseEstimate: '100000', // Estimate for Gateway direct conversion
+                  gasUseEstimateUSD: '0.10',
+                  gasPriceWei: '1000000000',
+                  _internal: {
+                    routingType: gatewayQuote.routingType,
+                    isDirectConversion: true,
+                  },
+                },
+              };
+
+              // Cache direct conversion quotes
+              if (quoteCache.shouldCache(body, directConversionResponse)) {
+                quoteCache.set(body, directConversionResponse);
+              }
+
+              res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
+              log.debug({
+                routingType: gatewayQuote.routingType,
+                userInput: body.amount,
+                userOutput: gatewayQuote.expectedOutput,
+                isDirectConversion: true,
+                responseTime: Date.now() - startTime,
+              }, 'Direct USD conversion quote generated');
+
+              res.json(directConversionResponse);
+              return;
+            }
+
             // For JUICE input, we've already converted to JUSD amount internally
             // Now route using internal tokens (svJUSD-based pools)
             const contracts = getChainContracts(chainId)!;
@@ -463,12 +519,22 @@ export function createQuoteHandler(
             return;
 
           } catch (error) {
-            log.error({ error, routingType }, 'Gateway quote failed');
-            res.status(500).json({
-              error: 'GATEWAY_ERROR',
-              detail: error instanceof Error ? error.message : 'Gateway routing failed',
-            });
-            return;
+            // Bridge liquidity error - fall through to classic V3 routing
+            // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
+            if (error instanceof BridgeLiquidityError) {
+              log.info(
+                { error: error.message, available: error.available, required: error.required, tokenIn, tokenOut },
+                'Bridge liquidity insufficient, falling through to classic routing'
+              );
+              // Don't return - fall through to classic routing below
+            } else {
+              log.error({ error, routingType }, 'Gateway quote failed');
+              res.status(500).json({
+                error: 'GATEWAY_ERROR',
+                detail: error instanceof Error ? error.message : 'Gateway routing failed',
+              });
+              return;
+            }
           }
         }
       }

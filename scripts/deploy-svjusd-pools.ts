@@ -40,7 +40,7 @@ import JSBI from 'jsbi';
 // ============================================
 
 const CHAIN_ID = ChainId.CITREA_TESTNET;
-const RPC_URL = 'https://rpc.testnet.citrea.xyz';
+const RPC_URL = 'https://rpc.testnet.citreascan.com';
 
 // Get JuiceDollar addresses from package (single source of truth)
 const JUSD_ADDRESSES = ADDRESS[CHAIN_ID];

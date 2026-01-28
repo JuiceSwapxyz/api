@@ -6,7 +6,9 @@ import {
   hasJuiceDollarIntegration,
   isJusdAddress,
   isJuiceAddress,
-  isSusdAddress,
+  isSvJusdAddress,
+  isUsdToken,
+  isBridgedStablecoin,
   ChainContracts,
 } from '../config/contracts';
 import { JuiceSwapGatewayAbi } from '../abi/JuiceSwapGateway';
@@ -27,6 +29,7 @@ export interface GatewayQuoteResult {
   internalAmountIn: string;
   expectedOutput: string;
   routingType: 'GATEWAY_JUSD' | 'GATEWAY_JUICE_OUT' | 'GATEWAY_JUICE_IN';
+  isDirectConversion?: boolean;  // True for direct USD↔USD conversions (no pool routing needed)
 }
 
 export interface GatewaySwapParams {
@@ -80,6 +83,28 @@ export interface GatewayRemoveLiquidityParams {
   deadline: number;
 }
 
+export interface BridgeStatus {
+  canMint: boolean;
+  canBurn: boolean;
+  mintCapacity: string;
+  burnCapacity: string;
+  mintBlockReason: string;
+  burnBlockReason: string;
+}
+
+export class BridgeLiquidityError extends Error {
+  code = 'INSUFFICIENT_BRIDGE_LIQUIDITY';
+  available?: string;
+  required?: string;
+
+  constructor(reason?: string, available?: string, required?: string) {
+    super(reason || 'Insufficient bridge liquidity');
+    this.name = 'BridgeLiquidityError';
+    this.available = available;
+    this.required = required;
+  }
+}
+
 /**
  * JuiceGatewayService - Handles JuiceDollar integration for swaps
  *
@@ -131,10 +156,10 @@ export class JuiceGatewayService {
    * Check if a token requires Gateway routing
    * @returns Routing type or null if standard routing should be used
    *
-   * SUSD (StartUSD) is handled via Gateway's registerBridgedToken() mechanism.
-   * When SUSD is registered as a bridged token, the Gateway automatically:
-   * - Input: SUSD → bridge.mint() → JUSD → svJUSD
-   * - Output: svJUSD → JUSD → bridge.burnAndSend() → SUSD
+   * All bridged stablecoins (SUSD, USDC, USDT, CTUSD) are handled via Gateway's
+   * registerBridgedToken() mechanism. When a bridge is registered, the Gateway automatically:
+   * - Input: BridgedToken → bridge.mint() → JUSD → svJUSD
+   * - Output: svJUSD → JUSD → bridge.burnAndSend() → BridgedToken
    */
   detectRoutingType(
     chainId: number,
@@ -145,12 +170,12 @@ export class JuiceGatewayService {
       return null;
     }
 
-    const isJusdIn = isJusdAddress(chainId, tokenIn);
-    const isJusdOut = isJusdAddress(chainId, tokenOut);
     const isJuiceIn = isJuiceAddress(chainId, tokenIn);
     const isJuiceOut = isJuiceAddress(chainId, tokenOut);
-    const isSusdIn = isSusdAddress(chainId, tokenIn);
-    const isSusdOut = isSusdAddress(chainId, tokenOut);
+
+    // Check if either token is a USD token (JUSD, svJUSD, or any bridged stablecoin)
+    const isUsdIn = isUsdToken(chainId, tokenIn);
+    const isUsdOut = isUsdToken(chainId, tokenOut);
 
     // JUICE as input - route through Equity.redeem()
     if (isJuiceIn) {
@@ -162,13 +187,21 @@ export class JuiceGatewayService {
       return 'GATEWAY_JUICE_OUT';
     }
 
-    // JUSD or SUSD involved - route through Gateway
-    // SUSD is handled via Gateway's registerBridgedToken() mechanism
-    if (isJusdIn || isJusdOut || isSusdIn || isSusdOut) {
+    // Any USD token involved - route through Gateway
+    // This includes JUSD, svJUSD, SUSD, USDC, USDT, CTUSD
+    if (isUsdIn || isUsdOut) {
       return 'GATEWAY_JUSD';
     }
 
     return null;
+  }
+
+  /**
+   * Check if this is a direct USD-to-USD conversion
+   * Direct conversions don't need pool routing - they go through the Gateway bridges only
+   */
+  isDirectUsdConversion(chainId: number, tokenIn: string, tokenOut: string): boolean {
+    return isUsdToken(chainId, tokenIn) && isUsdToken(chainId, tokenOut);
   }
 
   /**
@@ -345,18 +378,116 @@ export class JuiceGatewayService {
     return contracts?.JUSD || null;
   }
 
+  /**
+   * Get bridge status for a bridged token
+   */
+  async getBridgeStatus(chainId: ChainId, bridgedToken: string): Promise<BridgeStatus> {
+    const contract = this.gatewayContracts.get(chainId);
+    if (!contract) {
+      throw new Error(`No Gateway contract for chain ${chainId}`);
+    }
+
+    try {
+      const status = await contract.getBridgeStatus(bridgedToken);
+      return {
+        canMint: status.canMint,
+        canBurn: status.canBurn,
+        mintCapacity: status.mintCapacity.toString(),
+        burnCapacity: status.burnCapacity.toString(),
+        mintBlockReason: status.mintBlockReason,
+        burnBlockReason: status.burnBlockReason,
+      };
+    } catch (error) {
+      this.logger.error({ chainId, bridgedToken, error }, 'getBridgeStatus failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Check if bridge has sufficient liquidity for a swap
+   * @param direction 'burn' for JUSD→bridged, 'mint' for bridged→JUSD
+   */
+  async checkBridgeLiquidity(
+    chainId: ChainId,
+    bridgedToken: string,
+    amount: string,
+    direction: 'mint' | 'burn'
+  ): Promise<void> {
+    const status = await this.getBridgeStatus(chainId, bridgedToken);
+
+    if (direction === 'burn') {
+      // JUSD → bridged token
+      if (!status.canBurn) {
+        throw new BridgeLiquidityError(status.burnBlockReason || 'Bridge burn not available');
+      }
+      const available = ethers.BigNumber.from(status.burnCapacity);
+      const required = ethers.BigNumber.from(amount);
+      if (required.gt(available)) {
+        throw new BridgeLiquidityError(
+          'Insufficient bridge liquidity',
+          status.burnCapacity,
+          amount
+        );
+      }
+    } else {
+      // bridged token → JUSD
+      if (!status.canMint) {
+        throw new BridgeLiquidityError(status.mintBlockReason || 'Bridge mint not available');
+      }
+      // Note: For mint, we'd need to convert amount to JUSD to compare against mintCapacity
+      // For now, checking canMint is sufficient as limit checks are complex
+    }
+  }
+
   // ============================================
   // Quote Preparation
   // ============================================
 
   /**
+   * Convert bridged stablecoin amount to svJUSD shares
+   * Uses Gateway's bridgedToSvJusd() which handles decimal conversion internally
+   */
+  async bridgedToSvJusd(chainId: ChainId, bridgedToken: string, amount: string): Promise<string> {
+    const contract = this.gatewayContracts.get(chainId);
+    if (!contract) throw new Error(`No Gateway contract for chain ${chainId}`);
+
+    try {
+      const shares = await contract.bridgedToSvJusd(bridgedToken, amount);
+      return shares.toString();
+    } catch (error) {
+      this.logger.error({ chainId, bridgedToken, amount, error }, 'bridgedToSvJusd failed');
+      throw error;
+    }
+  }
+
+  /**
+   * Convert svJUSD shares to bridged stablecoin amount
+   * Uses Gateway's svJusdToBridged() which handles decimal conversion internally
+   */
+  async svJusdToBridged(chainId: ChainId, bridgedToken: string, svJusdAmount: string): Promise<string> {
+    const contract = this.gatewayContracts.get(chainId);
+    if (!contract) throw new Error(`No Gateway contract for chain ${chainId}`);
+
+    try {
+      const amount = await contract.svJusdToBridged(bridgedToken, svJusdAmount);
+      return amount.toString();
+    } catch (error) {
+      this.logger.error({ chainId, bridgedToken, svJusdAmount, error }, 'svJusdToBridged failed');
+      throw error;
+    }
+  }
+
+  /**
    * Prepare quote parameters for Gateway routing
    *
    * This converts user-facing tokens to internal pool tokens:
-   * - JUSD input → svJUSD for routing
-   * - JUSD output → svJUSD for routing, then convert result back
+   * - JUSD/bridged stablecoin input → svJUSD for routing
+   * - JUSD/bridged stablecoin output → svJUSD for routing, then convert result back
    * - JUICE output → route to svJUSD, then calculate JUICE via Equity
    * - JUICE input → calculate JUSD via Equity.calculateProceeds(), then route
+   *
+   * For direct USD↔USD conversions (e.g., JUSD↔USDC), no pool routing is needed.
+   * The Gateway handles the conversion via bridges.
    *
    * @returns Internal tokens and amounts for routing, plus routing type
    */
@@ -376,29 +507,108 @@ export class JuiceGatewayService {
     let internalTokenOut = tokenOut;
     let internalAmountIn = amountIn;
 
+    // Check if this is a direct USD↔USD conversion (no pool routing needed)
+    if (routingType === 'GATEWAY_JUSD' && this.isDirectUsdConversion(chainId, tokenIn, tokenOut)) {
+      // Direct conversion between USD tokens using Gateway view functions
+      // Chain the appropriate conversions based on token types
+      // Bridge liquidity is checked inline to avoid duplicate RPC calls
+      let expectedOutput: string;
+
+      const isBridgedIn = isBridgedStablecoin(chainId, tokenIn);
+      const isBridgedOut = isBridgedStablecoin(chainId, tokenOut);
+      const isJusdIn = isJusdAddress(chainId, tokenIn);
+      const isJusdOut = isJusdAddress(chainId, tokenOut);
+      const isSvJusdIn = isSvJusdAddress(chainId, tokenIn);
+      const isSvJusdOut = isSvJusdAddress(chainId, tokenOut);
+
+      if (isBridgedIn && isBridgedOut) {
+        // Bridged → Bridged: check mint, convert, check burn
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
+        const svJusdAmount = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+        expectedOutput = await this.svJusdToBridged(chainId, tokenOut, svJusdAmount);
+        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
+      } else if (isBridgedIn && isJusdOut) {
+        // Bridged → JUSD: check mint, convert
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
+        const svJusdAmount = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+        expectedOutput = await this.svJusdToJusd(chainId, svJusdAmount);
+      } else if (isBridgedIn && isSvJusdOut) {
+        // Bridged → svJUSD: check mint, convert
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
+        expectedOutput = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+      } else if (isJusdIn && isBridgedOut) {
+        // JUSD → Bridged: convert, check burn
+        const svJusdAmount = await this.jusdToSvJusd(chainId, amountIn);
+        expectedOutput = await this.svJusdToBridged(chainId, tokenOut, svJusdAmount);
+        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
+      } else if (isSvJusdIn && isBridgedOut) {
+        // svJUSD → Bridged: convert, check burn
+        expectedOutput = await this.svJusdToBridged(chainId, tokenOut, amountIn);
+        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
+      } else if (isJusdIn && isSvJusdOut) {
+        // JUSD → svJUSD (no bridge involved)
+        expectedOutput = await this.jusdToSvJusd(chainId, amountIn);
+      } else if (isSvJusdIn && isJusdOut) {
+        // svJUSD → JUSD (no bridge involved)
+        expectedOutput = await this.svJusdToJusd(chainId, amountIn);
+      } else {
+        // Same token (JUSD→JUSD, svJUSD→svJUSD) — amount stays the same
+        expectedOutput = amountIn;
+      }
+
+      return {
+        internalTokenIn: tokenIn,
+        internalTokenOut: tokenOut,
+        internalAmountIn: amountIn,
+        expectedOutput,
+        routingType,
+        isDirectConversion: true,
+      };
+    }
+
     switch (routingType) {
-      case 'GATEWAY_JUSD':
-        // JUSD or SUSD input/output - convert to svJUSD for internal routing
-        // SUSD is 1:1 with JUSD via StablecoinBridge (both 18 decimals)
-        if (isJusdAddress(chainId, tokenIn) || isSusdAddress(chainId, tokenIn)) {
+      case 'GATEWAY_JUSD': {
+        // USD token input/output - convert to svJUSD for internal routing
+        const isUsdIn = isUsdToken(chainId, tokenIn);
+        const isUsdOut = isUsdToken(chainId, tokenOut);
+
+        if (isUsdIn) {
           internalTokenIn = contracts.SV_JUSD;
-          internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
+          if (isBridgedStablecoin(chainId, tokenIn)) {
+            // Bridged stablecoin → svJUSD directly via Gateway view function
+            internalAmountIn = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+          } else if (isSvJusdAddress(chainId, tokenIn)) {
+            // svJUSD → use as-is
+            internalAmountIn = amountIn;
+          } else {
+            // JUSD → svJUSD
+            internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
+          }
         }
-        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
+        if (isUsdOut) {
           internalTokenOut = contracts.SV_JUSD;
         }
         break;
+      }
 
-      case 'GATEWAY_JUICE_OUT':
+      case 'GATEWAY_JUICE_OUT': {
         // Buying JUICE - route to svJUSD first
-        // Also handle SUSD input (1:1 with JUSD)
-        if (isJusdAddress(chainId, tokenIn) || isSusdAddress(chainId, tokenIn)) {
+        const isUsdIn = isUsdToken(chainId, tokenIn);
+
+        if (isUsdIn) {
           internalTokenIn = contracts.SV_JUSD;
-          internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
+          if (isBridgedStablecoin(chainId, tokenIn)) {
+            internalAmountIn = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+          } else if (isSvJusdAddress(chainId, tokenIn)) {
+            internalAmountIn = amountIn;
+          } else {
+            internalAmountIn = await this.jusdToSvJusd(chainId, amountIn);
+          }
         }
         // Output is svJUSD internally, then converted to JUICE
         internalTokenOut = contracts.SV_JUSD;
         break;
+      }
 
       case 'GATEWAY_JUICE_IN': {
         // JUICE can only be swapped directly to JUSD
@@ -441,13 +651,23 @@ export class JuiceGatewayService {
     routingType: 'GATEWAY_JUSD' | 'GATEWAY_JUICE_OUT' | 'GATEWAY_JUICE_IN'
   ): Promise<string> {
     switch (routingType) {
-      case 'GATEWAY_JUSD':
-        // If output is JUSD or SUSD, convert from svJUSD
-        // SUSD is 1:1 with JUSD (both 18 decimals), so same conversion applies
-        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
-          return await this.svJusdToJusd(chainId, routerOutput);
+      case 'GATEWAY_JUSD': {
+        // If output is any USD token, convert from svJUSD
+        const isUsdOut = isUsdToken(chainId, tokenOut);
+        if (isUsdOut) {
+          if (isBridgedStablecoin(chainId, tokenOut)) {
+            // svJUSD → bridged stablecoin directly via Gateway view function
+            return await this.svJusdToBridged(chainId, tokenOut, routerOutput);
+          } else if (isSvJusdAddress(chainId, tokenOut)) {
+            // svJUSD output — return as-is
+            return routerOutput;
+          } else {
+            // svJUSD → JUSD
+            return await this.svJusdToJusd(chainId, routerOutput);
+          }
         }
         return routerOutput;
+      }
 
       case 'GATEWAY_JUICE_OUT': {
         // Convert svJUSD output to JUICE via Equity
@@ -455,12 +675,20 @@ export class JuiceGatewayService {
         return await this.jusdToJuice(chainId, jusdOutput);
       }
 
-      case 'GATEWAY_JUICE_IN':
-        // If output is JUSD or SUSD, convert from svJUSD
-        if (isJusdAddress(chainId, tokenOut) || isSusdAddress(chainId, tokenOut)) {
-          return await this.svJusdToJusd(chainId, routerOutput);
+      case 'GATEWAY_JUICE_IN': {
+        // If output is any USD token, convert from svJUSD
+        const isUsdOut = isUsdToken(chainId, tokenOut);
+        if (isUsdOut) {
+          if (isBridgedStablecoin(chainId, tokenOut)) {
+            return await this.svJusdToBridged(chainId, tokenOut, routerOutput);
+          } else if (isSvJusdAddress(chainId, tokenOut)) {
+            return routerOutput;
+          } else {
+            return await this.svJusdToJusd(chainId, routerOutput);
+          }
         }
         return routerOutput;
+      }
 
       default:
         return routerOutput;

@@ -4,7 +4,7 @@ import { Protocol } from '@juiceswapxyz/router-sdk';
 import { RouterService } from '../core/RouterService';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { JuiceGatewayService, BridgeLiquidityError } from '../services/JuiceGatewayService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -472,6 +472,79 @@ async function handleGatewaySwap(
       return;
     }
 
+    // Handle direct USD↔USD conversions (no pool routing needed)
+    if (gatewayQuote.isDirectConversion) {
+      // For direct conversions, the expectedOutput is already computed via Gateway view functions
+      const userOutputBN = ethers.BigNumber.from(gatewayQuote.expectedOutput);
+      const minAmountOut = userOutputBN.mul(BASIS_POINTS_DENOMINATOR - slippageBps).div(BASIS_POINTS_DENOMINATOR);
+
+      // Build Gateway calldata for direct conversion
+      const calldata = juiceGatewayService.buildGatewaySwapCalldata({
+        tokenIn,
+        tokenOut,
+        fee,
+        amountIn: body.amount,
+        minAmountOut: minAmountOut.toString(),
+        recipient: body.recipient,
+        deadline,
+      });
+
+      // Estimate gas for the direct conversion swap
+      const gasPrice = await provider.getGasPrice();
+      let gasLimit = ethers.BigNumber.from('200000'); // Default for direct conversions
+      try {
+        const estimatedGas = await provider.estimateGas({
+          to: gatewayAddress,
+          from: body.from,
+          data: calldata,
+          value: '0x0',
+        });
+        gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
+      } catch (e) {
+        log.warn({ error: e }, 'Gas estimation failed for direct conversion, using default');
+      }
+
+      const gasFee = gasLimit.mul(gasPrice);
+
+      const swapData = {
+        data: calldata,
+        to: gatewayAddress,
+        value: '0x0',
+        from: body.from,
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        gasLimit: gasLimit.toHexString(),
+        _routingType: routingType,
+        _isDirectConversion: true,
+        _expectedOutput: gatewayQuote.expectedOutput,
+        _minAmountOut: minAmountOut.toString(),
+      };
+
+      log.debug({
+        routingType,
+        tokenIn,
+        tokenOut,
+        isDirectConversion: true,
+        expectedOutput: gatewayQuote.expectedOutput,
+        minAmountOut: minAmountOut.toString(),
+        gasLimit: gasLimit.toString(),
+        gasFee: gasFee.toString(),
+      }, 'Gateway direct conversion swap prepared');
+
+      res.json({
+        ...swapData,
+        gasFee: gasFee.toString(),
+        gasEstimates: [{
+          type: 'eip1559',
+          gasLimit: gasLimit.toString(),
+          gasFee: gasFee.toString(),
+          maxFeePerGas: gasPrices.maxFeePerGas,
+          maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        }],
+      });
+      return;
+    }
+
     // Route internally to get expected output
     // Note: Launchpad tokens bypass Gateway entirely (checked in createSwapHandler),
     // so this function only handles non-launchpad swaps with svJUSD
@@ -520,6 +593,23 @@ async function handleGatewaySwap(
     // Check if input is native token - Gateway expects msg.value == amount for native swaps
     const isNativeInput = tokenIn.toLowerCase() === NATIVE_CURRENCY_ADDRESS.toLowerCase();
 
+    // Estimate gas for the swap transaction
+    const gasPrice = await provider.getGasPrice();
+    let gasLimit = ethers.BigNumber.from('300000'); // Default for complex Gateway swaps
+    try {
+      const estimatedGas = await provider.estimateGas({
+        to: gatewayAddress,
+        from: body.from,
+        data: calldata,
+        value: isNativeInput ? body.amount : '0x0',
+      });
+      gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
+    } catch (e) {
+      log.warn({ error: e }, 'Gas estimation failed for Gateway swap, using default');
+    }
+
+    const gasFee = gasLimit.mul(gasPrice);
+
     const swapData = {
       data: calldata,
       to: gatewayAddress,
@@ -527,6 +617,7 @@ async function handleGatewaySwap(
       from: body.from,
       maxFeePerGas: gasPrices.maxFeePerGas,
       maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      gasLimit: gasLimit.toHexString(),
       _routingType: routingType,
       _expectedOutput: userOutputAmount,
       _minAmountOut: minAmountOut.toString(),
@@ -538,11 +629,34 @@ async function handleGatewaySwap(
       tokenOut,
       expectedOutput: userOutputAmount,
       minAmountOut: minAmountOut.toString(),
+      gasLimit: gasLimit.toString(),
+      gasFee: gasFee.toString(),
     }, 'Gateway swap prepared');
 
-    res.json(swapData);
+    res.json({
+      ...swapData,
+      gasFee: gasFee.toString(),
+      gasEstimates: [{
+        type: 'eip1559',
+        gasLimit: gasLimit.toString(),
+        gasFee: gasFee.toString(),
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      }],
+    });
 
   } catch (error) {
+    // Bridge liquidity error - fall through to classic V3 routing
+    // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
+    if (error instanceof BridgeLiquidityError) {
+      log.info(
+        { error: error.message, available: error.available, required: error.required },
+        'Bridge liquidity insufficient, falling through to classic routing'
+      );
+      // Fall through to classic swap instead of returning error
+      return handleClassicSwap(body, res, log, routerService);
+    }
+
     log.error({ error }, 'Error in handleGatewaySwap');
     res.status(500).json({
       error: 'Internal server error',
@@ -674,6 +788,23 @@ async function handleClassicSwap(
 
     const gasPrices = await getGasPrices(provider, log);
 
+    // Estimate gas for the swap transaction
+    const gasPrice = await provider.getGasPrice();
+    let gasLimit = ethers.BigNumber.from('250000'); // Default for classic swaps
+    try {
+      const estimatedGas = await provider.estimateGas({
+        to: routerAddress,
+        from: body.from,
+        data: swapRoute.methodParameters.calldata,
+        value: swapRoute.methodParameters.value,
+      });
+      gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
+    } catch (e) {
+      log.warn({ error: e }, 'Gas estimation failed for Classic swap, using default');
+    }
+
+    const gasFee = gasLimit.mul(gasPrice);
+
     // Format response
     const swapData = {
       data: swapRoute.methodParameters.calldata,
@@ -682,6 +813,7 @@ async function handleClassicSwap(
       from: body.from,
       maxFeePerGas: gasPrices.maxFeePerGas,
       maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      gasLimit: gasLimit.toHexString(),
     };
 
     log.debug(
@@ -690,11 +822,23 @@ async function handleClassicSwap(
         tokenOut: validatedTokenOut,
         amount: body.amount,
         route: swapRoute.route.length,
+        gasLimit: gasLimit.toString(),
+        gasFee: gasFee.toString(),
       },
       'Classic swap transaction prepared'
     );
 
-    res.json(swapData);
+    res.json({
+      ...swapData,
+      gasFee: gasFee.toString(),
+      gasEstimates: [{
+        type: 'eip1559',
+        gasLimit: gasLimit.toString(),
+        gasFee: gasFee.toString(),
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      }],
+    });
   } catch (error) {
     log.error({ error }, 'Error in handleClassicSwap');
     res.status(500).json({
