@@ -8,7 +8,7 @@ import { quoteCache } from '../cache/quoteCache';
 import { getRPCMonitor } from '../utils/rpcMonitor';
 import { trackUser } from '../services/userTracking';
 import { extractIpAddress } from '../utils/ipAddress';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
+import { JuiceGatewayService, BridgeLiquidityError } from '../services/JuiceGatewayService';
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -519,6 +519,19 @@ export function createQuoteHandler(
             return;
 
           } catch (error) {
+            // Check for bridge liquidity error
+            if (error instanceof BridgeLiquidityError) {
+              log.warn({ error: error.message, available: error.available, required: error.required }, 'Bridge liquidity insufficient');
+              res.status(400).json({
+                error: 'INSUFFICIENT_BRIDGE_LIQUIDITY',
+                errorCode: 'InsufficientBridgeLiquidity',
+                detail: error.message,
+                available: error.available,
+                required: error.required,
+              });
+              return;
+            }
+
             log.error({ error, routingType }, 'Gateway quote failed');
             res.status(500).json({
               error: 'GATEWAY_ERROR',
