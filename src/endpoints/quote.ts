@@ -519,25 +519,22 @@ export function createQuoteHandler(
             return;
 
           } catch (error) {
-            // Check for bridge liquidity error
+            // Bridge liquidity error - fall through to classic V3 routing
+            // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
             if (error instanceof BridgeLiquidityError) {
-              log.warn({ error: error.message, available: error.available, required: error.required }, 'Bridge liquidity insufficient');
-              res.status(400).json({
-                error: 'INSUFFICIENT_BRIDGE_LIQUIDITY',
-                errorCode: 'InsufficientBridgeLiquidity',
-                detail: error.message,
-                available: error.available,
-                required: error.required,
+              log.info(
+                { error: error.message, available: error.available, required: error.required, tokenIn, tokenOut },
+                'Bridge liquidity insufficient, falling through to classic routing'
+              );
+              // Don't return - fall through to classic routing below
+            } else {
+              log.error({ error, routingType }, 'Gateway quote failed');
+              res.status(500).json({
+                error: 'GATEWAY_ERROR',
+                detail: error instanceof Error ? error.message : 'Gateway routing failed',
               });
               return;
             }
-
-            log.error({ error, routingType }, 'Gateway quote failed');
-            res.status(500).json({
-              error: 'GATEWAY_ERROR',
-              detail: error instanceof Error ? error.message : 'Gateway routing failed',
-            });
-            return;
           }
         }
       }

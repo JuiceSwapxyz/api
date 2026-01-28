@@ -646,17 +646,15 @@ async function handleGatewaySwap(
     });
 
   } catch (error) {
-    // Check for bridge liquidity error
+    // Bridge liquidity error - fall through to classic V3 routing
+    // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
     if (error instanceof BridgeLiquidityError) {
-      log.warn({ error: error.message, available: error.available, required: error.required }, 'Bridge liquidity insufficient');
-      res.status(400).json({
-        error: 'INSUFFICIENT_BRIDGE_LIQUIDITY',
-        errorCode: 'InsufficientBridgeLiquidity',
-        detail: error.message,
-        available: error.available,
-        required: error.required,
-      });
-      return;
+      log.info(
+        { error: error.message, available: error.available, required: error.required },
+        'Bridge liquidity insufficient, falling through to classic routing'
+      );
+      // Fall through to classic swap instead of returning error
+      return handleClassicSwap(body, res, log, routerService);
     }
 
     log.error({ error }, 'Error in handleGatewaySwap');
