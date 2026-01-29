@@ -27,7 +27,7 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
 
         const ponderPools = await this.ponderClient.query<{ pools: { items: PonderPool[] } }>(
             `
-            query AllPoolsWithTokens($tokenIn: String = "", $tokenOut: String = "", $chainId: String = "") {
+            query AllPoolsWithTokens($tokenIn: String = "", $tokenOut: String = "", $chainId: Int = 0) {
                 pools(
                     where: {OR: {token0: $tokenIn, token1: $tokenIn, OR: {token0: $tokenOut, token1: $tokenOut}}, AND: {chainId: $chainId}}
                     limit: 1000
@@ -45,7 +45,7 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
             {
                 tokenIn: tokenInAddress,
                 tokenOut: tokenOutAddress,
-                chainId: this.chainId.toString(),
+                chainId: this.chainId,
             }   
         )
 
