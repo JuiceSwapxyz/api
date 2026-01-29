@@ -1,6 +1,13 @@
 import { ethers, providers } from 'ethers';
 import Logger from 'bunyan';
+import { ChainId } from '@juiceswapxyz/sdk-core';
 import { citreaTestnetTokenList } from '../config/citrea-testnet.tokenlist';
+import { citreaMainnetTokenList } from '../config/citrea-mainnet.tokenlist';
+
+const TOKEN_LISTS_BY_CHAIN: { [key: number]: { tokens: any[] } } = {
+  [ChainId.CITREA_TESTNET]: citreaTestnetTokenList,
+  [ChainId.CITREA_MAINNET]: citreaMainnetTokenList,
+};
 
 export interface TokenBalance {
   address: string;
@@ -61,9 +68,8 @@ export class BalanceService {
 
     try {
       // Get token list for this chain
-      const tokens = citreaTestnetTokenList.tokens.filter(
-        (token) => token.chainId === this.chainId
-      );
+      const tokenList = TOKEN_LISTS_BY_CHAIN[this.chainId];
+      const tokens = tokenList?.tokens ?? [];
 
       if (tokens.length === 0) {
         log.warn('No tokens found for chain');
