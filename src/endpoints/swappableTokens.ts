@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Logger from 'bunyan';
 import { citreaMainnetTokenList } from '../config/citrea-mainnet.tokenlist';
 import { citreaTestnetTokenList } from '../config/citrea-testnet.tokenlist';
+import { getJuiceswapLatestTokens } from '../lib/handlers/router-entities/getJuiceswapLatestTokens';
 
 interface Token {
   address: string;
@@ -17,6 +18,9 @@ const TOKEN_LISTS: Record<number, { tokens: Token[] }> = {
   4114: citreaMainnetTokenList as { tokens: Token[] },
   5115: citreaTestnetTokenList as { tokens: Token[] },
 };
+
+// Tokens to hide from UI (internal vault/collateral tokens)
+const HIDDEN_TOKENS = new Set(['svJUSD', 'startUSD', 'SUSD']);
 
 /**
  * @swagger
@@ -63,35 +67,59 @@ export function createSwappableTokensHandler(logger: Logger) {
 
       const chainId = parseInt(tokenInChainId.toString());
 
-      // Get token list for the chain (supports Citrea Mainnet 4114 and Testnet 5115)
-      const tokenList = TOKEN_LISTS[chainId];
-      if (!tokenList) {
-        res.status(200).json({ tokens: [] });
-        return;
+      // Get hardcoded token list for the chain (supports Citrea Mainnet 4114 and Testnet 5115)
+      const hardcodedTokenList = TOKEN_LISTS[chainId];
+      const hardcodedTokens: Token[] = hardcodedTokenList?.tokens ?? [];
+
+      // Get Ponder tokens (auto-discovered from pools)
+      let ponderTokens: Token[] = [];
+      try {
+        ponderTokens = await getJuiceswapLatestTokens(chainId);
+        log.debug({ chainId, ponderTokenCount: ponderTokens.length }, 'Fetched Ponder tokens');
+      } catch (ponderError) {
+        log.warn({ ponderError }, 'Failed to fetch Ponder tokens, using hardcoded only');
       }
 
-      // Get all tokens from the token list
-      let tokens: Token[] = tokenList.tokens;
+      // Merge: hardcoded tokens take precedence (they have complete metadata)
+      const seenAddresses = new Set<string>();
+      const mergedTokens: Token[] = [];
+
+      // Add hardcoded tokens first (they have complete metadata)
+      for (const token of hardcodedTokens) {
+        if (!HIDDEN_TOKENS.has(token.symbol)) {
+          seenAddresses.add(token.address.toLowerCase());
+          mergedTokens.push(token);
+        }
+      }
+
+      // Add Ponder tokens not already in hardcoded list
+      for (const token of ponderTokens) {
+        if (!HIDDEN_TOKENS.has(token.symbol) && !seenAddresses.has(token.address.toLowerCase())) {
+          seenAddresses.add(token.address.toLowerCase());
+          mergedTokens.push(token);
+        }
+      }
 
       // Filter out the input token if specified
+      let filteredTokens = mergedTokens;
       if (tokenIn) {
         const tokenInAddress = tokenIn.toString().toLowerCase();
-        tokens = tokens.filter(token => token.address.toLowerCase() !== tokenInAddress);
+        filteredTokens = mergedTokens.filter(token => token.address.toLowerCase() !== tokenInAddress);
       }
 
       // Return tokens in the expected format
       res.status(200).json({
-        tokens: tokens.map(token => ({
+        tokens: filteredTokens.map(token => ({
           address: token.address,
           chainId: token.chainId,
           decimals: token.decimals,
           name: token.name,
           symbol: token.symbol,
-          logoURI: token.logoURI || `https://raw.githubusercontent.com/Uniswap/assets/master/blockchains/citrea/assets/${token.address}/logo.png`
+          logoURI: token.logoURI || '',
         }))
       });
 
-      log.debug({ chainId, tokenCount: tokens.length }, 'Returned swappable tokens');
+      log.debug({ chainId, tokenCount: filteredTokens.length, hardcodedCount: hardcodedTokens.length, ponderCount: ponderTokens.length }, 'Returned merged swappable tokens');
 
     } catch (error: any) {
       log.error({ error }, 'Error in handleSwappableTokens');
