@@ -1,9 +1,13 @@
-import { ChainId, Token } from '@juiceswapxyz/sdk-core';
-import { IV2SubgraphProvider, V2SubgraphPool, UniswapMulticallProvider } from '@juiceswapxyz/smart-order-router';
-import Logger from 'bunyan';
-import { ethers } from 'ethers';
-import { getPonderClient } from '../services/PonderClient';
-import { CITREA_V2_POOLS } from './citreaStaticPools';
+import { ChainId, Token } from "@juiceswapxyz/sdk-core";
+import {
+  IV2SubgraphProvider,
+  V2SubgraphPool,
+  UniswapMulticallProvider,
+} from "@juiceswapxyz/smart-order-router";
+import Logger from "bunyan";
+import { ethers } from "ethers";
+import { getPonderClient } from "../services/PonderClient";
+import { CITREA_V2_POOLS } from "./citreaStaticPools";
 
 interface GraduatedPool {
   pairAddress: string;
@@ -28,7 +32,7 @@ const STATIC_V2_POOLS = Object.values(CITREA_V2_POOLS).map((pool) => ({
 
 // V2 Pair ABI for getReserves
 const V2_PAIR_ABI = [
-  'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
 ];
 
 /**
@@ -44,27 +48,33 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
   private readonly MULTICALL_BATCH_SIZE = 100;
   private multicallProvider: UniswapMulticallProvider | undefined;
 
-  constructor(_chainId: ChainId, logger: Logger, multicallProvider?: UniswapMulticallProvider) {
+  constructor(
+    _chainId: ChainId,
+    logger: Logger,
+    multicallProvider?: UniswapMulticallProvider,
+  ) {
     // chainId is accepted for API compatibility but not currently used
     // Ponder returns all graduated pools regardless of chain
-    this.logger = logger.child({ provider: 'GraduatedV2SubgraphProvider' });
+    this.logger = logger.child({ provider: "GraduatedV2SubgraphProvider" });
     this.multicallProvider = multicallProvider;
   }
 
   async getPools(
     tokenIn?: Token,
     tokenOut?: Token,
-    _providerConfig?: any
+    _providerConfig?: any,
   ): Promise<V2SubgraphPool[]> {
     this.logger.info(
       { tokenIn: tokenIn?.address, tokenOut: tokenOut?.address },
-      'GraduatedV2SubgraphProvider.getPools() called'
+      "GraduatedV2SubgraphProvider.getPools() called",
     );
     await this.refreshPoolsIfNeeded();
 
     // Filter by tokens if provided, but always include static pools (needed for gas estimation)
     if (tokenIn && tokenOut) {
-      const staticPoolIds = new Set(STATIC_V2_POOLS.map((p) => p.pairAddress.toLowerCase()));
+      const staticPoolIds = new Set(
+        STATIC_V2_POOLS.map((p) => p.pairAddress.toLowerCase()),
+      );
       const filtered = this.poolsCache.filter((pool) => {
         // Always include static pools for gas estimation
         if (staticPoolIds.has(pool.id)) {
@@ -82,9 +92,14 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
       this.logger.info(
         {
           filteredPoolCount: filtered.length,
-          pools: filtered.map(p => ({ id: p.id, token0: p.token0.id, token1: p.token1.id, reserve: p.reserve }))
+          pools: filtered.map((p) => ({
+            id: p.id,
+            token0: p.token0.id,
+            token1: p.token1.id,
+            reserve: p.reserve,
+          })),
         },
-        'Filtered pools for routing'
+        "Filtered pools for routing",
       );
       return filtered;
     }
@@ -100,7 +115,7 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
     try {
       const ponderClient = getPonderClient(this.logger);
-      const response = await ponderClient.get('/graduated-pools');
+      const response = await ponderClient.get("/graduated-pools");
       const pools: GraduatedPool[] = response.data.pools || [];
 
       if (pools.length === 0) {
@@ -124,8 +139,8 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
         const reserves = reservesMap.get(pairAddressLower);
 
         // Use on-chain reserves if available, otherwise fall back to Ponder data
-        const reserve0 = reserves?.reserve0 ?? BigInt(p.reserve0 || '0');
-        const reserve1 = reserves?.reserve1 ?? BigInt(p.reserve1 || '0');
+        const reserve0 = reserves?.reserve0 ?? BigInt(p.reserve0 || "0");
+        const reserve1 = reserves?.reserve1 ?? BigInt(p.reserve1 || "0");
         const totalReserve = Number(reserve0 + reserve1);
 
         return {
@@ -161,11 +176,19 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
       this.lastFetch = now;
       this.logger.info(
-        { ponderPoolCount: pools.length, staticPoolCount: STATIC_V2_POOLS.length, totalPoolCount: this.poolsCache.length, hasOnChainReserves: reservesMap.size > 0 },
-        'Refreshed graduated V2 pool cache'
+        {
+          ponderPoolCount: pools.length,
+          staticPoolCount: STATIC_V2_POOLS.length,
+          totalPoolCount: this.poolsCache.length,
+          hasOnChainReserves: reservesMap.size > 0,
+        },
+        "Refreshed graduated V2 pool cache",
       );
     } catch (error) {
-      this.logger.error({ error }, 'Failed to fetch graduated pools from Ponder');
+      this.logger.error(
+        { error },
+        "Failed to fetch graduated pools from Ponder",
+      );
       // Keep existing cache on error, don't throw
     }
   }
@@ -174,9 +197,12 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
    * Fetch on-chain reserves for V2 pairs using multicall
    */
   private async fetchOnChainReserves(
-    pairAddresses: string[]
+    pairAddresses: string[],
   ): Promise<Map<string, { reserve0: bigint; reserve1: bigint }>> {
-    const reservesMap = new Map<string, { reserve0: bigint; reserve1: bigint }>();
+    const reservesMap = new Map<
+      string,
+      { reserve0: bigint; reserve1: bigint }
+    >();
 
     if (!this.multicallProvider || pairAddresses.length === 0) {
       return reservesMap;
@@ -186,17 +212,22 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
       const v2PairInterface = new ethers.utils.Interface(V2_PAIR_ABI);
 
       // Process in batches to avoid gas/size limits
-      for (let i = 0; i < pairAddresses.length; i += this.MULTICALL_BATCH_SIZE) {
+      for (
+        let i = 0;
+        i < pairAddresses.length;
+        i += this.MULTICALL_BATCH_SIZE
+      ) {
         const batch = pairAddresses.slice(i, i + this.MULTICALL_BATCH_SIZE);
 
-        const { results } = await this.multicallProvider.callSameFunctionOnMultipleContracts<
-          undefined,
-          [bigint, bigint, number]
-        >({
-          addresses: batch,
-          contractInterface: v2PairInterface,
-          functionName: 'getReserves',
-        });
+        const { results } =
+          await this.multicallProvider.callSameFunctionOnMultipleContracts<
+            undefined,
+            [bigint, bigint, number]
+          >({
+            addresses: batch,
+            contractInterface: v2PairInterface,
+            functionName: "getReserves",
+          });
 
         batch.forEach((addr, j) => {
           const result = results[j];
@@ -212,10 +243,13 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
       this.logger.debug(
         { fetchedCount: reservesMap.size, totalPools: pairAddresses.length },
-        'Fetched on-chain reserves for V2 pools'
+        "Fetched on-chain reserves for V2 pools",
       );
     } catch (error) {
-      this.logger.warn({ error }, 'Failed to fetch on-chain reserves via multicall');
+      this.logger.warn(
+        { error },
+        "Failed to fetch on-chain reserves via multicall",
+      );
       // Return empty map - will fall back to Ponder data
     }
 

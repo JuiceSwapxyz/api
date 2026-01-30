@@ -87,10 +87,13 @@ import { fetchV3OnchainPositionInfo } from "../utils/v3OnchainPositionInfo";
  *       500:
  *         description: Internal server error
  */
-export function createPositionInfoHandler(routerService: RouterService, logger: Logger) {
+export function createPositionInfoHandler(
+  routerService: RouterService,
+  logger: Logger,
+) {
   return async function handlePositionInfo(
     req: Request,
-    res: Response
+    res: Response,
   ): Promise<void> {
     const log = logger.child({ endpoint: "positionInfo" });
     const startTime = Date.now();
@@ -121,10 +124,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         return;
       }
 
-      log.debug(
-        { tokenId, chainId, protocol },
-        "Fetching position info"
-      );
+      log.debug({ tokenId, chainId, protocol }, "Fetching position info");
 
       const ponderClient = getPonderClient(logger);
       const positionInfo = await ponderClient.query(
@@ -148,11 +148,13 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
             tokenId: tokenId,
             chainId: parseInt(chainId.toString()),
           },
-        }
+        },
       );
       const positionData = positionInfo.positions.items[0];
       if (!positionData) {
-        res.status(404).json({ message: "Position not found", error: "PositionNotFound" });
+        res
+          .status(404)
+          .json({ message: "Position not found", error: "PositionNotFound" });
         return;
       }
 
@@ -176,12 +178,14 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
           wherePool: {
             address: getAddress(positionData.poolAddress),
             chainId: parseInt(chainId.toString()),
-          }
-        }
+          },
+        },
       );
       const poolData = poolInfo.pools.items[0];
       if (!poolData) {
-        res.status(404).json({ message: "Pool not found", error: "PoolNotFound" });
+        res
+          .status(404)
+          .json({ message: "Pool not found", error: "PoolNotFound" });
         return;
       }
 
@@ -207,7 +211,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
         {
           token0Id: poolData.token0.toLowerCase(),
           token1Id: poolData.token1.toLowerCase(),
-        }
+        },
       );
 
       const token0 = tokenInfo.token0;
@@ -215,7 +219,9 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
 
       const provider = routerService.getProvider(chainId as ChainId);
       if (!provider) {
-        res.status(400).json({ message: "Unsupported chainId", error: "InvalidChainId" });
+        res
+          .status(400)
+          .json({ message: "Unsupported chainId", error: "InvalidChainId" });
         return;
       }
 
@@ -278,10 +284,10 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
           protocol,
           responseTime: Date.now() - startTime,
         },
-        "Successfully returned position info"
+        "Successfully returned position info",
       );
 
-      res.status(200).json({position});
+      res.status(200).json({ position });
     } catch (error) {
       log.error(
         {
@@ -295,7 +301,7 @@ export function createPositionInfoHandler(routerService: RouterService, logger: 
               : error,
           responseTime: Date.now() - startTime,
         },
-        "Failed to fetch position info"
+        "Failed to fetch position info",
       );
 
       res.status(500).json({

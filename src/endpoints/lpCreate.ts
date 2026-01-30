@@ -1,28 +1,34 @@
-import { Request, Response } from 'express';
-import { RouterService } from '../core/RouterService';
-import { trackUser } from '../services/userTracking';
-import { extractIpAddress } from '../utils/ipAddress';
-import Logger from 'bunyan';
-import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES, ChainId } from '@juiceswapxyz/sdk-core';
+import { Request, Response } from "express";
+import { RouterService } from "../core/RouterService";
+import { trackUser } from "../services/userTracking";
+import { extractIpAddress } from "../utils/ipAddress";
+import Logger from "bunyan";
+import {
+  NONFUNGIBLE_POSITION_MANAGER_ADDRESSES,
+  ChainId,
+} from "@juiceswapxyz/sdk-core";
 import {
   NonfungiblePositionManager,
   Position,
   nearestUsableTick,
   TickMath,
   ADDRESS_ZERO,
-} from '@juiceswapxyz/v3-sdk';
-import { Token, CurrencyAmount, Percent, WETH9 } from '@juiceswapxyz/sdk-core';
-import JSBI from 'jsbi';
-import { ethers } from 'ethers';
-import { getPoolInstance } from '../utils/poolFactory';
-import { TICK_SPACING } from './_shared/v3LpCommon';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
-import { getChainContracts, hasJuiceDollarIntegration } from '../config/contracts';
+} from "@juiceswapxyz/v3-sdk";
+import { Token, CurrencyAmount, Percent, WETH9 } from "@juiceswapxyz/sdk-core";
+import JSBI from "jsbi";
+import { ethers } from "ethers";
+import { getPoolInstance } from "../utils/poolFactory";
+import { TICK_SPACING } from "./_shared/v3LpCommon";
+import { JuiceGatewayService } from "../services/JuiceGatewayService";
+import {
+  getChainContracts,
+  hasJuiceDollarIntegration,
+} from "../config/contracts";
 
-const ERC20_ABI = ['function decimals() view returns (uint8)'];
+const ERC20_ABI = ["function decimals() view returns (uint8)"];
 const NPM_IFACE = new ethers.utils.Interface([
-  'function multicall(bytes[] data) payable returns (bytes[] results)',
-  'function refundETH()',
+  "function multicall(bytes[] data) payable returns (bytes[] results)",
+  "function refundETH()",
 ]);
 
 const getTokenAddress = (token: string, chainId: number) => {
@@ -34,16 +40,21 @@ const isNativeCurrencyPair = (token0: string, token1: string) => {
   return token0 === ADDRESS_ZERO || token1 === ADDRESS_ZERO;
 };
 
-const calculateTxValue = (token0: string, amount0Raw: string, token1: string, amount1Raw: string) => {
+const calculateTxValue = (
+  token0: string,
+  amount0Raw: string,
+  token1: string,
+  amount1Raw: string,
+) => {
   if (!isNativeCurrencyPair(token0, token1)) {
-    return ethers.BigNumber.from('0');
+    return ethers.BigNumber.from("0");
   }
 
   const amount = token0 === ADDRESS_ZERO ? amount0Raw : amount1Raw;
   return ethers.BigNumber.from(amount);
 };
 
-type IndependentToken = 'TOKEN_0' | 'TOKEN_1';
+type IndependentToken = "TOKEN_0" | "TOKEN_1";
 
 interface PoolInfo {
   tickSpacing: number;
@@ -60,7 +71,7 @@ interface PositionInfo {
 
 interface LpCreateRequestBody {
   simulateTransaction?: boolean;
-  protocol: 'V3';
+  protocol: "V3";
   walletAddress: string;
   chainId: number;
   independentAmount: string;
@@ -112,10 +123,13 @@ interface LpCreateRequestBody {
 export function createLpCreateHandler(
   routerService: RouterService,
   logger: Logger,
-  juiceGatewayService?: JuiceGatewayService
+  juiceGatewayService?: JuiceGatewayService,
 ) {
-  return async function handleLpCreate(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'lp_create' });
+  return async function handleLpCreate(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "lp_create" });
 
     try {
       const {
@@ -142,21 +156,37 @@ export function createLpCreateHandler(
         position?.tickLower === undefined ||
         position?.tickUpper === undefined
       ) {
-        log.debug({ walletAddress, chainId, independentAmount, independentToken, position }, 'Validation failed: missing required fields for LP create');
-        res.status(400).json({ message: 'Missing required fields', error: 'MissingRequiredFields' });
+        log.debug(
+          {
+            walletAddress,
+            chainId,
+            independentAmount,
+            independentToken,
+            position,
+          },
+          "Validation failed: missing required fields for LP create",
+        );
+        res
+          .status(400)
+          .json({
+            message: "Missing required fields",
+            error: "MissingRequiredFields",
+          });
         return;
       }
 
       const isNewPool = initialPrice && initialDependentAmount;
       const isExistingPool = !initialPrice && !initialDependentAmount;
       if (!isNewPool && !isExistingPool) {
-        log.debug({ initialPrice, initialDependentAmount }, 'Validation failed: invalid LP create input');
-        res
-          .status(400)
-          .json({
-            message: 'Invalid input: provide either both initialPrice+initialDependentAmount or neither',
-            error: 'InvalidInput'
-          });
+        log.debug(
+          { initialPrice, initialDependentAmount },
+          "Validation failed: invalid LP create input",
+        );
+        res.status(400).json({
+          message:
+            "Invalid input: provide either both initialPrice+initialDependentAmount or neither",
+          error: "InvalidInput",
+        });
         return;
       }
 
@@ -167,10 +197,13 @@ export function createLpCreateHandler(
           JSBI.lessThan(sqrtPriceX96, TickMath.MIN_SQRT_RATIO) ||
           JSBI.greaterThanOrEqual(sqrtPriceX96, TickMath.MAX_SQRT_RATIO)
         ) {
-          log.debug({ initialPrice }, 'Validation failed: sqrtPriceX96 out of valid range');
+          log.debug(
+            { initialPrice },
+            "Validation failed: sqrtPriceX96 out of valid range",
+          );
           res.status(400).json({
-            message: 'Initial price (sqrtPriceX96) is out of valid range',
-            error: 'InvalidSqrtPriceX96',
+            message: "Initial price (sqrtPriceX96) is out of valid range",
+            error: "InvalidSqrtPriceX96",
             _hint: {
               minSqrtPriceX96: TickMath.MIN_SQRT_RATIO.toString(),
               maxSqrtPriceX96: TickMath.MAX_SQRT_RATIO.toString(),
@@ -182,14 +215,25 @@ export function createLpCreateHandler(
 
       const provider = routerService.getProvider(chainId);
       if (!provider) {
-        log.debug({ chainId }, 'Validation failed: invalid chainId for LP create');
-        res.status(400).json({ message: 'Invalid chainId', error: 'InvalidChainId' });
+        log.debug(
+          { chainId },
+          "Validation failed: invalid chainId for LP create",
+        );
+        res
+          .status(400)
+          .json({ message: "Invalid chainId", error: "InvalidChainId" });
         return;
       }
 
-      const positionManagerAddress = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
+      const positionManagerAddress =
+        NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
       if (!positionManagerAddress) {
-        res.status(400).json({ message: 'Unsupported chain for LP operations', error: 'UnsupportedChain' });
+        res
+          .status(400)
+          .json({
+            message: "Unsupported chain for LP operations",
+            error: "UnsupportedChain",
+          });
         return;
       }
 
@@ -202,18 +246,27 @@ export function createLpCreateHandler(
       if (
         juiceGatewayService &&
         hasJuiceDollarIntegration(chainId) &&
-        juiceGatewayService.detectLpGatewayRouting(chainId, token0Addr, token1Addr)
+        juiceGatewayService.detectLpGatewayRouting(
+          chainId,
+          token0Addr,
+          token1Addr,
+        )
       ) {
         return await handleGatewayLpCreate(
           req.body,
           res,
           log,
           juiceGatewayService,
-          provider
+          provider,
         );
       }
       if (token0Addr.toLowerCase() >= token1Addr.toLowerCase()) {
-        res.status(400).json({ message: 'token0 must be < token1 by address', error: 'TokenOrderInvalid' });
+        res
+          .status(400)
+          .json({
+            message: "token0 must be < token1 by address",
+            error: "TokenOrderInvalid",
+          });
         return;
       }
 
@@ -231,18 +284,28 @@ export function createLpCreateHandler(
         fee: position.pool.fee,
         chainId,
         sqrtPriceX96: initialPrice,
-        tickCurrent: initialPrice ? TickMath.getTickAtSqrtRatio(JSBI.BigInt(initialPrice)) : undefined,
+        tickCurrent: initialPrice
+          ? TickMath.getTickAtSqrtRatio(JSBI.BigInt(initialPrice))
+          : undefined,
         provider,
         log,
       });
       if (!poolInstance) {
-        res.status(400).json({ message: 'Invalid pool instance', error: 'InvalidPoolInstance' });
+        res
+          .status(400)
+          .json({
+            message: "Invalid pool instance",
+            error: "InvalidPoolInstance",
+          });
         return;
       }
 
-      const spacing = TICK_SPACING[position.pool.fee] ?? position.pool.tickSpacing;
+      const spacing =
+        TICK_SPACING[position.pool.fee] ?? position.pool.tickSpacing;
       if (spacing === undefined) {
-        res.status(400).json({ message: 'Unsupported fee tier', error: 'UnsupportedFee' });
+        res
+          .status(400)
+          .json({ message: "Unsupported fee tier", error: "UnsupportedFee" });
         return;
       }
 
@@ -251,17 +314,24 @@ export function createLpCreateHandler(
       if (tickLower >= tickUpper) {
         res
           .status(400)
-          .json({ message: 'Invalid tick range: tickLower < tickUpper', error: 'InvalidTickRange' });
+          .json({
+            message: "Invalid tick range: tickLower < tickUpper",
+            error: "InvalidTickRange",
+          });
         return;
       }
 
-      const independentIsToken0 = independentToken === 'TOKEN_0';
+      const independentIsToken0 = independentToken === "TOKEN_0";
 
       let amount0Raw: string, amount1Raw: string;
 
       if (isNewPool) {
-        amount0Raw = independentIsToken0 ? independentAmount : initialDependentAmount!;
-        amount1Raw = independentIsToken0 ? initialDependentAmount! : independentAmount;
+        amount0Raw = independentIsToken0
+          ? independentAmount
+          : initialDependentAmount!;
+        amount1Raw = independentIsToken0
+          ? initialDependentAmount!
+          : independentAmount;
       } else {
         let positionCalc: Position;
 
@@ -271,7 +341,7 @@ export function createLpCreateHandler(
             tickLower,
             tickUpper,
             amount0: JSBI.BigInt(independentAmount),
-            useFullPrecision: false
+            useFullPrecision: false,
           });
 
           amount0Raw = independentAmount;
@@ -281,7 +351,7 @@ export function createLpCreateHandler(
             pool: poolInstance,
             tickLower,
             tickUpper,
-            amount1: JSBI.BigInt(independentAmount)
+            amount1: JSBI.BigInt(independentAmount),
           });
 
           amount0Raw = positionCalc.amount0.quotient.toString();
@@ -292,8 +362,16 @@ export function createLpCreateHandler(
       const amount0 = CurrencyAmount.fromRawAmount(token0, amount0Raw);
       const amount1 = CurrencyAmount.fromRawAmount(token1, amount1Raw);
 
-      if (JSBI.equal(amount0.quotient, JSBI.BigInt(0)) && JSBI.equal(amount1.quotient, JSBI.BigInt(0))) {
-        res.status(400).json({ message: 'Both token amounts cannot be zero', error: 'InvalidAmounts' });
+      if (
+        JSBI.equal(amount0.quotient, JSBI.BigInt(0)) &&
+        JSBI.equal(amount1.quotient, JSBI.BigInt(0))
+      ) {
+        res
+          .status(400)
+          .json({
+            message: "Both token amounts cannot be zero",
+            error: "InvalidAmounts",
+          });
         return;
       }
 
@@ -311,27 +389,35 @@ export function createLpCreateHandler(
 
       const { calldata: createCD, value: createVal } =
         NonfungiblePositionManager.createCallParameters(poolInstance);
-      const { calldata: mintCD, value: mintVal } = NonfungiblePositionManager.addCallParameters(positionInstance, {
-        recipient: walletAddress,
-        deadline,
-        slippageTolerance,
-      });
+      const { calldata: mintCD, value: mintVal } =
+        NonfungiblePositionManager.addCallParameters(positionInstance, {
+          recipient: walletAddress,
+          deadline,
+          slippageTolerance,
+        });
 
       const calls: string[] = [createCD, mintCD];
 
       if (isNativeCurrencyPair(position.pool.token0, position.pool.token1)) {
-        calls.push(NPM_IFACE.encodeFunctionData('refundETH', []));
+        calls.push(NPM_IFACE.encodeFunctionData("refundETH", []));
       }
 
-      const multicallData = NPM_IFACE.encodeFunctionData('multicall', [calls]);
-      const nativeValue = calculateTxValue(position.pool.token0, amount0Raw, position.pool.token1, amount1Raw);
-      const totalValueBN = ethers.BigNumber.from(createVal || '0')
-        .add(ethers.BigNumber.from(mintVal || '0'))
+      const multicallData = NPM_IFACE.encodeFunctionData("multicall", [calls]);
+      const nativeValue = calculateTxValue(
+        position.pool.token0,
+        amount0Raw,
+        position.pool.token1,
+        amount1Raw,
+      );
+      const totalValueBN = ethers.BigNumber.from(createVal || "0")
+        .add(ethers.BigNumber.from(mintVal || "0"))
         .add(nativeValue);
       const totalValueHex = totalValueBN.toHexString();
       const feeData = await provider.getFeeData();
 
-      let gasEstimate = isNewPool ? ethers.BigNumber.from('5500000') : ethers.BigNumber.from('600000');
+      let gasEstimate = isNewPool
+        ? ethers.BigNumber.from("5500000")
+        : ethers.BigNumber.from("600000");
       try {
         gasEstimate = await provider.estimateGas({
           to: positionManagerAddress,
@@ -340,13 +426,15 @@ export function createLpCreateHandler(
           value: totalValueHex,
         });
       } catch (e) {
-        log.warn('Gas estimation failed, using fallback');
+        log.warn("Gas estimation failed, using fallback");
       }
 
       const gasLimit = gasEstimate.mul(110).div(100);
 
-      const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
-      const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
+      const baseFee =
+        feeData.lastBaseFeePerGas ||
+        ethers.utils.parseUnits("0.00000136", "gwei");
+      const maxPriorityFeePerGas = ethers.utils.parseUnits("1", "gwei");
       const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
 
       const gasFee = gasLimit.mul(maxFeePerGas);
@@ -363,17 +451,20 @@ export function createLpCreateHandler(
           gasLimit: gasLimit.toHexString(),
           chainId,
         },
-        dependentAmount: independentIsToken0 ? amount1.quotient.toString() : amount0.quotient.toString(),
+        dependentAmount: independentIsToken0
+          ? amount1.quotient.toString()
+          : amount0.quotient.toString(),
         gasFee: ethers.utils.formatEther(gasFee),
       };
 
       res.status(200).json(response);
 
-      log.debug({ chainId, walletAddress }, 'LP create request completed');
-
+      log.debug({ chainId, walletAddress }, "LP create request completed");
     } catch (error: any) {
-      log.error({ error }, 'Error in handleLpCreate');
-      res.status(500).json({ message: 'Internal server error', error: error?.message });
+      log.error({ error }, "Error in handleLpCreate");
+      res
+        .status(500)
+        .json({ message: "Internal server error", error: error?.message });
     }
   };
 }
@@ -395,7 +486,7 @@ async function handleGatewayLpCreate(
   res: Response,
   log: Logger,
   juiceGatewayService: JuiceGatewayService,
-  provider: ethers.providers.StaticJsonRpcProvider
+  provider: ethers.providers.StaticJsonRpcProvider,
 ): Promise<void> {
   const {
     walletAddress,
@@ -410,25 +501,29 @@ async function handleGatewayLpCreate(
   const contracts = getChainContracts(chainId);
   if (!contracts) {
     res.status(400).json({
-      message: 'JuiceDollar contracts not configured for this chain',
-      error: 'GatewayNotConfigured',
+      message: "JuiceDollar contracts not configured for this chain",
+      error: "GatewayNotConfigured",
     });
     return;
   }
 
-  const positionManagerAddress = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
+  const positionManagerAddress =
+    NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
   if (!positionManagerAddress) {
     res.status(400).json({
-      message: 'PositionManager not configured for this chain',
-      error: 'PositionManagerNotConfigured',
+      message: "PositionManager not configured for this chain",
+      error: "PositionManagerNotConfigured",
     });
     return;
   }
 
   // Get tick spacing for this fee tier
-  const tickSpacing = TICK_SPACING[position.pool.fee] ?? position.pool.tickSpacing;
+  const tickSpacing =
+    TICK_SPACING[position.pool.fee] ?? position.pool.tickSpacing;
   if (tickSpacing === undefined) {
-    res.status(400).json({ message: 'Unsupported fee tier', error: 'UnsupportedFee' });
+    res
+      .status(400)
+      .json({ message: "Unsupported fee tier", error: "UnsupportedFee" });
     return;
   }
 
@@ -438,8 +533,8 @@ async function handleGatewayLpCreate(
   const gatewayAddress = juiceGatewayService.getGatewayAddress(chainId);
   if (!gatewayAddress) {
     res.status(500).json({
-      message: 'Gateway address not configured',
-      error: 'GatewayNotConfigured',
+      message: "Gateway address not configured",
+      error: "GatewayNotConfigured",
     });
     return;
   }
@@ -449,8 +544,14 @@ async function handleGatewayLpCreate(
   const token1Addr = getTokenAddress(position.pool.token1, chainId);
 
   // Get internal pool tokens (JUSD → svJUSD)
-  const internalToken0 = juiceGatewayService.getInternalPoolToken(chainId, token0Addr);
-  const internalToken1 = juiceGatewayService.getInternalPoolToken(chainId, token1Addr);
+  const internalToken0 = juiceGatewayService.getInternalPoolToken(
+    chainId,
+    token0Addr,
+  );
+  const internalToken1 = juiceGatewayService.getInternalPoolToken(
+    chainId,
+    token1Addr,
+  );
 
   // Fetch decimals for internal tokens
   const [dec0, dec1] = await Promise.all([
@@ -468,15 +569,17 @@ async function handleGatewayLpCreate(
     fee: position.pool.fee,
     chainId,
     sqrtPriceX96: initialPrice,
-    tickCurrent: initialPrice ? TickMath.getTickAtSqrtRatio(JSBI.BigInt(initialPrice)) : undefined,
+    tickCurrent: initialPrice
+      ? TickMath.getTickAtSqrtRatio(JSBI.BigInt(initialPrice))
+      : undefined,
     provider,
     log,
   });
 
   if (!poolInstance) {
     res.status(400).json({
-      message: 'Pool not found. The svJUSD pool may not exist yet.',
-      error: 'PoolNotFound',
+      message: "Pool not found. The svJUSD pool may not exist yet.",
+      error: "PoolNotFound",
       _hint: {
         internalToken0,
         internalToken1,
@@ -503,7 +606,7 @@ async function handleGatewayLpCreate(
   // (fallback only applies for truly new pools that don't exist on chain yet)
   const poolForSlippage = slippagePoolInstance || poolInstance;
 
-  const independentIsToken0 = independentToken === 'TOKEN_0';
+  const independentIsToken0 = independentToken === "TOKEN_0";
 
   // Determine if pool ACTUALLY exists on-chain (not what frontend thinks)
   const poolActuallyExistsOnChain = slippagePoolInstance !== null;
@@ -511,10 +614,13 @@ async function handleGatewayLpCreate(
 
   // For logging/debugging
   if (frontendThinksPoolIsNew && poolActuallyExistsOnChain) {
-    log.info({
-      frontendTick: poolInstance.tickCurrent,
-      onChainTick: slippagePoolInstance!.tickCurrent,
-    }, 'Frontend thinks pool is new but it exists on-chain - recalculating amounts');
+    log.info(
+      {
+        frontendTick: poolInstance.tickCurrent,
+        onChainTick: slippagePoolInstance!.tickCurrent,
+      },
+      "Frontend thinks pool is new but it exists on-chain - recalculating amounts",
+    );
   }
 
   // Calculate amounts - ALWAYS use on-chain pool state if available
@@ -524,8 +630,10 @@ async function handleGatewayLpCreate(
   const poolForCalculation = poolForSlippage;
 
   // Determine which token is JUSD for conversions
-  const isToken0Jusd = token0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
-  const isToken1Jusd = token1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+  const isToken0Jusd =
+    token0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
+  const isToken1Jusd =
+    token1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
 
   // Only use frontend amounts if pool truly doesn't exist on-chain
   if (frontendThinksPoolIsNew && !poolActuallyExistsOnChain) {
@@ -534,8 +642,14 @@ async function handleGatewayLpCreate(
 
     // Convert independent amount from JUSD to svJUSD for calculation
     let internalIndependentAmount = independentAmount;
-    if ((independentIsToken0 && isToken0Jusd) || (!independentIsToken0 && isToken1Jusd)) {
-      internalIndependentAmount = await juiceGatewayService.jusdToSvJusd(chainId as ChainId, independentAmount);
+    if (
+      (independentIsToken0 && isToken0Jusd) ||
+      (!independentIsToken0 && isToken1Jusd)
+    ) {
+      internalIndependentAmount = await juiceGatewayService.jusdToSvJusd(
+        chainId as ChainId,
+        independentAmount,
+      );
     }
 
     // Calculate dependent amount using the mock pool (with initialPrice)
@@ -552,7 +666,10 @@ async function handleGatewayLpCreate(
       // Convert dependent amount (svJUSD) back to JUSD
       let dependentAmount = positionCalc.amount1.quotient.toString();
       if (isToken1Jusd) {
-        dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+        dependentAmount = await juiceGatewayService.svJusdToJusd(
+          chainId as ChainId,
+          dependentAmount,
+        );
       }
 
       amount0Raw = independentAmount; // User's JUSD amount
@@ -568,33 +685,45 @@ async function handleGatewayLpCreate(
       // Convert dependent amount (svJUSD) back to JUSD
       let dependentAmount = positionCalc.amount0.quotient.toString();
       if (isToken0Jusd) {
-        dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+        dependentAmount = await juiceGatewayService.svJusdToJusd(
+          chainId as ChainId,
+          dependentAmount,
+        );
       }
 
       amount0Raw = dependentAmount;
       amount1Raw = independentAmount; // User's JUSD amount
     }
 
-    log.info({
-      originalDependentAmount: initialDependentAmount,
-      correctedDependentAmount: independentIsToken0 ? amount1Raw : amount0Raw,
-      isToken0Jusd,
-      isToken1Jusd,
-    }, 'Recalculated dependent amount for new JUSD pool using svJUSD share price');
+    log.info(
+      {
+        originalDependentAmount: initialDependentAmount,
+        correctedDependentAmount: independentIsToken0 ? amount1Raw : amount0Raw,
+        isToken0Jusd,
+        isToken1Jusd,
+      },
+      "Recalculated dependent amount for new JUSD pool using svJUSD share price",
+    );
   } else {
     // Pool exists on-chain (or frontend knows it exists) - calculate based on on-chain price
     let internalIndependentAmount = independentAmount;
 
     // Convert JUSD to svJUSD for position calculation
-    if ((independentIsToken0 && isToken0Jusd) || (!independentIsToken0 && isToken1Jusd)) {
-      internalIndependentAmount = await juiceGatewayService.jusdToSvJusd(chainId as ChainId, independentAmount);
+    if (
+      (independentIsToken0 && isToken0Jusd) ||
+      (!independentIsToken0 && isToken1Jusd)
+    ) {
+      internalIndependentAmount = await juiceGatewayService.jusdToSvJusd(
+        chainId as ChainId,
+        independentAmount,
+      );
     }
 
     let positionCalc: Position;
 
     if (independentIsToken0) {
       positionCalc = Position.fromAmount0({
-        pool: poolForCalculation,  // Use on-chain pool!
+        pool: poolForCalculation, // Use on-chain pool!
         tickLower,
         tickUpper,
         amount0: JSBI.BigInt(internalIndependentAmount),
@@ -604,14 +733,17 @@ async function handleGatewayLpCreate(
       // Convert dependent amount back to JUSD if token1 is JUSD
       let dependentAmount = positionCalc.amount1.quotient.toString();
       if (isToken1Jusd) {
-        dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+        dependentAmount = await juiceGatewayService.svJusdToJusd(
+          chainId as ChainId,
+          dependentAmount,
+        );
       }
 
       amount0Raw = independentAmount; // User's JUSD amount
       amount1Raw = dependentAmount;
     } else {
       positionCalc = Position.fromAmount1({
-        pool: poolForCalculation,  // Use on-chain pool!
+        pool: poolForCalculation, // Use on-chain pool!
         tickLower,
         tickUpper,
         amount1: JSBI.BigInt(internalIndependentAmount),
@@ -620,7 +752,10 @@ async function handleGatewayLpCreate(
       // Convert dependent amount back to JUSD if token0 is JUSD
       let dependentAmount = positionCalc.amount0.quotient.toString();
       if (isToken0Jusd) {
-        dependentAmount = await juiceGatewayService.svJusdToJusd(chainId as ChainId, dependentAmount);
+        dependentAmount = await juiceGatewayService.svJusdToJusd(
+          chainId as ChainId,
+          dependentAmount,
+        );
       }
 
       amount0Raw = dependentAmount;
@@ -640,8 +775,14 @@ async function handleGatewayLpCreate(
     ? await juiceGatewayService.jusdToSvJusd(chainId as ChainId, amount1Raw)
     : amount1Raw;
 
-  const internalAmount0CA = CurrencyAmount.fromRawAmount(internalPoolToken0, internalAmount0);
-  const internalAmount1CA = CurrencyAmount.fromRawAmount(internalPoolToken1, internalAmount1);
+  const internalAmount0CA = CurrencyAmount.fromRawAmount(
+    internalPoolToken0,
+    internalAmount0,
+  );
+  const internalAmount1CA = CurrencyAmount.fromRawAmount(
+    internalPoolToken1,
+    internalAmount1,
+  );
 
   const positionForSlippage = Position.fromAmounts({
     pool: poolForSlippage,
@@ -662,10 +803,16 @@ async function handleGatewayLpCreate(
 
   // Convert mins back to user-facing tokens (JUSD) for Gateway
   const amount0Min = isToken0Jusd
-    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, internalAmount0Min.toString())
+    ? await juiceGatewayService.svJusdToJusd(
+        chainId as ChainId,
+        internalAmount0Min.toString(),
+      )
     : internalAmount0Min.toString();
   const amount1Min = isToken1Jusd
-    ? await juiceGatewayService.svJusdToJusd(chainId as ChainId, internalAmount1Min.toString())
+    ? await juiceGatewayService.svJusdToJusd(
+        chainId as ChainId,
+        internalAmount1Min.toString(),
+      )
     : internalAmount1Min.toString();
 
   const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes
@@ -685,25 +832,33 @@ async function handleGatewayLpCreate(
   });
 
   // Calculate value for native token (cBTC)
-  const nativeValue = calculateTxValue(position.pool.token0, amount0Raw, position.pool.token1, amount1Raw);
+  const nativeValue = calculateTxValue(
+    position.pool.token0,
+    amount0Raw,
+    position.pool.token1,
+    amount1Raw,
+  );
 
   // Estimate gas
   const feeData = await provider.getFeeData();
-  const isActuallyNewPool = frontendThinksPoolIsNew && !poolActuallyExistsOnChain;
+  const isActuallyNewPool =
+    frontendThinksPoolIsNew && !poolActuallyExistsOnChain;
 
   // Build createPool transaction if pool doesn't exist on-chain
   // For Gateway flow, we need to create the svJUSD pool on the PositionManager first,
   // then the Gateway.addLiquidity() call will mint into that pool
-  let createPoolTx: {
-    to: string;
-    from: string;
-    data: string;
-    value: string;
-    maxFeePerGas: string;
-    maxPriorityFeePerGas: string;
-    gasLimit: string;
-    chainId: number;
-  } | undefined;
+  let createPoolTx:
+    | {
+        to: string;
+        from: string;
+        data: string;
+        value: string;
+        maxFeePerGas: string;
+        maxPriorityFeePerGas: string;
+        gasLimit: string;
+        chainId: number;
+      }
+    | undefined;
 
   if (isActuallyNewPool && initialPrice) {
     // Build createAndInitializePoolIfNecessary calldata using internal tokens (svJUSD)
@@ -711,43 +866,56 @@ async function handleGatewayLpCreate(
       NonfungiblePositionManager.createCallParameters(poolInstance);
 
     // Estimate gas for pool creation
-    let createPoolGasEstimate = ethers.BigNumber.from('650000');
+    let createPoolGasEstimate = ethers.BigNumber.from("650000");
     try {
       createPoolGasEstimate = await provider.estimateGas({
         to: positionManagerAddress,
         from: walletAddress,
         data: createPoolCalldata,
-        value: createPoolValue || '0x0',
+        value: createPoolValue || "0x0",
       });
     } catch (e) {
-      log.warn({ error: e }, 'Gas estimation failed for createPool, using fallback');
+      log.warn(
+        { error: e },
+        "Gas estimation failed for createPool, using fallback",
+      );
     }
 
     const createPoolGasLimit = createPoolGasEstimate.mul(156).div(100);
-    const baseFeeForCreatePool = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
-    const maxPriorityFeeForCreatePool = ethers.utils.parseUnits('1', 'gwei');
-    const maxFeeForCreatePool = baseFeeForCreatePool.mul(105).div(100).add(maxPriorityFeeForCreatePool);
+    const baseFeeForCreatePool =
+      feeData.lastBaseFeePerGas ||
+      ethers.utils.parseUnits("0.00000136", "gwei");
+    const maxPriorityFeeForCreatePool = ethers.utils.parseUnits("1", "gwei");
+    const maxFeeForCreatePool = baseFeeForCreatePool
+      .mul(105)
+      .div(100)
+      .add(maxPriorityFeeForCreatePool);
 
     createPoolTx = {
       to: positionManagerAddress,
       from: walletAddress,
       data: createPoolCalldata,
-      value: createPoolValue?.toString() || '0x0',
+      value: createPoolValue?.toString() || "0x0",
       maxFeePerGas: maxFeeForCreatePool.toHexString(),
       maxPriorityFeePerGas: maxPriorityFeeForCreatePool.toHexString(),
       gasLimit: createPoolGasLimit.toHexString(),
       chainId,
     };
 
-    log.info({
-      internalToken0,
-      internalToken1,
-      fee: position.pool.fee,
-      sqrtPriceX96: initialPrice,
-    }, 'Building createPool transaction for new svJUSD pool');
+    log.info(
+      {
+        internalToken0,
+        internalToken1,
+        fee: position.pool.fee,
+        sqrtPriceX96: initialPrice,
+      },
+      "Building createPool transaction for new svJUSD pool",
+    );
   }
 
-  let gasEstimate = isActuallyNewPool ? ethers.BigNumber.from('1040000') : ethers.BigNumber.from('650000');
+  let gasEstimate = isActuallyNewPool
+    ? ethers.BigNumber.from("1040000")
+    : ethers.BigNumber.from("650000");
 
   try {
     // Only estimate gas for Gateway tx if pool exists or will be created first
@@ -761,18 +929,25 @@ async function handleGatewayLpCreate(
       });
     }
   } catch (e) {
-    log.warn({ error: e }, 'Gas estimation failed for Gateway LP, using fallback');
+    log.warn(
+      { error: e },
+      "Gas estimation failed for Gateway LP, using fallback",
+    );
   }
 
   const gasLimit = gasEstimate.mul(156).div(100);
 
-  const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
-  const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
+  const baseFee =
+    feeData.lastBaseFeePerGas || ethers.utils.parseUnits("0.00000136", "gwei");
+  const maxPriorityFeePerGas = ethers.utils.parseUnits("1", "gwei");
   const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
   const gasFee = gasLimit.mul(maxFeePerGas);
 
   // Get svJUSD share price for frontend validation
-  const svJusdSharePrice = await juiceGatewayService.svJusdToJusd(chainId as ChainId, ethers.utils.parseEther('1').toString());
+  const svJusdSharePrice = await juiceGatewayService.svJusdToJusd(
+    chainId as ChainId,
+    ethers.utils.parseEther("1").toString(),
+  );
 
   const response: Record<string, unknown> = {
     requestId: `lp-create-gateway-${Date.now()}`,
@@ -796,23 +971,28 @@ async function handleGatewayLpCreate(
       jusdAddress: contracts.JUSD,
       isJusdPair: true,
     },
-    _routingType: 'GATEWAY_LP',
-    _note: 'LP routed through JuiceSwapGateway. JUSD will be converted to svJUSD internally for capital efficiency.',
+    _routingType: "GATEWAY_LP",
+    _note:
+      "LP routed through JuiceSwapGateway. JUSD will be converted to svJUSD internally for capital efficiency.",
   };
 
   // Add createPool transaction if pool needs to be created first
   if (createPoolTx) {
     response.createPool = createPoolTx;
-    response._note = 'New pool detected. Execute createPool transaction first, then the Gateway addLiquidity transaction.';
+    response._note =
+      "New pool detected. Execute createPool transaction first, then the Gateway addLiquidity transaction.";
   }
 
   res.status(200).json(response);
 
-  log.debug({
-    chainId,
-    walletAddress,
-    routingType: 'GATEWAY_LP',
-    token0: token0Addr,
-    token1: token1Addr,
-  }, 'Gateway LP create request completed');
+  log.debug(
+    {
+      chainId,
+      walletAddress,
+      routingType: "GATEWAY_LP",
+      token0: token0Addr,
+      token1: token1Addr,
+    },
+    "Gateway LP create request completed",
+  );
 }

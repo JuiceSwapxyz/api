@@ -1,5 +1,5 @@
-import axios from 'axios';
-import Logger from 'bunyan';
+import axios from "axios";
+import Logger from "bunyan";
 
 /**
  * TwitterAPI.io Service
@@ -24,11 +24,12 @@ interface FollowRelationshipResponse {
 export class TwitterApiIoService {
   private readonly apiKey: string;
   private readonly logger: Logger;
-  private readonly baseUrl = 'https://api.twitterapi.io/twitter/user';
+  private readonly baseUrl = "https://api.twitterapi.io/twitter/user";
 
   constructor(config: TwitterApiIoConfig) {
     this.apiKey = config.apiKey;
-    this.logger = config.logger || Logger.createLogger({ name: 'TwitterApiIoService' });
+    this.logger =
+      config.logger || Logger.createLogger({ name: "TwitterApiIoService" });
   }
 
   /**
@@ -37,11 +38,14 @@ export class TwitterApiIoService {
    * @param targetUsername - The target username (e.g., "JuiceSwap")
    * @returns true if sourceUsername follows targetUsername, false otherwise
    */
-  public async checkFollowRelationship(sourceUsername: string, targetUsername: string): Promise<boolean> {
+  public async checkFollowRelationship(
+    sourceUsername: string,
+    targetUsername: string,
+  ): Promise<boolean> {
     try {
       this.logger.debug(
         { sourceUsername, targetUsername },
-        'Checking follow relationship via TwitterAPI.io'
+        "Checking follow relationship via TwitterAPI.io",
       );
 
       const response = await axios.get<FollowRelationshipResponse>(
@@ -52,16 +56,16 @@ export class TwitterApiIoService {
             target_user_name: targetUsername,
           },
           headers: {
-            'x-api-key': this.apiKey,
+            "x-api-key": this.apiKey,
           },
           timeout: 10000, // 10 second timeout
-        }
+        },
       );
 
-      if (response.data.status !== 'success') {
+      if (response.data.status !== "success") {
         this.logger.warn(
           { sourceUsername, targetUsername, response: response.data },
-          'TwitterAPI.io returned non-success status'
+          "TwitterAPI.io returned non-success status",
         );
         return false;
       }
@@ -70,7 +74,7 @@ export class TwitterApiIoService {
 
       this.logger.info(
         { sourceUsername, targetUsername, isFollowing },
-        'Follow relationship check completed'
+        "Follow relationship check completed",
       );
 
       return isFollowing;
@@ -83,7 +87,7 @@ export class TwitterApiIoService {
           sourceUsername,
           targetUsername,
         },
-        'Failed to check follow relationship via TwitterAPI.io'
+        "Failed to check follow relationship via TwitterAPI.io",
       );
 
       // Return false on error (fail-closed approach for security)
@@ -103,7 +107,7 @@ export function getTwitterApiIoService(logger?: Logger): TwitterApiIoService {
     const apiKey = process.env.TWITTER_API_IO_KEY;
 
     if (!apiKey) {
-      throw new Error('TWITTER_API_IO_KEY environment variable is required');
+      throw new Error("TWITTER_API_IO_KEY environment variable is required");
     }
 
     twitterApiIoService = new TwitterApiIoService({

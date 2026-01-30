@@ -15,7 +15,6 @@ interface NFTMetadata {
   image?: string;
 }
 
-
 // ERC721 ABI for NFT operations
 const ERC721_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
@@ -34,7 +33,7 @@ export class NftService {
   constructor(
     chainId: number,
     provider: providers.StaticJsonRpcProvider | undefined,
-    logger: Logger
+    logger: Logger,
   ) {
     this.chainId = chainId;
     this.provider = provider;
@@ -53,7 +52,7 @@ export class NftService {
   }
 
   private async fetchNFTViaIndexer(
-    walletAddress: string
+    walletAddress: string,
   ): Promise<NftResponse> {
     const log = this.logger.child({
       walletAddress,
@@ -63,9 +62,10 @@ export class NftService {
     try {
       const ponderClient = getPonderClient(this.logger);
 
-      const nftOwners: { nftOwners: { items: { contractAddress: string, tokenId: string }[] } } =
-        await ponderClient.query(
-          `
+      const nftOwners: {
+        nftOwners: { items: { contractAddress: string; tokenId: string }[] };
+      } = await ponderClient.query(
+        `
           query NftOwners($walletAddress: String!) {
             nftOwners(
               where: {owner: $walletAddress}
@@ -79,21 +79,21 @@ export class NftService {
             }
           }
       `,
-          { walletAddress: getAddress(walletAddress) }
-        );
+        { walletAddress: getAddress(walletAddress) },
+      );
 
       const nftResults = await Promise.all(
         nftOwners?.nftOwners?.items?.map(async (item) =>
           this.fetchNFTMetadataViaRPC(
             item.contractAddress,
             item.tokenId,
-            new Contract(item.contractAddress, ERC721_ABI, this.provider)
-          )
-        ) || []
+            new Contract(item.contractAddress, ERC721_ABI, this.provider),
+          ),
+        ) || [],
       );
 
       const nfts: NFTItem[] = nftResults.filter(
-        (nft): nft is NFTItem => nft !== null
+        (nft): nft is NFTItem => nft !== null,
       );
 
       return { nfts };
@@ -104,7 +104,7 @@ export class NftService {
   }
   private async fetchMetadata(
     tokenURI: string,
-    timeout = 3000
+    timeout = 3000,
   ): Promise<NFTMetadata | null> {
     try {
       if (tokenURI.startsWith("data:application/json")) {
@@ -148,7 +148,7 @@ export class NftService {
   private async fetchNFTMetadataViaRPC(
     contractAddress: string,
     tokenId: string,
-    contract: Contract
+    contract: Contract,
   ): Promise<NFTItem | null> {
     const log = this.logger.child({
       contractAddress,

@@ -1,17 +1,17 @@
-import { Request, Response } from 'express';
-import multer, { FileFilterCallback } from 'multer';
-import Logger from 'bunyan';
-import { getPinataService, TokenMetadata } from '../services/PinataService';
-import { LaunchpadUploadMetadataSchema } from '../validation/schemas';
+import { Request, Response } from "express";
+import multer, { FileFilterCallback } from "multer";
+import Logger from "bunyan";
+import { getPinataService, TokenMetadata } from "../services/PinataService";
+import { LaunchpadUploadMetadataSchema } from "../validation/schemas";
 
 // Allowed image MIME types
 const ALLOWED_MIME_TYPES = [
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
 ];
 
 // Max file size: 5MB
@@ -25,14 +25,22 @@ export const uploadMiddleware = multer({
   limits: {
     fileSize: MAX_FILE_SIZE,
   },
-  fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
+  fileFilter: (
+    _req: Request,
+    file: Express.Multer.File,
+    cb: FileFilterCallback,
+  ) => {
     if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}`));
+      cb(
+        new Error(
+          `Invalid file type. Allowed: ${ALLOWED_MIME_TYPES.join(", ")}`,
+        ),
+      );
     }
   },
-}).single('image');
+}).single("image");
 
 /**
  * @swagger
@@ -73,16 +81,23 @@ export const uploadMiddleware = multer({
  *         description: Upload failed
  */
 export function createUploadImageHandler(logger: Logger) {
-  return async function handleUploadImage(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/upload-image' });
+  return async function handleUploadImage(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/upload-image" });
 
     try {
       // Handle multer upload
       await new Promise<void>((resolve, reject) => {
         uploadMiddleware(req, res, (err) => {
           if (err instanceof multer.MulterError) {
-            if (err.code === 'LIMIT_FILE_SIZE') {
-              reject(new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`));
+            if (err.code === "LIMIT_FILE_SIZE") {
+              reject(
+                new Error(
+                  `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+                ),
+              );
             } else {
               reject(err);
             }
@@ -96,31 +111,40 @@ export function createUploadImageHandler(logger: Logger) {
 
       const file = req.file as Express.Multer.File | undefined;
       if (!file) {
-        log.debug('No image file provided');
-        res.status(400).json({ error: 'Image file is required' });
+        log.debug("No image file provided");
+        res.status(400).json({ error: "Image file is required" });
         return;
       }
 
       log.debug(
-        { filename: file.originalname, size: file.size, mimeType: file.mimetype },
-        'Processing image upload'
+        {
+          filename: file.originalname,
+          size: file.size,
+          mimeType: file.mimetype,
+        },
+        "Processing image upload",
       );
 
       const pinataService = getPinataService(logger);
       const imageURI = await pinataService.uploadFile(
         file.buffer,
         file.originalname,
-        file.mimetype
+        file.mimetype,
       );
 
-      log.info({ imageURI, filename: file.originalname }, 'Image uploaded successfully');
+      log.info(
+        { imageURI, filename: file.originalname },
+        "Image uploaded successfully",
+      );
 
       res.status(200).json({ imageURI });
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error uploading image');
-      res.status(error.message?.includes('Invalid file type') ? 400 : 500).json({
-        error: error.message || 'Failed to upload image',
-      });
+      log.error({ error: error.message }, "Error uploading image");
+      res
+        .status(error.message?.includes("Invalid file type") ? 400 : 500)
+        .json({
+          error: error.message || "Failed to upload image",
+        });
     }
   };
 }
@@ -180,22 +204,26 @@ export function createUploadImageHandler(logger: Logger) {
  *         description: Upload failed
  */
 export function createUploadMetadataHandler(logger: Logger) {
-  return async function handleUploadMetadata(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/upload-metadata' });
+  return async function handleUploadMetadata(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/upload-metadata" });
 
     try {
       // Validate request body
       const result = LaunchpadUploadMetadataSchema.safeParse(req.body);
       if (!result.success) {
-        const errors = result.error.issues.map((e) => e.message).join(', ');
-        log.debug({ errors }, 'Validation failed');
+        const errors = result.error.issues.map((e) => e.message).join(", ");
+        log.debug({ errors }, "Validation failed");
         res.status(400).json({ error: errors });
         return;
       }
 
-      const { name, description, imageURI, website, twitter, telegram } = result.data;
+      const { name, description, imageURI, website, twitter, telegram } =
+        result.data;
 
-      log.debug({ name, imageURI }, 'Processing metadata upload');
+      log.debug({ name, imageURI }, "Processing metadata upload");
 
       // Build metadata object following common token metadata standard
       const metadata: TokenMetadata = {
@@ -214,14 +242,16 @@ export function createUploadMetadataHandler(logger: Logger) {
 
       if (twitter) {
         // Normalize twitter handle
-        const twitterValue = twitter.startsWith('@') ? twitter : `@${twitter}`;
-        attributes.push({ trait_type: 'Twitter', value: twitterValue });
+        const twitterValue = twitter.startsWith("@") ? twitter : `@${twitter}`;
+        attributes.push({ trait_type: "Twitter", value: twitterValue });
       }
 
       if (telegram) {
         // Normalize telegram handle
-        const telegramValue = telegram.startsWith('@') ? telegram : `@${telegram}`;
-        attributes.push({ trait_type: 'Telegram', value: telegramValue });
+        const telegramValue = telegram.startsWith("@")
+          ? telegram
+          : `@${telegram}`;
+        attributes.push({ trait_type: "Telegram", value: telegramValue });
       }
 
       if (attributes.length > 0) {
@@ -229,15 +259,18 @@ export function createUploadMetadataHandler(logger: Logger) {
       }
 
       const pinataService = getPinataService(logger);
-      const metadataURI = await pinataService.uploadJSON(metadata, `${name}-metadata`);
+      const metadataURI = await pinataService.uploadJSON(
+        metadata,
+        `${name}-metadata`,
+      );
 
-      log.info({ metadataURI, name }, 'Metadata uploaded successfully');
+      log.info({ metadataURI, name }, "Metadata uploaded successfully");
 
       res.status(200).json({ metadataURI });
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error uploading metadata');
+      log.error({ error: error.message }, "Error uploading metadata");
       res.status(500).json({
-        error: error.message || 'Failed to upload metadata',
+        error: error.message || "Failed to upload metadata",
       });
     }
   };

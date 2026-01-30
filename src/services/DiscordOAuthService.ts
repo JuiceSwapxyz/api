@@ -1,6 +1,6 @@
-import axios from 'axios';
-import { generateState } from '../utils/pkce';
-import { prisma } from '../db/prisma';
+import axios from "axios";
+import { generateState } from "../utils/pkce";
+import { prisma } from "../db/prisma";
 
 /**
  * Discord OAuth 2.0 Service
@@ -47,14 +47,15 @@ export class DiscordOAuthService {
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
   // OAuth URLs (API v10)
-  private readonly AUTHORIZE_URL = 'https://discord.com/oauth2/authorize';
-  private readonly TOKEN_URL = 'https://discord.com/api/v10/oauth2/token';
-  private readonly USER_INFO_URL = 'https://discord.com/api/v10/users/@me';
-  private readonly USER_GUILDS_URL = 'https://discord.com/api/v10/users/@me/guilds';
-  private readonly ADD_GUILD_MEMBER_URL = 'https://discord.com/api/v10/guilds';
+  private readonly AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
+  private readonly TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
+  private readonly USER_INFO_URL = "https://discord.com/api/v10/users/@me";
+  private readonly USER_GUILDS_URL =
+    "https://discord.com/api/v10/users/@me/guilds";
+  private readonly ADD_GUILD_MEMBER_URL = "https://discord.com/api/v10/guilds";
 
   // OAuth scopes: identify (user info) + guilds (guild list) + guilds.join (auto-add to guild)
-  private readonly SCOPES = 'identify guilds guilds.join';
+  private readonly SCOPES = "identify guilds guilds.join";
 
   // Session expiry time (10 minutes)
   private readonly SESSION_EXPIRY_MS = 10 * 60 * 1000;
@@ -64,7 +65,10 @@ export class DiscordOAuthService {
 
     // Clean up expired sessions every 5 minutes
     // Note: In production, consider using external cron job instead
-    this.cleanupIntervalId = setInterval(() => this.cleanupSessions(), 5 * 60 * 1000);
+    this.cleanupIntervalId = setInterval(
+      () => this.cleanupSessions(),
+      5 * 60 * 1000,
+    );
   }
 
   /**
@@ -82,7 +86,9 @@ export class DiscordOAuthService {
    * Stores session in database for persistence across restarts
    * Uses standard OAuth 2.0 flow (no PKCE for confidential clients)
    */
-  public async generateAuthUrl(walletAddress: string): Promise<{ authUrl: string; state: string }> {
+  public async generateAuthUrl(
+    walletAddress: string,
+  ): Promise<{ authUrl: string; state: string }> {
     // Generate state for CSRF protection
     const state = generateState();
 
@@ -100,7 +106,7 @@ export class DiscordOAuthService {
 
     // Build authorization URL (standard OAuth 2.0, no PKCE)
     const params = new URLSearchParams({
-      response_type: 'code',
+      response_type: "code",
       client_id: this.config.clientId,
       redirect_uri: this.config.callbackUrl,
       scope: this.SCOPES,
@@ -118,7 +124,7 @@ export class DiscordOAuthService {
    */
   public async exchangeCodeForToken(
     code: string,
-    state: string
+    state: string,
   ): Promise<{ accessToken: string; walletAddress: string }> {
     // Retrieve session from database
     const session = await prisma.discordOAuthSession.findUnique({
@@ -126,14 +132,14 @@ export class DiscordOAuthService {
     });
 
     if (!session) {
-      throw new Error('Invalid or expired state token');
+      throw new Error("Invalid or expired state token");
     }
 
     // Check if session has expired
     if (session.expiresAt < new Date()) {
       // Delete expired session
       await prisma.discordOAuthSession.delete({ where: { state } });
-      throw new Error('Session has expired. Please try again.');
+      throw new Error("Session has expired. Please try again.");
     }
 
     try {
@@ -144,15 +150,15 @@ export class DiscordOAuthService {
         new URLSearchParams({
           client_id: this.config.clientId,
           client_secret: this.config.clientSecret,
-          grant_type: 'authorization_code',
+          grant_type: "authorization_code",
           code,
           redirect_uri: this.config.callbackUrl,
         }),
         {
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            "Content-Type": "application/x-www-form-urlencoded",
           },
-        }
+        },
       );
 
       // Clean up session from database (consumed)
@@ -164,13 +170,15 @@ export class DiscordOAuthService {
       };
     } catch (error) {
       // Clean up session on error
-      await prisma.discordOAuthSession.delete({ where: { state } }).catch(() => {
-        // Ignore errors if already deleted
-      });
+      await prisma.discordOAuthSession
+        .delete({ where: { state } })
+        .catch(() => {
+          // Ignore errors if already deleted
+        });
 
       if (axios.isAxiosError(error)) {
         throw new Error(
-          `Discord token exchange failed: ${error.response?.data?.error_description || error.message}`
+          `Discord token exchange failed: ${error.response?.data?.error_description || error.message}`,
         );
       }
       throw error;
@@ -191,7 +199,9 @@ export class DiscordOAuthService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(`Failed to get Discord user info: ${error.response?.data?.message || error.message}`);
+        throw new Error(
+          `Failed to get Discord user info: ${error.response?.data?.message || error.message}`,
+        );
       }
       throw error;
     }
@@ -211,7 +221,9 @@ export class DiscordOAuthService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(`Failed to get Discord guilds: ${error.response?.data?.message || error.message}`);
+        throw new Error(
+          `Failed to get Discord guilds: ${error.response?.data?.message || error.message}`,
+        );
       }
       throw error;
     }
@@ -230,7 +242,10 @@ export class DiscordOAuthService {
    * Requires guilds.join scope from user OAuth and bot to be in the guild
    * Uses Bot token to make the API call
    */
-  public async addUserToGuild(userId: string, accessToken: string): Promise<void> {
+  public async addUserToGuild(
+    userId: string,
+    accessToken: string,
+  ): Promise<void> {
     try {
       const url = `${this.ADD_GUILD_MEMBER_URL}/${this.config.guildId}/members/${userId}`;
 
@@ -242,14 +257,14 @@ export class DiscordOAuthService {
         {
           headers: {
             Authorization: `Bot ${this.config.botToken}`,
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
-        }
+        },
       );
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(
-          `Failed to add user to Discord guild: ${error.response?.data?.message || error.message}`
+          `Failed to add user to Discord guild: ${error.response?.data?.message || error.message}`,
         );
       }
       throw error;
@@ -261,10 +276,17 @@ export class DiscordOAuthService {
    */
   public async completeOAuthFlow(
     code: string,
-    state: string
-  ): Promise<{ walletAddress: string; discordUser: DiscordUserData; isInGuild: boolean }> {
+    state: string,
+  ): Promise<{
+    walletAddress: string;
+    discordUser: DiscordUserData;
+    isInGuild: boolean;
+  }> {
     // Exchange code for token
-    const { accessToken, walletAddress } = await this.exchangeCodeForToken(code, state);
+    const { accessToken, walletAddress } = await this.exchangeCodeForToken(
+      code,
+      state,
+    );
 
     // Get user info
     const discordUser = await this.getUserInfo(accessToken);
@@ -297,10 +319,12 @@ export class DiscordOAuthService {
       });
 
       if (result.count > 0) {
-        console.log(`Cleaned up ${result.count} expired Discord OAuth sessions`);
+        console.log(
+          `Cleaned up ${result.count} expired Discord OAuth sessions`,
+        );
       }
     } catch (error) {
-      console.error('Error cleaning up Discord OAuth sessions:', error);
+      console.error("Error cleaning up Discord OAuth sessions:", error);
     }
   }
 }
@@ -314,15 +338,21 @@ let discordOAuthService: DiscordOAuthService | null = null;
 export function getDiscordOAuthService(): DiscordOAuthService {
   if (!discordOAuthService) {
     const config = {
-      clientId: process.env.DISCORD_CLIENT_ID || '',
-      clientSecret: process.env.DISCORD_CLIENT_SECRET || '',
-      botToken: process.env.DISCORD_BOT_TOKEN || '',
-      callbackUrl: process.env.DISCORD_CALLBACK_URL || '',
-      guildId: process.env.DISCORD_GUILD_ID || '',
+      clientId: process.env.DISCORD_CLIENT_ID || "",
+      clientSecret: process.env.DISCORD_CLIENT_SECRET || "",
+      botToken: process.env.DISCORD_BOT_TOKEN || "",
+      callbackUrl: process.env.DISCORD_CALLBACK_URL || "",
+      guildId: process.env.DISCORD_GUILD_ID || "",
     };
 
-    if (!config.clientId || !config.clientSecret || !config.botToken || !config.callbackUrl || !config.guildId) {
-      throw new Error('Missing Discord OAuth environment variables');
+    if (
+      !config.clientId ||
+      !config.clientSecret ||
+      !config.botToken ||
+      !config.callbackUrl ||
+      !config.guildId
+    ) {
+      throw new Error("Missing Discord OAuth environment variables");
     }
 
     discordOAuthService = new DiscordOAuthService(config);
