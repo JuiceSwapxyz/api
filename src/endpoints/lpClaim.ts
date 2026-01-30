@@ -1,14 +1,18 @@
-import { Request, Response } from 'express';
-import Logger from 'bunyan';
-import { RouterService } from '../core/RouterService';
-import { JuiceGatewayService } from '../services/JuiceGatewayService';
-import { CurrencyAmount, Ether } from '@juiceswapxyz/sdk-core';
-import { ADDRESS_ZERO, NonfungiblePositionManager } from '@juiceswapxyz/v3-sdk';
-import { getV3LpContext, V3LpPositionInput, estimateEip1559Gas } from './_shared/v3LpCommon';
+import { Request, Response } from "express";
+import Logger from "bunyan";
+import { RouterService } from "../core/RouterService";
+import { JuiceGatewayService } from "../services/JuiceGatewayService";
+import { CurrencyAmount, Ether } from "@juiceswapxyz/sdk-core";
+import { ADDRESS_ZERO, NonfungiblePositionManager } from "@juiceswapxyz/v3-sdk";
+import {
+  getV3LpContext,
+  V3LpPositionInput,
+  estimateEip1559Gas,
+} from "./_shared/v3LpCommon";
 
 interface LpClaimRequestBody {
   simulateTransaction?: boolean;
-  protocol: 'V3';
+  protocol: "V3";
   tokenId: number;
   walletAddress: string;
   chainId: number;
@@ -62,10 +66,13 @@ interface LpClaimRequestBody {
 export function createLpClaimHandler(
   routerService: RouterService,
   logger: Logger,
-  juiceGatewayService?: JuiceGatewayService
+  juiceGatewayService?: JuiceGatewayService,
 ) {
-  return async function handleLpClaim(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'lp_claim' });
+  return async function handleLpClaim(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "lp_claim" });
 
     try {
       const {
@@ -79,9 +86,15 @@ export function createLpClaimHandler(
         collectAsWETH,
       }: LpClaimRequestBody = req.body;
 
-      if (protocol !== 'V3') {
-        log.debug({ protocol }, 'Validation failed: only V3 protocol is supported');
-        res.status(400).json({ message: 'Only V3 protocol is supported', error: 'UnsupportedProtocol' });
+      if (protocol !== "V3") {
+        log.debug(
+          { protocol },
+          "Validation failed: only V3 protocol is supported",
+        );
+        res.status(400).json({
+          message: "Only V3 protocol is supported",
+          error: "UnsupportedProtocol",
+        });
         return;
       }
 
@@ -99,8 +112,14 @@ export function createLpClaimHandler(
         expectedTokenOwed1RawAmount === undefined ||
         collectAsWETH === undefined
       ) {
-        log.debug({ walletAddress, chainId, tokenId, position }, 'Validation failed: missing required fields for LP claim');
-        res.status(400).json({ message: 'Missing required fields', error: 'MissingRequiredFields' });
+        log.debug(
+          { walletAddress, chainId, tokenId, position },
+          "Validation failed: missing required fields for LP claim",
+        );
+        res.status(400).json({
+          message: "Missing required fields",
+          error: "MissingRequiredFields",
+        });
         return;
       }
 
@@ -119,37 +138,53 @@ export function createLpClaimHandler(
 
       const { provider, positionManagerAddress, token0, token1 } = ctx.data;
 
-      const isNativePair = position.pool.token0 === ADDRESS_ZERO || position.pool.token1 === ADDRESS_ZERO;
-      
+      const isNativePair =
+        position.pool.token0 === ADDRESS_ZERO ||
+        position.pool.token1 === ADDRESS_ZERO;
+
       let currency0, currency1;
       if (isNativePair && collectAsWETH) {
         currency0 = token0;
         currency1 = token1;
       } else {
-        currency0 = position.pool.token0 === ADDRESS_ZERO ? Ether.onChain(chainId) : token0;
-        currency1 = position.pool.token1 === ADDRESS_ZERO ? Ether.onChain(chainId) : token1;
+        currency0 =
+          position.pool.token0 === ADDRESS_ZERO
+            ? Ether.onChain(chainId)
+            : token0;
+        currency1 =
+          position.pool.token1 === ADDRESS_ZERO
+            ? Ether.onChain(chainId)
+            : token1;
       }
 
-      const expectedCurrencyOwed0 = CurrencyAmount.fromRawAmount(currency0, expectedTokenOwed0RawAmount);
-      const expectedCurrencyOwed1 = CurrencyAmount.fromRawAmount(currency1, expectedTokenOwed1RawAmount);
+      const expectedCurrencyOwed0 = CurrencyAmount.fromRawAmount(
+        currency0,
+        expectedTokenOwed0RawAmount,
+      );
+      const expectedCurrencyOwed1 = CurrencyAmount.fromRawAmount(
+        currency1,
+        expectedTokenOwed1RawAmount,
+      );
 
-      const { calldata, value } = NonfungiblePositionManager.collectCallParameters({
-        tokenId: tokenId.toString(),
-        expectedCurrencyOwed0,
-        expectedCurrencyOwed1,
-        recipient: walletAddress,
-      });
+      const { calldata, value } =
+        NonfungiblePositionManager.collectCallParameters({
+          tokenId: tokenId.toString(),
+          expectedCurrencyOwed0,
+          expectedCurrencyOwed1,
+          recipient: walletAddress,
+        });
 
-      const { gasLimit, maxFeePerGas, maxPriorityFeePerGas, gasFee } = await estimateEip1559Gas({
-        provider,
-        tx: {
-          to: positionManagerAddress,
-          from: walletAddress,
-          data: calldata,
-          value,
-        },
-        logger: log,
-      });
+      const { gasLimit, maxFeePerGas, maxPriorityFeePerGas, gasFee } =
+        await estimateEip1559Gas({
+          provider,
+          tx: {
+            to: positionManagerAddress,
+            from: walletAddress,
+            data: calldata,
+            value,
+          },
+          logger: log,
+        });
 
       res.status(200).json({
         requestId: `lp-claim-${Date.now()}`,
@@ -166,10 +201,15 @@ export function createLpClaimHandler(
         gasFee,
       });
 
-      log.debug({ chainId, walletAddress, tokenId }, 'LP claim request completed');
+      log.debug(
+        { chainId, walletAddress, tokenId },
+        "LP claim request completed",
+      );
     } catch (error: any) {
-      log.error({ error }, 'Error in handleLpClaim');
-      res.status(500).json({ message: 'Internal server error', error: error?.message });
+      log.error({ error }, "Error in handleLpClaim");
+      res
+        .status(500)
+        .json({ message: "Internal server error", error: error?.message });
     }
   };
 }

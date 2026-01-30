@@ -1,8 +1,11 @@
-import { Request, Response } from 'express';
-import Logger from 'bunyan';
-import { SvJusdPriceService, SvJusdSharePriceInfo } from '../services/SvJusdPriceService';
-import { hasJuiceDollarIntegration } from '../config/contracts';
-import { ChainId } from '@juiceswapxyz/sdk-core';
+import { Request, Response } from "express";
+import Logger from "bunyan";
+import {
+  SvJusdPriceService,
+  SvJusdSharePriceInfo,
+} from "../services/SvJusdPriceService";
+import { hasJuiceDollarIntegration } from "../config/contracts";
+import { ChainId } from "@juiceswapxyz/sdk-core";
 
 export interface SvJusdSharePriceRequestQuery {
   chainId: string;
@@ -82,25 +85,26 @@ export interface SvJusdSharePriceErrorResponse {
  */
 export function createSvJusdSharePriceHandler(
   svJusdPriceService: SvJusdPriceService,
-  logger: Logger
+  logger: Logger,
 ) {
   return async function handleSvJusdSharePrice(
     req: Request,
-    res: Response
+    res: Response,
   ): Promise<void> {
     const startTime = Date.now();
     const requestId =
-      (req.headers['x-request-id'] as string) || `svjusd-price-${Date.now()}`;
+      (req.headers["x-request-id"] as string) || `svjusd-price-${Date.now()}`;
 
-    const log = logger.child({ requestId, endpoint: 'svJusdSharePrice' });
+    const log = logger.child({ requestId, endpoint: "svJusdSharePrice" });
 
     try {
-      const { chainId: chainIdStr } = req.query as unknown as SvJusdSharePriceRequestQuery;
+      const { chainId: chainIdStr } =
+        req.query as unknown as SvJusdSharePriceRequestQuery;
 
       // Validate chainId
       if (!chainIdStr) {
         res.status(400).json({
-          error: 'Missing required parameter: chainId',
+          error: "Missing required parameter: chainId",
         } as SvJusdSharePriceErrorResponse);
         return;
       }
@@ -109,12 +113,12 @@ export function createSvJusdSharePriceHandler(
 
       if (isNaN(chainId)) {
         res.status(400).json({
-          error: 'Invalid chainId: must be a number',
+          error: "Invalid chainId: must be a number",
         } as SvJusdSharePriceErrorResponse);
         return;
       }
 
-      log.debug({ chainId }, 'svJUSD share price request received');
+      log.debug({ chainId }, "svJUSD share price request received");
 
       // Check if chain supports JuiceDollar
       if (!hasJuiceDollarIntegration(chainId)) {
@@ -132,8 +136,8 @@ export function createSvJusdSharePriceHandler(
 
       if (!priceInfo) {
         res.status(500).json({
-          error: 'Failed to retrieve svJUSD share price',
-          detail: 'Contract configuration missing',
+          error: "Failed to retrieve svJUSD share price",
+          detail: "Contract configuration missing",
         } as SvJusdSharePriceErrorResponse);
         return;
       }
@@ -143,8 +147,8 @@ export function createSvJusdSharePriceHandler(
         cached: wasCached,
       };
 
-      res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
-      res.setHeader('Cache-Control', 'public, max-age=30'); // 30 seconds
+      res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
+      res.setHeader("Cache-Control", "public, max-age=30"); // 30 seconds
 
       log.debug(
         {
@@ -152,7 +156,7 @@ export function createSvJusdSharePriceHandler(
           sharePrice: priceInfo.sharePrice,
           cached: wasCached,
         },
-        'svJUSD share price retrieved successfully'
+        "svJUSD share price retrieved successfully",
       );
 
       res.json(response);
@@ -168,12 +172,13 @@ export function createSvJusdSharePriceHandler(
                 }
               : error,
         },
-        'Failed to get svJUSD share price'
+        "Failed to get svJUSD share price",
       );
 
       res.status(500).json({
-        error: 'Internal server error',
-        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: "Internal server error",
+        detail:
+          error instanceof Error ? error.message : "Unknown error occurred",
       } as SvJusdSharePriceErrorResponse);
     }
   };

@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { ZodSchema, ZodError } from 'zod';
-import Logger from 'bunyan';
+import { Request, Response, NextFunction } from "express";
+import { ZodSchema, ZodError } from "zod";
+import Logger from "bunyan";
 
 /**
  * Validation middleware factory for request body validation
@@ -15,22 +15,25 @@ export function validateBody(schema: ZodSchema, logger: Logger) {
     } catch (error) {
       if (error instanceof ZodError) {
         const errors = error.issues.map((err: any) => ({
-          field: err.path.join('.'),
+          field: err.path.join("."),
           message: err.message,
         }));
 
-        logger.debug({ errors, body: req.body }, 'Request body validation failed');
+        logger.debug(
+          { errors, body: req.body },
+          "Request body validation failed",
+        );
 
         res.status(400).json({
-          error: 'Validation failed',
-          detail: 'Invalid request body',
+          error: "Validation failed",
+          detail: "Invalid request body",
           errors,
         });
       } else {
-        logger.error({ error }, 'Unexpected error during validation');
+        logger.error({ error }, "Unexpected error during validation");
         res.status(500).json({
-          error: 'Internal server error',
-          detail: 'An error occurred during validation',
+          error: "Internal server error",
+          detail: "An error occurred during validation",
         });
       }
     }
@@ -50,22 +53,25 @@ export function validateQuery(schema: ZodSchema, logger: Logger) {
     } catch (error) {
       if (error instanceof ZodError) {
         const errors = error.issues.map((err: any) => ({
-          field: err.path.join('.'),
+          field: err.path.join("."),
           message: err.message,
         }));
 
-        logger.debug({ errors, query: req.query }, 'Query parameter validation failed');
+        logger.debug(
+          { errors, query: req.query },
+          "Query parameter validation failed",
+        );
 
         res.status(400).json({
-          error: 'Validation failed',
-          detail: 'Invalid query parameters',
+          error: "Validation failed",
+          detail: "Invalid query parameters",
           errors,
         });
       } else {
-        logger.error({ error }, 'Unexpected error during validation');
+        logger.error({ error }, "Unexpected error during validation");
         res.status(500).json({
-          error: 'Internal server error',
-          detail: 'An error occurred during validation',
+          error: "Internal server error",
+          detail: "An error occurred during validation",
         });
       }
     }

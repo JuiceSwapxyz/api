@@ -1,7 +1,7 @@
-import { Request, Response } from 'express';
-import { createQuoteHandler } from '../../endpoints/quote';
-import { createSwapsHandler } from '../../endpoints/swaps';
-import Logger from 'bunyan';
+import { Request, Response } from "express";
+import { createQuoteHandler } from "../../endpoints/quote";
+import { createSwapsHandler } from "../../endpoints/swaps";
+import Logger from "bunyan";
 
 // Import router service and logger from global scope
 // These will be injected when the resolver is created
@@ -14,7 +14,10 @@ export function initializeResolvers(routerService: any, logger: Logger) {
 }
 
 // Helper to convert Express handlers to GraphQL resolvers
-const createMockResponse = (): { res: Response; getResponse: () => Promise<any> } => {
+const createMockResponse = (): {
+  res: Response;
+  getResponse: () => Promise<any>;
+} => {
   let responseData: any = null;
   let statusCode = 200;
   let resolver: (value: any) => void;
@@ -33,7 +36,7 @@ const createMockResponse = (): { res: Response; getResponse: () => Promise<any> 
       return res;
     },
     send: (data: any) => {
-      if (typeof data === 'string') {
+      if (typeof data === "string") {
         try {
           responseData = JSON.parse(data);
         } catch {
@@ -52,7 +55,9 @@ const createMockResponse = (): { res: Response; getResponse: () => Promise<any> 
     await responsePromise;
 
     if (statusCode >= 400) {
-      throw new Error(responseData?.message || responseData?.detail || 'Request failed');
+      throw new Error(
+        responseData?.message || responseData?.detail || "Request failed",
+      );
     }
 
     return responseData;
@@ -63,14 +68,17 @@ const createMockResponse = (): { res: Response; getResponse: () => Promise<any> 
 
 export const resolvers = {
   Query: {
-    health: () => 'ok',
+    health: () => "ok",
 
-    swaps: async (_: any, { txHashes, chainId }: { txHashes: string[]; chainId: number }) => {
+    swaps: async (
+      _: any,
+      { txHashes, chainId }: { txHashes: string[]; chainId: number },
+    ) => {
       const { res, getResponse } = createMockResponse();
 
       const req = {
         query: {
-          txHashes: txHashes.join(','),
+          txHashes: txHashes.join(","),
           chainId: chainId.toString(),
         },
       } as unknown as Request;

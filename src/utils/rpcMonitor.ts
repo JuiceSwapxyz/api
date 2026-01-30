@@ -1,6 +1,6 @@
-import { providers } from 'ethers';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import Logger from 'bunyan';
+import { providers } from "ethers";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import Logger from "bunyan";
 
 interface RPCStats {
   total: number;
@@ -16,7 +16,7 @@ export class RPCMonitor {
   private summaryInterval: NodeJS.Timeout | null = null;
 
   constructor(logger: Logger) {
-    this.enabled = process.env.ENABLE_RPC_LOGGING !== 'false';
+    this.enabled = process.env.ENABLE_RPC_LOGGING !== "false";
     this.logger = logger;
     this.stats = {
       total: 0,
@@ -26,7 +26,7 @@ export class RPCMonitor {
     this.requestStats = new Map();
 
     if (this.enabled) {
-      this.logger.info('[RPC Monitor] Enabled - tracking all RPC calls');
+      this.logger.info("[RPC Monitor] Enabled - tracking all RPC calls");
       this.startSummaryReporting();
     }
   }
@@ -34,7 +34,10 @@ export class RPCMonitor {
   /**
    * Attach monitoring to an ethers provider
    */
-  attachToProvider(provider: providers.StaticJsonRpcProvider, chainId: ChainId): void {
+  attachToProvider(
+    provider: providers.StaticJsonRpcProvider,
+    chainId: ChainId,
+  ): void {
     if (!this.enabled) return;
 
     // Monkey-patch the send method to intercept RPC calls
@@ -90,7 +93,7 @@ export class RPCMonitor {
     if (!this.enabled || callCount === 0) return;
 
     this.logger.debug(
-      `[RPC Monitor] ${endpoint} (${requestId}) - ${callCount} RPC calls`
+      `[RPC Monitor] ${endpoint} (${requestId}) - ${callCount} RPC calls`,
     );
   }
 
@@ -128,10 +131,10 @@ export class RPCMonitor {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([method, count]) => `${method}:${count}`)
-      .join(', ');
+      .join(", ");
 
     this.logger.info(
-      `[RPC Monitor] 30s summary - Total: ${this.stats.total} calls | Top methods: ${methodBreakdown}`
+      `[RPC Monitor] 30s summary - Total: ${this.stats.total} calls | Top methods: ${methodBreakdown}`,
     );
 
     // Reset counters for next interval

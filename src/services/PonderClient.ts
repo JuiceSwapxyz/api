@@ -64,12 +64,12 @@ export class PonderClient {
     method: string,
     path: string,
     attempt: number,
-    maxRetries: number
+    maxRetries: number,
   ): { shouldRetry: boolean; shouldThrow: boolean } {
     // Defensive: if url wasn't set (should never happen), give up immediately
     if (!url) {
       this.logger.error(
-        `[Ponder] Failed to determine URL before ${method} error occurred`
+        `[Ponder] Failed to determine URL before ${method} error occurred`,
       );
       return { shouldRetry: false, shouldThrow: true };
     }
@@ -91,7 +91,7 @@ export class PonderClient {
         isAxiosError,
         wasUsingFallback,
       },
-      `Ponder ${method} request failed`
+      `Ponder ${method} request failed`,
     );
 
     // If fallback failed, give up immediately
@@ -108,7 +108,7 @@ export class PonderClient {
     // Check for 503 Service Unavailable (Ponder syncing)
     if (is503Error(error)) {
       this.logger.warn(
-        `[Ponder] ${method} 503 from primary, switching to fallback`
+        `[Ponder] ${method} 503 from primary, switching to fallback`,
       );
       activateFallback(this.logger);
       shouldRetry = true;
@@ -116,7 +116,7 @@ export class PonderClient {
     // For network errors (timeout, connection refused, etc.)
     else if (isAxiosError && !status) {
       this.logger.warn(
-        `[Ponder] ${method} network error from primary, switching to fallback`
+        `[Ponder] ${method} network error from primary, switching to fallback`,
       );
       activateFallback(this.logger);
       shouldRetry = true;
@@ -128,7 +128,7 @@ export class PonderClient {
         {
           status,
           error: error.message,
-        }
+        },
       );
       return { shouldRetry: false, shouldThrow: true };
     }
@@ -150,7 +150,7 @@ export class PonderClient {
     path: string,
     data?: any,
     maxRetries: number = 2,
-    retryDelay: number = 1000
+    retryDelay: number = 1000,
   ): Promise<AxiosResponse<T>> {
     let lastError: any;
 
@@ -169,7 +169,7 @@ export class PonderClient {
             maxRetries,
             usingFallback: !!fallbackUntil,
           },
-          "Ponder API request"
+          "Ponder API request",
         );
 
         const config: AxiosRequestConfig = {
@@ -192,7 +192,7 @@ export class PonderClient {
             status: response.status,
             attempt,
           },
-          "Ponder API request successful"
+          "Ponder API request successful",
         );
 
         return response;
@@ -205,7 +205,7 @@ export class PonderClient {
           method,
           path,
           attempt,
-          maxRetries
+          maxRetries,
         );
 
         if (shouldThrow) {
@@ -248,7 +248,7 @@ export class PonderClient {
     query: string,
     variables?: Record<string, any>,
     maxRetries: number = 2,
-    retryDelay: number = 1000
+    retryDelay: number = 1000,
   ): Promise<T> {
     let lastError: any;
 
@@ -267,7 +267,7 @@ export class PonderClient {
             maxRetries,
             usingFallback: !!fallbackUntil,
           },
-          "Ponder GraphQL request"
+          "Ponder GraphQL request",
         );
 
         // Reuse GraphQL client, only create new one if URL changed
@@ -286,7 +286,7 @@ export class PonderClient {
             url: graphqlUrl,
             attempt,
           },
-          "Ponder GraphQL request successful"
+          "Ponder GraphQL request successful",
         );
 
         return result;
@@ -299,7 +299,7 @@ export class PonderClient {
           "GRAPHQL",
           "/graphql",
           attempt,
-          maxRetries
+          maxRetries,
         );
 
         if (shouldThrow) {

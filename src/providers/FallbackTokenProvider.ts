@@ -1,12 +1,12 @@
-import { ChainId, Token } from '@juiceswapxyz/sdk-core';
+import { ChainId, Token } from "@juiceswapxyz/sdk-core";
 import {
   ITokenProvider,
   TokenAccessor,
   UniswapMulticallProvider,
   TokenProvider,
   log,
-} from '@juiceswapxyz/smart-order-router';
-import NodeCache from 'node-cache';
+} from "@juiceswapxyz/smart-order-router";
+import NodeCache from "node-cache";
 
 /**
  * Token provider that wraps a primary provider and falls back to on-chain fetching.
@@ -20,7 +20,7 @@ export class FallbackTokenProvider implements ITokenProvider {
   constructor(
     chainId: ChainId,
     primaryProvider: ITokenProvider,
-    multicallProvider: UniswapMulticallProvider
+    multicallProvider: UniswapMulticallProvider,
   ) {
     this.primaryProvider = primaryProvider;
     // Create on-chain provider once for reuse
@@ -54,7 +54,7 @@ export class FallbackTokenProvider implements ITokenProvider {
     } catch (error) {
       log.warn(
         { error, addresses },
-        'FallbackTokenProvider: Primary provider failed, falling back to on-chain'
+        "FallbackTokenProvider: Primary provider failed, falling back to on-chain",
       );
       // Primary provider failed - check cache, then fetch remaining on-chain
       for (const address of addresses) {
@@ -71,11 +71,12 @@ export class FallbackTokenProvider implements ITokenProvider {
     if (missingAddresses.length > 0) {
       log.info(
         { missingAddresses },
-        'FallbackTokenProvider: Fetching missing tokens on-chain'
+        "FallbackTokenProvider: Fetching missing tokens on-chain",
       );
 
       try {
-        const onChainResult = await this.onChainProvider.getTokens(missingAddresses);
+        const onChainResult =
+          await this.onChainProvider.getTokens(missingAddresses);
 
         for (const address of missingAddresses) {
           const token = onChainResult.getTokenByAddress(address);
@@ -84,16 +85,19 @@ export class FallbackTokenProvider implements ITokenProvider {
             this.onChainCache.set(address.toLowerCase(), token);
             log.info(
               { address, symbol: token.symbol, decimals: token.decimals },
-              'FallbackTokenProvider: Found token on-chain'
+              "FallbackTokenProvider: Found token on-chain",
             );
           } else {
-            log.warn({ address }, 'FallbackTokenProvider: Token not found on-chain');
+            log.warn(
+              { address },
+              "FallbackTokenProvider: Token not found on-chain",
+            );
           }
         }
       } catch (error) {
         log.error(
           { error, missingAddresses },
-          'FallbackTokenProvider: Failed to fetch tokens on-chain'
+          "FallbackTokenProvider: Failed to fetch tokens on-chain",
         );
       }
     }
