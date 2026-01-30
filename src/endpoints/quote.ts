@@ -1,20 +1,23 @@
-import { Request, Response } from 'express';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import { Protocol } from '@juiceswapxyz/router-sdk';
-import { nativeOnChain } from '@juiceswapxyz/smart-order-router';
-import { isNativeCurrency } from '@juiceswapxyz/universal-router-sdk';
-import { RouterService } from '../core/RouterService';
-import { quoteCache } from '../cache/quoteCache';
-import { getRPCMonitor } from '../utils/rpcMonitor';
-import { trackUser } from '../services/userTracking';
-import { extractIpAddress } from '../utils/ipAddress';
-import { JuiceGatewayService, BridgeLiquidityError } from '../services/JuiceGatewayService';
+import { Request, Response } from "express";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import { Protocol } from "@juiceswapxyz/router-sdk";
+import { nativeOnChain } from "@juiceswapxyz/smart-order-router";
+import { isNativeCurrency } from "@juiceswapxyz/universal-router-sdk";
+import { RouterService } from "../core/RouterService";
+import { quoteCache } from "../cache/quoteCache";
+import { getRPCMonitor } from "../utils/rpcMonitor";
+import { trackUser } from "../services/userTracking";
+import { extractIpAddress } from "../utils/ipAddress";
+import {
+  JuiceGatewayService,
+  BridgeLiquidityError,
+} from "../services/JuiceGatewayService";
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
-} from '../config/contracts';
-import { isGraduatedLaunchpadToken } from '../services/LaunchpadTokenService';
-import Logger from 'bunyan';
+} from "../config/contracts";
+import { isGraduatedLaunchpadToken } from "../services/LaunchpadTokenService";
+import Logger from "bunyan";
 
 // Helper functions for AWS-compatible response formatting
 function formatDecimals(amount: string, decimals: number): string {
@@ -27,37 +30,43 @@ function generateQuoteId(): string {
 }
 
 function generateRouteString(formattedRoute: any[]): string {
-  if (!formattedRoute || formattedRoute.length === 0) return '';
+  if (!formattedRoute || formattedRoute.length === 0) return "";
 
   // For simple single-route with single pool
   if (formattedRoute.length === 1 && formattedRoute[0].length === 1) {
     const pool = formattedRoute[0][0];
-    const isV2 = pool.type === 'v2-pool';
+    const isV2 = pool.type === "v2-pool";
 
     if (isV2) {
-      return `[V2] 100.00% = ${pool.tokenIn?.symbol || 'TOKEN'} -- [${pool.address}] -- ${pool.tokenOut?.symbol || 'TOKEN'}`;
+      return `[V2] 100.00% = ${pool.tokenIn?.symbol || "TOKEN"} -- [${pool.address}] -- ${pool.tokenOut?.symbol || "TOKEN"}`;
     } else {
-      const feePercent = pool.fee ? (Number(pool.fee) / 10000).toFixed(1) : '0.3';
-      return `[V3] 100.00% = ${pool.tokenIn?.symbol || 'TOKEN'} -- ${feePercent}% [${pool.address}] -- ${pool.tokenOut?.symbol || 'TOKEN'}`;
+      const feePercent = pool.fee
+        ? (Number(pool.fee) / 10000).toFixed(1)
+        : "0.3";
+      return `[V3] 100.00% = ${pool.tokenIn?.symbol || "TOKEN"} -- ${feePercent}% [${pool.address}] -- ${pool.tokenOut?.symbol || "TOKEN"}`;
     }
   }
 
   // For multi-hop or multi-route, detect if any pool is V2
-  const hasV2 = formattedRoute.some(route => route.some((pool: any) => pool.type === 'v2-pool'));
-  const hasV3 = formattedRoute.some(route => route.some((pool: any) => pool.type === 'v3-pool'));
+  const hasV2 = formattedRoute.some((route) =>
+    route.some((pool: any) => pool.type === "v2-pool"),
+  );
+  const hasV3 = formattedRoute.some((route) =>
+    route.some((pool: any) => pool.type === "v3-pool"),
+  );
 
   if (hasV2 && hasV3) {
-    return '[V2+V3] Multi-hop route';
+    return "[V2+V3] Multi-hop route";
   } else if (hasV2) {
-    return '[V2] Multi-hop route';
+    return "[V2] Multi-hop route";
   } else {
-    return '[V3] Multi-hop route';
+    return "[V3] Multi-hop route";
   }
 }
 
 function calculatePriceImpact(_route: any): string {
   // Simple price impact calculation - can be enhanced
-  return '0.30';
+  return "0.30";
 }
 
 export interface QuoteRequestBody {
@@ -67,22 +76,22 @@ export interface QuoteRequestBody {
   tokenOutAddress?: string;
   tokenInChainId: number;
   tokenOutChainId: number;
-  tokenInDecimals?: number;  // Optional - will be fetched from token lists if not provided
-  tokenOutDecimals?: number;  // Optional - will be fetched from token lists if not provided
+  tokenInDecimals?: number; // Optional - will be fetched from token lists if not provided
+  tokenOutDecimals?: number; // Optional - will be fetched from token lists if not provided
   amount: string;
-  type?: 'EXACT_INPUT' | 'EXACT_OUTPUT';
+  type?: "EXACT_INPUT" | "EXACT_OUTPUT";
   swapper?: string;
   protocols?: string[];
   enableUniversalRouter?: boolean;
 }
 
 export enum Routing {
-  CLASSIC = 'CLASSIC',
-  WRAP = 'WRAP',
-  UNWRAP = 'UNWRAP',
-  GATEWAY_JUSD = 'GATEWAY_JUSD',         // JUSD/SUSD swap via JuiceSwapGateway
-  GATEWAY_JUICE_OUT = 'GATEWAY_JUICE_OUT', // Buy JUICE via Gateway + Equity
-  GATEWAY_JUICE_IN = 'GATEWAY_JUICE_IN',   // Sell JUICE via Equity.redeem()
+  CLASSIC = "CLASSIC",
+  WRAP = "WRAP",
+  UNWRAP = "UNWRAP",
+  GATEWAY_JUSD = "GATEWAY_JUSD", // JUSD/SUSD swap via JuiceSwapGateway
+  GATEWAY_JUICE_OUT = "GATEWAY_JUICE_OUT", // Buy JUICE via Gateway + Equity
+  GATEWAY_JUICE_IN = "GATEWAY_JUICE_IN", // Sell JUICE via Equity.redeem()
 }
 
 export interface QuoteResponse {
@@ -132,13 +141,17 @@ export interface QuoteResponse {
 export function createQuoteHandler(
   routerService: RouterService,
   logger: Logger,
-  juiceGatewayService?: JuiceGatewayService
+  juiceGatewayService?: JuiceGatewayService,
 ) {
-  return async function handleQuote(req: Request, res: Response): Promise<void> {
+  return async function handleQuote(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
     const startTime = Date.now();
-    const requestId = req.headers['x-request-id'] as string || `quote-${Date.now()}`;
+    const requestId =
+      (req.headers["x-request-id"] as string) || `quote-${Date.now()}`;
 
-    const log = logger.child({ requestId, endpoint: 'quote' });
+    const log = logger.child({ requestId, endpoint: "quote" });
 
     try {
       const body: QuoteRequestBody = req.body;
@@ -151,13 +164,16 @@ export function createQuoteHandler(
 
       // Check if both tokens are on the same chain (current limitation)
       if (body.tokenInChainId !== body.tokenOutChainId) {
-        log.debug({
-          tokenInChainId: body.tokenInChainId,
-          tokenOutChainId: body.tokenOutChainId,
-        }, 'Validation failed: cross-chain swaps not supported');
+        log.debug(
+          {
+            tokenInChainId: body.tokenInChainId,
+            tokenOutChainId: body.tokenOutChainId,
+          },
+          "Validation failed: cross-chain swaps not supported",
+        );
         res.status(400).json({
-          error: 'Cross-chain swaps not supported',
-          detail: 'tokenInChainId and tokenOutChainId must be the same',
+          error: "Cross-chain swaps not supported",
+          detail: "tokenInChainId and tokenOutChainId must be the same",
         });
         return;
       }
@@ -166,9 +182,9 @@ export function createQuoteHandler(
 
       // Check if chain is supported
       if (!routerService.isChainSupported(chainId)) {
-        log.debug({ chainId }, 'Validation failed: unsupported chain');
+        log.debug({ chainId }, "Validation failed: unsupported chain");
         res.status(400).json({
-          error: 'Unsupported chain',
+          error: "Unsupported chain",
           detail: `Chain ID ${chainId} is not supported`,
         });
         return;
@@ -185,24 +201,38 @@ export function createQuoteHandler(
       if (tokenInDecimals === undefined || tokenOutDecimals === undefined) {
         try {
           if (tokenInDecimals === undefined) {
-            const tokenInInfo = await routerService.getTokenInfo(tokenIn, chainId);
+            const tokenInInfo = await routerService.getTokenInfo(
+              tokenIn,
+              chainId,
+            );
             tokenInDecimals = tokenInInfo.decimals;
             tokenInSymbol = tokenInInfo.symbol;
             tokenInName = tokenInInfo.name;
-            log.debug({ tokenIn, decimals: tokenInDecimals }, 'Fetched tokenIn decimals from token list');
+            log.debug(
+              { tokenIn, decimals: tokenInDecimals },
+              "Fetched tokenIn decimals from token list",
+            );
           }
 
           if (tokenOutDecimals === undefined) {
-            const tokenOutInfo = await routerService.getTokenInfo(tokenOut, chainId);
+            const tokenOutInfo = await routerService.getTokenInfo(
+              tokenOut,
+              chainId,
+            );
             tokenOutDecimals = tokenOutInfo.decimals;
             tokenOutSymbol = tokenOutInfo.symbol;
             tokenOutName = tokenOutInfo.name;
-            log.debug({ tokenOut, decimals: tokenOutDecimals }, 'Fetched tokenOut decimals from token list');
+            log.debug(
+              { tokenOut, decimals: tokenOutDecimals },
+              "Fetched tokenOut decimals from token list",
+            );
           }
         } catch (error: any) {
           res.status(400).json({
-            error: 'Token lookup failed',
-            detail: error.message || 'Could not find token information. Please provide tokenInDecimals and tokenOutDecimals.',
+            error: "Token lookup failed",
+            detail:
+              error.message ||
+              "Could not find token information. Please provide tokenInDecimals and tokenOutDecimals.",
           });
           return;
         }
@@ -211,22 +241,27 @@ export function createQuoteHandler(
       // Check cache first
       const cachedQuote = quoteCache.get(body);
       if (cachedQuote) {
-        res.setHeader('X-Quote-Cache', 'HIT');
-        res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
-        log.debug({ cacheHit: true, responseTime: Date.now() - startTime }, 'Quote served from cache');
-        
+        res.setHeader("X-Quote-Cache", "HIT");
+        res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
+        log.debug(
+          { cacheHit: true, responseTime: Date.now() - startTime },
+          "Quote served from cache",
+        );
+
         const formattedQuoteCached = {
           ...cachedQuote.quote,
           swapper: body.swapper,
         };
 
-        const allQuotes = cachedQuote.allQuotes ? cachedQuote.allQuotes.map((q: any) => ({
-          ...q,
-          quote: {
-            ...q.quote,
-            swapper: body.swapper,
-          }
-        })) : undefined;
+        const allQuotes = cachedQuote.allQuotes
+          ? cachedQuote.allQuotes.map((q: any) => ({
+              ...q,
+              quote: {
+                ...q.quote,
+                swapper: body.swapper,
+              },
+            }))
+          : undefined;
 
         res.json({
           ...cachedQuote,
@@ -234,11 +269,11 @@ export function createQuoteHandler(
           quote: formattedQuoteCached,
           allQuotes,
         });
-        
+
         return;
       }
 
-      res.setHeader('X-Quote-Cache', 'MISS');
+      res.setHeader("X-Quote-Cache", "MISS");
 
       // Start RPC call tracking for this request
       const rpcMonitor = getRPCMonitor();
@@ -247,8 +282,10 @@ export function createQuoteHandler(
       // Handle native <-> wrapped token operations (cBTC <-> WCBTC)
       const wrappedAddress = nativeOnChain(chainId).wrapped.address;
       const isWrapOperation =
-        (isNativeCurrency(tokenIn) && tokenOut.toLowerCase() === wrappedAddress.toLowerCase()) ||
-        (isNativeCurrency(tokenOut) && tokenIn.toLowerCase() === wrappedAddress.toLowerCase());
+        (isNativeCurrency(tokenIn) &&
+          tokenOut.toLowerCase() === wrappedAddress.toLowerCase()) ||
+        (isNativeCurrency(tokenOut) &&
+          tokenIn.toLowerCase() === wrappedAddress.toLowerCase());
 
       if (isWrapOperation) {
         // Return AWS-compatible WRAP response
@@ -258,36 +295,41 @@ export function createQuoteHandler(
           permitData: null,
           quote: {
             chainId: chainId,
-            swapper: body.swapper || '0x0000000000000000000000000000000000000000',
+            swapper:
+              body.swapper || "0x0000000000000000000000000000000000000000",
             input: {
               amount: body.amount,
-              token: tokenIn
+              token: tokenIn,
             },
             output: {
               amount: body.amount, // 1:1 exchange for wrap/unwrap
               token: tokenOut,
-              recipient: body.swapper || '0x0000000000000000000000000000000000000000'
+              recipient:
+                body.swapper || "0x0000000000000000000000000000000000000000",
             },
-            tradeType: body.type || 'EXACT_INPUT',
-            gasFee: '0x5a995c00',
-            gasFeeQuote: '0x5a995c00',
-            gasUseEstimate: '0x5a995c00',
-            maxFeePerGas: '0x5a995c00',
-            maxPriorityFeePerGas: '0x59682f00'
-          }
+            tradeType: body.type || "EXACT_INPUT",
+            gasFee: "0x5a995c00",
+            gasFeeQuote: "0x5a995c00",
+            gasUseEstimate: "0x5a995c00",
+            maxFeePerGas: "0x5a995c00",
+            maxPriorityFeePerGas: "0x59682f00",
+          },
         };
 
         quoteCache.set(body, wrapResponse);
 
-        log.debug({
-          tokenIn,
-          tokenOut,
-          amount: body.amount,
-          routing: 'WRAP',
-          responseTime: Date.now() - startTime,
-        }, 'Wrap quote generated');
+        log.debug(
+          {
+            tokenIn,
+            tokenOut,
+            amount: body.amount,
+            routing: "WRAP",
+            responseTime: Date.now() - startTime,
+          },
+          "Wrap quote generated",
+        );
 
-        res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
+        res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
         res.json(wrapResponse);
         return;
       }
@@ -306,7 +348,7 @@ export function createQuoteHandler(
       if (hasLaunchpadToken) {
         log.debug(
           { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
-          'Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD'
+          "Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD",
         );
       }
 
@@ -316,11 +358,22 @@ export function createQuoteHandler(
       // SUSD is routed through Gateway via registerBridgedToken() - no separate bridge service needed
       // Detect if this swap involves JUSD or JUICE tokens that need Gateway routing
       // NOTE: Launchpad tokens BYPASS Gateway - they use V2 pools with JUSD directly
-      if (!hasLaunchpadToken && juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
-        const routingType = juiceGatewayService.detectRoutingType(chainId, tokenIn, tokenOut);
+      if (
+        !hasLaunchpadToken &&
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId)
+      ) {
+        const routingType = juiceGatewayService.detectRoutingType(
+          chainId,
+          tokenIn,
+          tokenOut,
+        );
 
         if (routingType) {
-          log.debug({ routingType, tokenIn, tokenOut }, 'Gateway routing detected');
+          log.debug(
+            { routingType, tokenIn, tokenOut },
+            "Gateway routing detected",
+          );
 
           try {
             // Prepare quote with internal token conversions
@@ -328,16 +381,20 @@ export function createQuoteHandler(
               chainId,
               tokenIn,
               tokenOut,
-              body.amount
+              body.amount,
             );
 
             if (!gatewayQuote) {
               // Gateway doesn't support this route (e.g., JUICE → non-JUSD)
               // Return NO_ROUTE to indicate the swap is not supported
-              log.debug({ routingType, tokenIn, tokenOut }, 'Gateway route not supported');
+              log.debug(
+                { routingType, tokenIn, tokenOut },
+                "Gateway route not supported",
+              );
               res.status(404).json({
-                error: 'NO_ROUTE',
-                detail: 'This token combination is not supported. For JUICE swaps, you can only swap directly to JUSD.',
+                error: "NO_ROUTE",
+                detail:
+                  "This token combination is not supported. For JUICE swaps, you can only swap directly to JUSD.",
               });
               return;
             }
@@ -345,8 +402,14 @@ export function createQuoteHandler(
             // Handle direct USD↔USD conversions (no pool routing needed)
             if (gatewayQuote.isDirectConversion) {
               const quoteId = generateQuoteId();
-              const inputAmountDecimals = formatDecimals(body.amount, tokenInDecimals);
-              const outputAmountDecimals = formatDecimals(gatewayQuote.expectedOutput, tokenOutDecimals);
+              const inputAmountDecimals = formatDecimals(
+                body.amount,
+                tokenInDecimals,
+              );
+              const outputAmountDecimals = formatDecimals(
+                gatewayQuote.expectedOutput,
+                tokenOutDecimals,
+              );
 
               const directConversionResponse: QuoteResponse = {
                 requestId: quoteId,
@@ -354,7 +417,9 @@ export function createQuoteHandler(
                 permitData: null,
                 quote: {
                   chainId: chainId,
-                  swapper: body.swapper || '0x0000000000000000000000000000000000000000',
+                  swapper:
+                    body.swapper ||
+                    "0x0000000000000000000000000000000000000000",
                   input: {
                     amount: body.amount,
                     token: tokenIn,
@@ -362,17 +427,19 @@ export function createQuoteHandler(
                   output: {
                     amount: gatewayQuote.expectedOutput,
                     token: tokenOut,
-                    recipient: body.swapper || '0x0000000000000000000000000000000000000000',
+                    recipient:
+                      body.swapper ||
+                      "0x0000000000000000000000000000000000000000",
                   },
-                  tradeType: body.type || 'EXACT_INPUT',
+                  tradeType: body.type || "EXACT_INPUT",
                   amount: body.amount,
                   amountDecimals: inputAmountDecimals,
                   quote: gatewayQuote.expectedOutput,
                   quoteDecimals: outputAmountDecimals,
                   quoteGasAdjusted: gatewayQuote.expectedOutput,
-                  gasUseEstimate: '100000', // Estimate for Gateway direct conversion
-                  gasUseEstimateUSD: '0.10',
-                  gasPriceWei: '1000000000',
+                  gasUseEstimate: "100000", // Estimate for Gateway direct conversion
+                  gasUseEstimateUSD: "0.10",
+                  gasPriceWei: "1000000000",
                   _internal: {
                     routingType: gatewayQuote.routingType,
                     isDirectConversion: true,
@@ -385,14 +452,17 @@ export function createQuoteHandler(
                 quoteCache.set(body, directConversionResponse);
               }
 
-              res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
-              log.debug({
-                routingType: gatewayQuote.routingType,
-                userInput: body.amount,
-                userOutput: gatewayQuote.expectedOutput,
-                isDirectConversion: true,
-                responseTime: Date.now() - startTime,
-              }, 'Direct USD conversion quote generated');
+              res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
+              log.debug(
+                {
+                  routingType: gatewayQuote.routingType,
+                  userInput: body.amount,
+                  userOutput: gatewayQuote.expectedOutput,
+                  isDirectConversion: true,
+                  responseTime: Date.now() - startTime,
+                },
+                "Direct USD conversion quote generated",
+              );
 
               res.json(directConversionResponse);
               return;
@@ -407,10 +477,16 @@ export function createQuoteHandler(
             let internalTokenOutDecimals = tokenOutDecimals;
 
             // svJUSD and JUSD both have 18 decimals
-            if (gatewayQuote.internalTokenIn.toLowerCase() === contracts.SV_JUSD.toLowerCase()) {
+            if (
+              gatewayQuote.internalTokenIn.toLowerCase() ===
+              contracts.SV_JUSD.toLowerCase()
+            ) {
               internalTokenInDecimals = 18;
             }
-            if (gatewayQuote.internalTokenOut.toLowerCase() === contracts.SV_JUSD.toLowerCase()) {
+            if (
+              gatewayQuote.internalTokenOut.toLowerCase() ===
+              contracts.SV_JUSD.toLowerCase()
+            ) {
               internalTokenOutDecimals = 18;
             }
 
@@ -418,9 +494,9 @@ export function createQuoteHandler(
             let protocols: Protocol[] | undefined = undefined;
             if (body.protocols) {
               protocols = body.protocols
-                .map(p => p.toUpperCase())
-                .filter(p => p === 'V2' || p === 'V3')
-                .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+                .map((p) => p.toUpperCase())
+                .filter((p) => p === "V2" || p === "V3")
+                .map((p) => (p === "V2" ? Protocol.V2 : Protocol.V3));
             }
 
             // Get internal route quote
@@ -431,7 +507,7 @@ export function createQuoteHandler(
               tokenOutDecimals: internalTokenOutDecimals,
               amount: gatewayQuote.internalAmountIn,
               chainId,
-              type: body.type === 'EXACT_OUTPUT' ? 'exactOut' : 'exactIn',
+              type: body.type === "EXACT_OUTPUT" ? "exactOut" : "exactIn",
               recipient: body.swapper,
               protocols,
               enableUniversalRouter: body.enableUniversalRouter,
@@ -439,32 +515,41 @@ export function createQuoteHandler(
 
             if (!internalRoute) {
               res.status(404).json({
-                error: 'NO_ROUTE',
-                detail: 'No route found for Gateway swap',
+                error: "NO_ROUTE",
+                detail: "No route found for Gateway swap",
               });
               return;
             }
 
             // Convert internal output to user-facing token
-            const internalOutputAmount = internalRoute.quote.quotient.toString();
-            const userOutputAmount = await juiceGatewayService.convertOutputToUserToken(
-              chainId,
-              tokenOut,
-              internalOutputAmount,
-              routingType
-            );
+            const internalOutputAmount =
+              internalRoute.quote.quotient.toString();
+            const userOutputAmount =
+              await juiceGatewayService.convertOutputToUserToken(
+                chainId,
+                tokenOut,
+                internalOutputAmount,
+                routingType,
+              );
 
             // Build Gateway quote response
             const quoteId = generateQuoteId();
-            const inputAmountDecimals = formatDecimals(body.amount, tokenInDecimals);
-            const outputAmountDecimals = formatDecimals(userOutputAmount, tokenOutDecimals);
+            const inputAmountDecimals = formatDecimals(
+              body.amount,
+              tokenInDecimals,
+            );
+            const outputAmountDecimals = formatDecimals(
+              userOutputAmount,
+              tokenOutDecimals,
+            );
 
             // Map routing type to Routing enum
-            const gatewayRouting = routingType === 'GATEWAY_JUICE_IN'
-              ? Routing.GATEWAY_JUICE_IN
-              : routingType === 'GATEWAY_JUICE_OUT'
-                ? Routing.GATEWAY_JUICE_OUT
-                : Routing.GATEWAY_JUSD;
+            const gatewayRouting =
+              routingType === "GATEWAY_JUICE_IN"
+                ? Routing.GATEWAY_JUICE_IN
+                : routingType === "GATEWAY_JUICE_OUT"
+                  ? Routing.GATEWAY_JUICE_OUT
+                  : Routing.GATEWAY_JUSD;
 
             const gatewayResponse: QuoteResponse = {
               requestId: quoteId,
@@ -472,7 +557,8 @@ export function createQuoteHandler(
               permitData: null,
               quote: {
                 chainId: chainId,
-                swapper: body.swapper || '0x0000000000000000000000000000000000000000',
+                swapper:
+                  body.swapper || "0x0000000000000000000000000000000000000000",
                 input: {
                   amount: body.amount,
                   token: tokenIn,
@@ -480,14 +566,17 @@ export function createQuoteHandler(
                 output: {
                   amount: userOutputAmount,
                   token: tokenOut,
-                  recipient: body.swapper || '0x0000000000000000000000000000000000000000',
+                  recipient:
+                    body.swapper ||
+                    "0x0000000000000000000000000000000000000000",
                 },
-                tradeType: body.type || 'EXACT_INPUT',
+                tradeType: body.type || "EXACT_INPUT",
                 amount: body.amount,
                 amountDecimals: inputAmountDecimals,
                 quote: userOutputAmount,
                 quoteDecimals: outputAmountDecimals,
-                quoteGasAdjusted: internalRoute.quoteGasAdjusted.quotient.toString(),
+                quoteGasAdjusted:
+                  internalRoute.quoteGasAdjusted.quotient.toString(),
                 gasUseEstimate: internalRoute.estimatedGasUsed.toString(),
                 gasUseEstimateUSD: internalRoute.estimatedGasUsedUSD.toExact(),
                 gasPriceWei: internalRoute.gasPriceWei.toString(),
@@ -507,31 +596,42 @@ export function createQuoteHandler(
               quoteCache.set(body, gatewayResponse);
             }
 
-            res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
-            log.debug({
-              routingType,
-              userInput: body.amount,
-              userOutput: userOutputAmount,
-              responseTime: Date.now() - startTime,
-            }, 'Gateway quote generated');
+            res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
+            log.debug(
+              {
+                routingType,
+                userInput: body.amount,
+                userOutput: userOutputAmount,
+                responseTime: Date.now() - startTime,
+              },
+              "Gateway quote generated",
+            );
 
             res.json(gatewayResponse);
             return;
-
           } catch (error) {
             // Bridge liquidity error - fall through to classic V3 routing
             // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
             if (error instanceof BridgeLiquidityError) {
               log.info(
-                { error: error.message, available: error.available, required: error.required, tokenIn, tokenOut },
-                'Bridge liquidity insufficient, falling through to classic routing'
+                {
+                  error: error.message,
+                  available: error.available,
+                  required: error.required,
+                  tokenIn,
+                  tokenOut,
+                },
+                "Bridge liquidity insufficient, falling through to classic routing",
               );
               // Don't return - fall through to classic routing below
             } else {
-              log.error({ error, routingType }, 'Gateway quote failed');
+              log.error({ error, routingType }, "Gateway quote failed");
               res.status(500).json({
-                error: 'GATEWAY_ERROR',
-                detail: error instanceof Error ? error.message : 'Gateway routing failed',
+                error: "GATEWAY_ERROR",
+                detail:
+                  error instanceof Error
+                    ? error.message
+                    : "Gateway routing failed",
               });
               return;
             }
@@ -543,9 +643,9 @@ export function createQuoteHandler(
       let protocols: Protocol[] | undefined = undefined;
       if (body.protocols) {
         protocols = body.protocols
-          .map(p => p.toUpperCase())
-          .filter(p => p === 'V2' || p === 'V3')
-          .map(p => p === 'V2' ? Protocol.V2 : Protocol.V3);
+          .map((p) => p.toUpperCase())
+          .filter((p) => p === "V2" || p === "V3")
+          .map((p) => (p === "V2" ? Protocol.V2 : Protocol.V3));
       }
 
       // For launchpad tokens: use V2 ONLY (no V3)
@@ -555,7 +655,7 @@ export function createQuoteHandler(
         protocols = [Protocol.V2];
         log.debug(
           { tokenIn, tokenOut, protocols },
-          'Launchpad token: forcing V2-only routing'
+          "Launchpad token: forcing V2-only routing",
         );
       }
 
@@ -571,7 +671,7 @@ export function createQuoteHandler(
         tokenOutName,
         amount: body.amount,
         chainId,
-        type: body.type === 'EXACT_OUTPUT' ? 'exactOut' : 'exactIn',
+        type: body.type === "EXACT_OUTPUT" ? "exactOut" : "exactIn",
         recipient: body.swapper,
         protocols,
         enableUniversalRouter: body.enableUniversalRouter,
@@ -579,12 +679,12 @@ export function createQuoteHandler(
 
       // Log RPC call statistics
       const rpcCallCount = rpcMonitor?.endRequest(requestId) || 0;
-      rpcMonitor?.logRequest(requestId, 'POST /v1/quote', rpcCallCount);
+      rpcMonitor?.logRequest(requestId, "POST /v1/quote", rpcCallCount);
 
       if (!route) {
         res.status(404).json({
-          error: 'NO_ROUTE',
-          detail: 'No route found',
+          error: "NO_ROUTE",
+          detail: "No route found",
         });
         return;
       }
@@ -599,8 +699,10 @@ export function createQuoteHandler(
       const quoteGasAdjustedDecimals = route.quoteGasAdjusted.toExact();
 
       // Calculate gas estimates in output token terms
-      const gasUseEstimateQuote = route.estimatedGasUsedQuoteToken.quotient.toString();
-      const gasUseEstimateQuoteDecimals = route.estimatedGasUsedQuoteToken.toExact();
+      const gasUseEstimateQuote =
+        route.estimatedGasUsedQuoteToken.quotient.toString();
+      const gasUseEstimateQuoteDecimals =
+        route.estimatedGasUsedQuoteToken.toExact();
 
       // Calculate price impact
       const priceImpact = calculatePriceImpact(route);
@@ -616,9 +718,15 @@ export function createQuoteHandler(
         // Each route has: route.pools (V3) or route.pairs (V2), route.tokenPath, amount, quote
         for (const subRoute of routes) {
           // Handle both V3 pools and V2 pairs
-          const pools = (subRoute.route as any)?.pools || (subRoute.route as any)?.pairs || [];
+          const pools =
+            (subRoute.route as any)?.pools ||
+            (subRoute.route as any)?.pairs ||
+            [];
           // V2 routes use 'path', V3 routes use 'tokenPath'
-          const tokenPath = (subRoute.route as any)?.path || (subRoute.route as any)?.tokenPath || [];
+          const tokenPath =
+            (subRoute.route as any)?.path ||
+            (subRoute.route as any)?.tokenPath ||
+            [];
           const isV2Route = !!(subRoute.route as any)?.pairs;
           const curRoute: any[] = [];
 
@@ -635,52 +743,54 @@ export function createQuoteHandler(
             // Calculate edge amounts for first and last pools
             let amountIn = undefined;
             if (i === 0) {
-              amountIn = body.type === 'EXACT_OUTPUT'
-                ? subRoute.quote.quotient.toString()
-                : subRoute.amount.quotient.toString();
+              amountIn =
+                body.type === "EXACT_OUTPUT"
+                  ? subRoute.quote.quotient.toString()
+                  : subRoute.amount.quotient.toString();
             }
 
             let amountOut = undefined;
             if (i === pools.length - 1) {
-              amountOut = body.type === 'EXACT_OUTPUT'
-                ? subRoute.amount.quotient.toString()
-                : subRoute.quote.quotient.toString();
+              amountOut =
+                body.type === "EXACT_OUTPUT"
+                  ? subRoute.amount.quotient.toString()
+                  : subRoute.quote.quotient.toString();
             }
 
             if (isV2Route) {
               // V2 Pair formatting - reserve0/reserve1 must include token objects
               curRoute.push({
-                type: 'v2-pool',
-                address: pool.liquidityToken?.address || 'unknown',
+                type: "v2-pool",
+                address: pool.liquidityToken?.address || "unknown",
                 tokenIn: {
                   chainId: tokenIn.chainId,
                   decimals: tokenIn.decimals.toString(),
                   address: tokenIn.wrapped?.address || tokenIn.address,
-                  symbol: tokenIn.symbol || 'TOKEN',
+                  symbol: tokenIn.symbol || "TOKEN",
                 },
                 tokenOut: {
                   chainId: tokenOut.chainId,
                   decimals: tokenOut.decimals.toString(),
                   address: tokenOut.wrapped?.address || tokenOut.address,
-                  symbol: tokenOut.symbol || 'TOKEN',
+                  symbol: tokenOut.symbol || "TOKEN",
                 },
                 reserve0: {
                   token: {
                     chainId: pool.token0.chainId,
                     address: pool.token0.address,
                     decimals: pool.token0.decimals.toString(),
-                    symbol: pool.token0.symbol || 'TOKEN',
+                    symbol: pool.token0.symbol || "TOKEN",
                   },
-                  quotient: pool.reserve0?.quotient?.toString() || '0',
+                  quotient: pool.reserve0?.quotient?.toString() || "0",
                 },
                 reserve1: {
                   token: {
                     chainId: pool.token1.chainId,
                     address: pool.token1.address,
                     decimals: pool.token1.decimals.toString(),
-                    symbol: pool.token1.symbol || 'TOKEN',
+                    symbol: pool.token1.symbol || "TOKEN",
                   },
-                  quotient: pool.reserve1?.quotient?.toString() || '0',
+                  quotient: pool.reserve1?.quotient?.toString() || "0",
                 },
                 amountIn,
                 amountOut,
@@ -688,29 +798,34 @@ export function createQuoteHandler(
             } else {
               // V3 Pool formatting
               // Calculate pool address using v3PoolProvider (matching develop branch)
-              const poolAddress = v3PoolProvider && pool.token0 && pool.token1 && pool.fee
-                ? v3PoolProvider.getPoolAddress(pool.token0, pool.token1, pool.fee).poolAddress
-                : 'unknown';
+              const poolAddress =
+                v3PoolProvider && pool.token0 && pool.token1 && pool.fee
+                  ? v3PoolProvider.getPoolAddress(
+                      pool.token0,
+                      pool.token1,
+                      pool.fee,
+                    ).poolAddress
+                  : "unknown";
 
               curRoute.push({
-                type: 'v3-pool',
+                type: "v3-pool",
                 address: poolAddress,
                 tokenIn: {
                   chainId: tokenIn.chainId,
                   decimals: tokenIn.decimals.toString(),
                   address: tokenIn.wrapped?.address || tokenIn.address,
-                  symbol: tokenIn.symbol || 'TOKEN',
+                  symbol: tokenIn.symbol || "TOKEN",
                 },
                 tokenOut: {
                   chainId: tokenOut.chainId,
                   decimals: tokenOut.decimals.toString(),
                   address: tokenOut.wrapped?.address || tokenOut.address,
-                  symbol: tokenOut.symbol || 'TOKEN',
+                  symbol: tokenOut.symbol || "TOKEN",
                 },
-                fee: pool.fee?.toString() || '3000',
-                liquidity: pool.liquidity?.toString() || '0',
-                sqrtRatioX96: pool.sqrtRatioX96?.toString() || '0',
-                tickCurrent: pool.tickCurrent?.toString() || '0',
+                fee: pool.fee?.toString() || "3000",
+                liquidity: pool.liquidity?.toString() || "0",
+                sqrtRatioX96: pool.sqrtRatioX96?.toString() || "0",
+                tickCurrent: pool.tickCurrent?.toString() || "0",
                 amountIn,
                 amountOut,
               });
@@ -737,7 +852,7 @@ export function createQuoteHandler(
         gasUseEstimateQuoteDecimals: gasUseEstimateQuoteDecimals,
         gasUseEstimate: route.estimatedGasUsed.toString(),
         gasUseEstimateUSD: route.estimatedGasUsedUSD.toExact(),
-        simulationStatus: route.simulationStatus || 'UNATTEMPTED',
+        simulationStatus: route.simulationStatus || "UNATTEMPTED",
         simulationError: false,
         gasPriceWei: route.gasPriceWei.toString(),
         route: routeResponse,
@@ -762,48 +877,64 @@ export function createQuoteHandler(
       }
 
       // Set response headers
-      res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
+      res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
 
-      log.debug({
-        responseTime: Date.now() - startTime,
-        quote: route.quote.toExact(),
-        gasEstimate: route.estimatedGasUsed.toString(),
-      }, 'Quote generated successfully');
+      log.debug(
+        {
+          responseTime: Date.now() - startTime,
+          quote: route.quote.toExact(),
+          gasEstimate: route.estimatedGasUsed.toString(),
+        },
+        "Quote generated successfully",
+      );
 
       res.json(response);
-
     } catch (error) {
       // Check if this is a ProviderGasError (route found but quote estimation failed)
-      const isProviderGasError = error instanceof Error &&
-        error.message.includes('ProviderGasError');
+      const isProviderGasError =
+        error instanceof Error && error.message.includes("ProviderGasError");
 
       if (isProviderGasError) {
-        log.warn({
-          error: error instanceof Error ? {
-            message: error.message,
-            name: error.name
-          } : error
-        }, 'Route found but quote estimation failed');
+        log.warn(
+          {
+            error:
+              error instanceof Error
+                ? {
+                    message: error.message,
+                    name: error.name,
+                  }
+                : error,
+          },
+          "Route found but quote estimation failed",
+        );
 
         res.status(404).json({
-          errorCode: 'QUOTE_UNAVAILABLE',
-          detail: 'Route found but unable to estimate quote. This may be due to insufficient liquidity or network issues. Please try again.',
+          errorCode: "QUOTE_UNAVAILABLE",
+          detail:
+            "Route found but unable to estimate quote. This may be due to insufficient liquidity or network issues. Please try again.",
         });
         return;
       }
 
       // For other errors, return 500
-      log.error({
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        } : error
-      }, 'Failed to generate quote');
+      log.error(
+        {
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+        },
+        "Failed to generate quote",
+      );
 
       res.status(500).json({
-        error: 'Internal server error',
-        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: "Internal server error",
+        detail:
+          error instanceof Error ? error.message : "Unknown error occurred",
       });
     }
   };

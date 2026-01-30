@@ -1,6 +1,6 @@
-import { Request, Response } from 'express';
-import Logger from 'bunyan';
-import { LightningService } from '../core/LightningService';
+import { Request, Response } from "express";
+import Logger from "bunyan";
+import { LightningService } from "../core/LightningService";
 
 interface LightningInvoiceRequestBody {
   amount: string;
@@ -35,36 +35,44 @@ interface LightningInvoiceRequestBody {
  *               $ref: '#/components/schemas/Error'
  */
 export function createLightningInvoiceHandler(logger: Logger) {
-  return async function handleLightningInvoice(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'lightning_invoice' });
+  return async function handleLightningInvoice(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "lightning_invoice" });
 
     try {
       const { amount, lnLikeAddress }: LightningInvoiceRequestBody = req.body;
 
       if (!amount || !lnLikeAddress) {
-        log.debug({ amount, lnLikeAddress }, 'Validation failed: missing required fields');
+        log.debug(
+          { amount, lnLikeAddress },
+          "Validation failed: missing required fields",
+        );
         res.status(400).json({
-          message: 'Missing required fields',
-          error: 'MissingRequiredFields'
+          message: "Missing required fields",
+          error: "MissingRequiredFields",
         });
         return;
       }
 
       const lightningService = new LightningService();
-      const invoice = await lightningService.createInvoice(amount, lnLikeAddress);
-      
+      const invoice = await lightningService.createInvoice(
+        amount,
+        lnLikeAddress,
+      );
+
       res.status(200).json({
         requestId: `lightning-invoice-${Date.now()}`,
-        invoice: invoice
+        invoice: invoice,
       });
     } catch (error: any) {
-      log.error({ error }, 'Error in handleLightningInvoice');
-      
+      log.error({ error }, "Error in handleLightningInvoice");
+
       res.status(500).json({
-        message: 'Internal server error',
-        error: error?.message
+        message: "Internal server error",
+        error: error?.message,
       });
     }
   };
 }
-

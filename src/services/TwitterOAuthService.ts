@@ -1,6 +1,6 @@
-import axios from 'axios';
-import { generatePKCE, generateState } from '../utils/pkce';
-import { prisma } from '../db/prisma';
+import axios from "axios";
+import { generatePKCE, generateState } from "../utils/pkce";
+import { prisma } from "../db/prisma";
 
 /**
  * Twitter OAuth 2.0 Service
@@ -33,12 +33,12 @@ export class TwitterOAuthService {
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
   // OAuth URLs
-  private readonly AUTHORIZE_URL = 'https://x.com/i/oauth2/authorize';
-  private readonly TOKEN_URL = 'https://api.x.com/2/oauth2/token';
-  private readonly USER_INFO_URL = 'https://api.x.com/2/users/me';
+  private readonly AUTHORIZE_URL = "https://x.com/i/oauth2/authorize";
+  private readonly TOKEN_URL = "https://api.x.com/2/oauth2/token";
+  private readonly USER_INFO_URL = "https://api.x.com/2/users/me";
 
   // OAuth scopes (requires tweet.read for /users/me endpoint)
-  private readonly SCOPES = 'users.read tweet.read';
+  private readonly SCOPES = "users.read tweet.read";
 
   // Session expiry time (10 minutes)
   private readonly SESSION_EXPIRY_MS = 10 * 60 * 1000;
@@ -48,7 +48,10 @@ export class TwitterOAuthService {
 
     // Clean up expired sessions every 5 minutes
     // Note: In production, consider using external cron job instead
-    this.cleanupIntervalId = setInterval(() => this.cleanupSessions(), 5 * 60 * 1000);
+    this.cleanupIntervalId = setInterval(
+      () => this.cleanupSessions(),
+      5 * 60 * 1000,
+    );
   }
 
   /**
@@ -65,7 +68,9 @@ export class TwitterOAuthService {
    * Generate authorization URL for user to visit
    * Stores session in database for persistence across restarts
    */
-  public async generateAuthUrl(walletAddress: string): Promise<{ authUrl: string; state: string }> {
+  public async generateAuthUrl(
+    walletAddress: string,
+  ): Promise<{ authUrl: string; state: string }> {
     // Generate PKCE parameters
     const { codeVerifier, codeChallenge } = generatePKCE();
     const state = generateState();
@@ -85,13 +90,13 @@ export class TwitterOAuthService {
 
     // Build authorization URL
     const params = new URLSearchParams({
-      response_type: 'code',
+      response_type: "code",
       client_id: this.config.clientId,
       redirect_uri: this.config.callbackUrl,
       scope: this.SCOPES,
       state,
       code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
+      code_challenge_method: "S256",
     });
 
     const authUrl = `${this.AUTHORIZE_URL}?${params.toString()}`;
@@ -105,7 +110,7 @@ export class TwitterOAuthService {
    */
   public async exchangeCodeForToken(
     code: string,
-    state: string
+    state: string,
   ): Promise<{ accessToken: string; walletAddress: string }> {
     // Retrieve session from database
     const session = await prisma.twitterOAuthSession.findUnique({
@@ -113,18 +118,20 @@ export class TwitterOAuthService {
     });
 
     if (!session) {
-      throw new Error('Invalid or expired state token');
+      throw new Error("Invalid or expired state token");
     }
 
     // Check if session has expired
     if (session.expiresAt < new Date()) {
       // Delete expired session
       await prisma.twitterOAuthSession.delete({ where: { state } });
-      throw new Error('Session has expired. Please try again.');
+      throw new Error("Session has expired. Please try again.");
     }
 
     // Basic auth credentials
-    const credentials = Buffer.from(`${this.config.clientId}:${this.config.clientSecret}`).toString('base64');
+    const credentials = Buffer.from(
+      `${this.config.clientId}:${this.config.clientSecret}`,
+    ).toString("base64");
 
     try {
       // Exchange code for token
@@ -132,16 +139,16 @@ export class TwitterOAuthService {
         this.TOKEN_URL,
         new URLSearchParams({
           code,
-          grant_type: 'authorization_code',
+          grant_type: "authorization_code",
           redirect_uri: this.config.callbackUrl,
           code_verifier: session.codeVerifier,
         }),
         {
           headers: {
             Authorization: `Basic ${credentials}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
+            "Content-Type": "application/x-www-form-urlencoded",
           },
-        }
+        },
       );
 
       // Clean up session from database (consumed)
@@ -153,12 +160,16 @@ export class TwitterOAuthService {
       };
     } catch (error) {
       // Clean up session on error
-      await prisma.twitterOAuthSession.delete({ where: { state } }).catch(() => {
-        // Ignore errors if already deleted
-      });
+      await prisma.twitterOAuthSession
+        .delete({ where: { state } })
+        .catch(() => {
+          // Ignore errors if already deleted
+        });
 
       if (axios.isAxiosError(error)) {
-        throw new Error(`Twitter token exchange failed: ${error.response?.data?.error_description || error.message}`);
+        throw new Error(
+          `Twitter token exchange failed: ${error.response?.data?.error_description || error.message}`,
+        );
       }
       throw error;
     }
@@ -169,16 +180,21 @@ export class TwitterOAuthService {
    */
   public async getUserInfo(accessToken: string): Promise<TwitterUserData> {
     try {
-      const response = await axios.get<{ data: TwitterUserData }>(this.USER_INFO_URL, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+      const response = await axios.get<{ data: TwitterUserData }>(
+        this.USER_INFO_URL,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         },
-      });
+      );
 
       return response.data.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(`Failed to get Twitter user info: ${error.response?.data?.error || error.message}`);
+        throw new Error(
+          `Failed to get Twitter user info: ${error.response?.data?.error || error.message}`,
+        );
       }
       throw error;
     }
@@ -189,10 +205,13 @@ export class TwitterOAuthService {
    */
   public async completeOAuthFlow(
     code: string,
-    state: string
+    state: string,
   ): Promise<{ walletAddress: string; twitterUser: TwitterUserData }> {
     // Exchange code for token
-    const { accessToken, walletAddress } = await this.exchangeCodeForToken(code, state);
+    const { accessToken, walletAddress } = await this.exchangeCodeForToken(
+      code,
+      state,
+    );
 
     // Get user info
     const twitterUser = await this.getUserInfo(accessToken);
@@ -218,10 +237,12 @@ export class TwitterOAuthService {
       });
 
       if (result.count > 0) {
-        console.log(`Cleaned up ${result.count} expired Twitter OAuth sessions`);
+        console.log(
+          `Cleaned up ${result.count} expired Twitter OAuth sessions`,
+        );
       }
     } catch (error) {
-      console.error('Error cleaning up Twitter OAuth sessions:', error);
+      console.error("Error cleaning up Twitter OAuth sessions:", error);
     }
   }
 }
@@ -235,13 +256,13 @@ let twitterOAuthService: TwitterOAuthService | null = null;
 export function getTwitterOAuthService(): TwitterOAuthService {
   if (!twitterOAuthService) {
     const config = {
-      clientId: process.env.TWITTER_CLIENT_ID || '',
-      clientSecret: process.env.TWITTER_CLIENT_SECRET || '',
-      callbackUrl: process.env.TWITTER_CALLBACK_URL || '',
+      clientId: process.env.TWITTER_CLIENT_ID || "",
+      clientSecret: process.env.TWITTER_CLIENT_SECRET || "",
+      callbackUrl: process.env.TWITTER_CALLBACK_URL || "",
     };
 
     if (!config.clientId || !config.clientSecret || !config.callbackUrl) {
-      throw new Error('Missing Twitter OAuth environment variables');
+      throw new Error("Missing Twitter OAuth environment variables");
     }
 
     twitterOAuthService = new TwitterOAuthService(config);

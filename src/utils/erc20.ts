@@ -1,13 +1,13 @@
-import { ADDRESS_ZERO } from '@juiceswapxyz/v3-sdk';
-import { WETH9 } from '@juiceswapxyz/sdk-core';
-import { ethers } from 'ethers';
-import Logger from 'bunyan';
+import { ADDRESS_ZERO } from "@juiceswapxyz/v3-sdk";
+import { WETH9 } from "@juiceswapxyz/sdk-core";
+import { ethers } from "ethers";
+import Logger from "bunyan";
 
 const ERC20ABI = [
-  'function approve(address spender, uint256 amount) returns (bool)',
-  'function allowance(address owner, address spender) returns (uint256)',
-  'function balanceOf(address owner) returns (uint256)',
-  'function decimals() returns (uint8)'
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) returns (uint256)",
+  "function balanceOf(address owner) returns (uint256)",
+  "function decimals() returns (uint8)",
 ];
 
 export const getTokenAddress = (token: string, chainId: number) => {
@@ -30,7 +30,7 @@ export const getApproveTxForToken = async (
   spender: string,
   provider: ethers.providers.JsonRpcProvider,
   chainId: number,
-  logger: Logger
+  logger: Logger,
 ): Promise<ApprovalTransaction | null> => {
   // 1. if token is ZERO_ADDRESS, return null (native tokens don't need approval)
   if (token === ADDRESS_ZERO) {
@@ -40,11 +40,14 @@ export const getApproveTxForToken = async (
   try {
     // Use direct call to avoid gas estimation issues
     const tokenInterface = new ethers.utils.Interface(ERC20ABI);
-    const callData = tokenInterface.encodeFunctionData('allowance', [walletAddress, spender]);
+    const callData = tokenInterface.encodeFunctionData("allowance", [
+      walletAddress,
+      spender,
+    ]);
 
     const result = await provider.call({
       to: token,
-      data: callData
+      data: callData,
     });
 
     const allowance = ethers.BigNumber.from(result);
@@ -53,7 +56,10 @@ export const getApproveTxForToken = async (
       return null; // Already approved
     }
   } catch (error) {
-    logger.warn({ error, token }, 'Error checking allowance - will return approval transaction');
+    logger.warn(
+      { error, token },
+      "Error checking allowance - will return approval transaction",
+    );
     // Continue to return approval transaction if we can't check allowance
   }
 
@@ -63,19 +69,25 @@ export const getApproveTxForToken = async (
   try {
     return {
       to: token,
-      value: '0x00',
+      value: "0x00",
       from: walletAddress,
-      data: tokenContract.interface.encodeFunctionData('approve', [spender, amount]),
-      gasLimit: '0xea60',
-      chainId
+      data: tokenContract.interface.encodeFunctionData("approve", [
+        spender,
+        amount,
+      ]),
+      gasLimit: "0xea60",
+      chainId,
     };
   } catch (error) {
-    logger.error({ error, token }, 'Error encoding approval transaction');
+    logger.error({ error, token }, "Error encoding approval transaction");
     throw error;
   }
 };
 
-export const fetchTokenDetails = async (token: string, provider: ethers.providers.JsonRpcProvider) => {
+export const fetchTokenDetails = async (
+  token: string,
+  provider: ethers.providers.JsonRpcProvider,
+) => {
   const tokenContract = new ethers.Contract(token, ERC20ABI, provider);
   const decimals = await tokenContract.decimals();
   return { decimals };

@@ -1,17 +1,17 @@
-import { ethers } from 'ethers';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import Logger from 'bunyan';
+import { ethers } from "ethers";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import Logger from "bunyan";
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
-} from '../config/contracts';
+} from "../config/contracts";
 
 /**
  * ABI for ERC4626 vault (svJUSD)
  */
 const ERC4626_ABI = [
-  'function convertToAssets(uint256 shares) view returns (uint256)',
-  'function convertToShares(uint256 assets) view returns (uint256)',
+  "function convertToAssets(uint256 shares) view returns (uint256)",
+  "function convertToShares(uint256 assets) view returns (uint256)",
 ];
 
 interface PriceCacheEntry {
@@ -51,13 +51,13 @@ export class SvJusdPriceService {
   private readonly CACHE_TTL_MS = 30_000;
 
   /** Default share price (1:1) used as fallback */
-  private readonly DEFAULT_SHARE_PRICE = ethers.utils.parseEther('1');
+  private readonly DEFAULT_SHARE_PRICE = ethers.utils.parseEther("1");
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
-    logger: Logger
+    logger: Logger,
   ) {
-    this.logger = logger.child({ service: 'SvJusdPriceService' });
+    this.logger = logger.child({ service: "SvJusdPriceService" });
 
     // Initialize contracts for chains with JuiceDollar integration
     for (const [chainId, provider] of providers) {
@@ -65,9 +65,9 @@ export class SvJusdPriceService {
       if (contracts && hasJuiceDollarIntegration(chainId)) {
         this.svJusdContracts.set(
           chainId,
-          new ethers.Contract(contracts.SV_JUSD, ERC4626_ABI, provider)
+          new ethers.Contract(contracts.SV_JUSD, ERC4626_ABI, provider),
         );
-        this.logger.info({ chainId }, 'svJUSD contract initialized');
+        this.logger.info({ chainId }, "svJUSD contract initialized");
       }
     }
   }
@@ -99,19 +99,25 @@ export class SvJusdPriceService {
       });
       return freshPrice;
     } catch (error) {
-      this.logger.error({ chainId, error }, 'Failed to fetch svJUSD share price');
+      this.logger.error(
+        { chainId, error },
+        "Failed to fetch svJUSD share price",
+      );
 
       // Fallback 1: Use stale cached value
       if (cached) {
         this.logger.warn(
           { chainId, cacheAge: now - cached.timestamp },
-          'Using stale svJUSD share price due to error'
+          "Using stale svJUSD share price due to error",
         );
         return cached.sharePrice;
       }
 
       // Fallback 2: Use default (1:1)
-      this.logger.warn({ chainId }, 'No cached price available, using default 1:1');
+      this.logger.warn(
+        { chainId },
+        "No cached price available, using default 1:1",
+      );
       return this.DEFAULT_SHARE_PRICE;
     }
   }
@@ -119,7 +125,9 @@ export class SvJusdPriceService {
   /**
    * Get share price info for API response
    */
-  async getSharePriceInfo(chainId: ChainId): Promise<SvJusdSharePriceInfo | null> {
+  async getSharePriceInfo(
+    chainId: ChainId,
+  ): Promise<SvJusdSharePriceInfo | null> {
     if (!hasJuiceDollarIntegration(chainId)) {
       return null;
     }
@@ -154,7 +162,9 @@ export class SvJusdPriceService {
 
     // svJUSD = JUSD * 1e18 / sharePrice
     const jusdBN = ethers.BigNumber.from(jusdAmount);
-    const svJusdShares = jusdBN.mul(ethers.utils.parseEther('1')).div(sharePrice);
+    const svJusdShares = jusdBN
+      .mul(ethers.utils.parseEther("1"))
+      .div(sharePrice);
 
     return svJusdShares.toString();
   }
@@ -171,7 +181,9 @@ export class SvJusdPriceService {
 
     // JUSD = svJUSD * sharePrice / 1e18
     const svJusdBN = ethers.BigNumber.from(svJusdAmount);
-    const jusdAmount = svJusdBN.mul(sharePrice).div(ethers.utils.parseEther('1'));
+    const jusdAmount = svJusdBN
+      .mul(sharePrice)
+      .div(ethers.utils.parseEther("1"));
 
     return jusdAmount.toString();
   }
@@ -194,12 +206,14 @@ export class SvJusdPriceService {
   adjustSqrtPriceForSvJusd(
     sqrtPriceX96: ethers.BigNumber,
     sharePrice: ethers.BigNumber,
-    isJusdToken0: boolean
+    isJusdToken0: boolean,
   ): ethers.BigNumber {
     // sqrtSharePrice = sqrt(sharePrice)
     // Using Newton-Raphson or integer sqrt approximation
-    const sqrtSharePrice = this.sqrt(sharePrice.mul(ethers.utils.parseEther('1')));
-    const one = ethers.utils.parseEther('1');
+    const sqrtSharePrice = this.sqrt(
+      sharePrice.mul(ethers.utils.parseEther("1")),
+    );
+    const one = ethers.utils.parseEther("1");
 
     if (isJusdToken0) {
       // token0 is JUSD → becomes svJUSD
@@ -249,19 +263,21 @@ export class SvJusdPriceService {
   /**
    * Fetch share price directly from the svJUSD contract
    */
-  private async fetchOnChainSharePrice(chainId: ChainId): Promise<ethers.BigNumber> {
+  private async fetchOnChainSharePrice(
+    chainId: ChainId,
+  ): Promise<ethers.BigNumber> {
     const contract = this.svJusdContracts.get(chainId);
     if (!contract) {
       throw new Error(`No svJUSD contract for chain ${chainId}`);
     }
 
     // convertToAssets(1e18) returns JUSD equivalent of 1 svJUSD
-    const oneShare = ethers.utils.parseEther('1');
+    const oneShare = ethers.utils.parseEther("1");
     const assets = await contract.convertToAssets(oneShare);
 
     this.logger.debug(
       { chainId, sharePrice: ethers.utils.formatEther(assets) },
-      'Fetched svJUSD share price'
+      "Fetched svJUSD share price",
     );
 
     return assets;

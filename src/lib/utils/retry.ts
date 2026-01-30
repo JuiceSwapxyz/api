@@ -7,15 +7,17 @@ export async function retryAsync<T>(
   fn: () => Promise<T>,
   maxAttempts: number = 2,
   delayMs: number = 1000,
-  operationName?: string
+  operationName?: string,
 ): Promise<T> {
   let lastError: Error;
-  const operation = operationName || 'operation';
+  const operation = operationName || "operation";
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       if (attempt > 1) {
-        console.log(`[Retry] Attempting ${operation} (attempt ${attempt}/${maxAttempts})`);
+        console.log(
+          `[Retry] Attempting ${operation} (attempt ${attempt}/${maxAttempts})`,
+        );
       }
       return await fn();
     } catch (error: any) {
@@ -25,11 +27,14 @@ export async function retryAsync<T>(
         console.warn(
           `[Retry] ${operation} failed on attempt ${attempt}/${maxAttempts}:`,
           error.message,
-          `- retrying in ${delayMs}ms`
+          `- retrying in ${delayMs}ms`,
         );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       } else {
-        console.error(`[Retry] ${operation} failed after ${maxAttempts} attempts:`, error.message);
+        console.error(
+          `[Retry] ${operation} failed after ${maxAttempts} attempts:`,
+          error.message,
+        );
       }
     }
   }

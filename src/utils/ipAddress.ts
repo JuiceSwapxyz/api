@@ -47,8 +47,10 @@ export function extractIpAddress(request: Request): string | undefined {
  * @param ipAddress - The IP address to hash
  * @returns SHA-256 hash of the IP address, or undefined if input is undefined or empty
  */
-export function hashIpAddress(ipAddress: string | undefined): string | undefined {
-  if (!ipAddress || ipAddress.trim() === '') {
+export function hashIpAddress(
+  ipAddress: string | undefined,
+): string | undefined {
+  if (!ipAddress || ipAddress.trim() === "") {
     return undefined;
   }
 

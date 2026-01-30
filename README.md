@@ -76,6 +76,7 @@ docker run -p 3000:3000 --env-file .env juiceswap-api
 This Node.js implementation achieves **full parity** with the AWS Lambda version:
 
 **✅ Complete Feature Set:**
+
 - ✅ Swap routing and quoting
 - ✅ Transaction building
 - ✅ Liquidity pool operations
@@ -213,10 +214,10 @@ spec:
   template:
     spec:
       containers:
-      - name: api
-        image: juiceswap-api:latest
-        ports:
-        - containerPort: 3000
+        - name: api
+          image: juiceswap-api:latest
+          ports:
+            - containerPort: 3000
 ```
 
 ## Troubleshooting

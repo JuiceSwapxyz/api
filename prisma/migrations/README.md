@@ -3,6 +3,7 @@
 ## Running Migrations
 
 ### Development
+
 ```bash
 # Apply pending migrations
 npx prisma migrate dev
@@ -12,6 +13,7 @@ npx prisma migrate dev --name your_migration_name
 ```
 
 ### Production
+
 ```bash
 # Apply migrations
 npx prisma migrate deploy
@@ -21,6 +23,7 @@ npx prisma migrate status
 ```
 
 ### Reset Database (Development Only)
+
 ```bash
 # WARNING: This will delete all data
 npx prisma migrate reset

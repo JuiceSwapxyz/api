@@ -1,7 +1,7 @@
-import { ethers } from 'ethers';
-import { prisma } from '../db/prisma';
-import { hashIpAddress } from '../utils/ipAddress';
-import Logger from 'bunyan';
+import { ethers } from "ethers";
+import { prisma } from "../db/prisma";
+import { hashIpAddress } from "../utils/ipAddress";
+import Logger from "bunyan";
 
 /**
  * Tracks user wallet addresses and hashed IP addresses in the User table.
@@ -11,7 +11,7 @@ import Logger from 'bunyan';
 export async function trackUser(
   address: string | undefined,
   ipAddress: string | undefined,
-  logger: Logger
+  logger: Logger,
 ): Promise<void> {
   try {
     if (!address) {
@@ -22,7 +22,10 @@ export async function trackUser(
     try {
       checksummedAddress = ethers.utils.getAddress(address);
     } catch (error) {
-      logger.debug({ address, error }, 'Invalid address format for user tracking');
+      logger.debug(
+        { address, error },
+        "Invalid address format for user tracking",
+      );
       return;
     }
 
@@ -39,20 +42,26 @@ export async function trackUser(
       DO UPDATE SET
         "ipAddressHash" = COALESCE("User"."ipAddressHash", EXCLUDED."ipAddressHash"),
         "updatedAt" = NOW()
-    `
+    `;
 
-    logger.debug({ address: checksummedAddress, ipHashed: !!ipAddressHash }, 'User tracked successfully');
+    logger.debug(
+      { address: checksummedAddress, ipHashed: !!ipAddressHash },
+      "User tracked successfully",
+    );
   } catch (error) {
     logger.warn(
       {
         address,
         ipHashed: !!ipAddress,
-        error: error instanceof Error ? {
-          message: error.message,
-          name: error.name,
-        } : error,
+        error:
+          error instanceof Error
+            ? {
+                message: error.message,
+                name: error.name,
+              }
+            : error,
       },
-      'Failed to track user (non-critical)'
+      "Failed to track user (non-critical)",
     );
   }
 }

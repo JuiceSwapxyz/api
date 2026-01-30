@@ -1,10 +1,10 @@
-import { Request, Response } from 'express';
-import Logger from 'bunyan';
-import { getPonderClient } from '../services/PonderClient';
-import { erc20Abi, formatUnits, getAddress } from 'viem';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import { providers, utils } from 'ethers';
-import { UniswapMulticallProvider } from '@juiceswapxyz/smart-order-router';
+import { Request, Response } from "express";
+import Logger from "bunyan";
+import { getPonderClient } from "../services/PonderClient";
+import { erc20Abi, formatUnits, getAddress } from "viem";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import { providers, utils } from "ethers";
+import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 
 export interface PoolDetailsRequestBody {
   address: string;
@@ -74,11 +74,11 @@ export interface PoolDetailsResponse {
 }
 
 const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
-  1: 'ETHEREUM',
-  11155111: 'ETHEREUM_SEPOLIA',
-  137: 'POLYGON',
-  5115: 'CITREA_TESTNET',
-  4114: 'CITREA_MAINNET',
+  1: "ETHEREUM",
+  11155111: "ETHEREUM_SEPOLIA",
+  137: "POLYGON",
+  5115: "CITREA_TESTNET",
+  4114: "CITREA_MAINNET",
 };
 
 /**
@@ -108,21 +108,31 @@ const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-export function createPoolDetailsHandler(providers: Map<ChainId, providers.StaticJsonRpcProvider>, logger: Logger) {
-  return async function handlePoolDetails(req: Request, res: Response): Promise<void> {
+export function createPoolDetailsHandler(
+  providers: Map<ChainId, providers.StaticJsonRpcProvider>,
+  logger: Logger,
+) {
+  return async function handlePoolDetails(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
     const startTime = Date.now();
-    const requestId = req.headers['x-request-id'] as string || `pool-details-${Date.now()}`;
+    const requestId =
+      (req.headers["x-request-id"] as string) || `pool-details-${Date.now()}`;
 
-    const log = logger.child({ requestId, endpoint: 'poolDetails' });
+    const log = logger.child({ requestId, endpoint: "poolDetails" });
 
     try {
       const body: PoolDetailsRequestBody = req.body;
       const chainId = body.chainId as ChainId;
 
-      log.debug({
-        address: body.address,
-        chainId: body.chainId,
-      }, 'Pool details request received');
+      log.debug(
+        {
+          address: body.address,
+          chainId: body.chainId,
+        },
+        "Pool details request received",
+      );
 
       const ponderClient = getPonderClient(logger);
 
@@ -153,7 +163,7 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
         `,
         {
           id: getAddress(body.address),
-        }
+        },
       );
 
       const tokenInfo = await ponderClient.query(
@@ -178,7 +188,7 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
         {
           token0Id: getAddress(poolGeneralInfo.pool.token0).toLowerCase(),
           token1Id: getAddress(poolGeneralInfo.pool.token1).toLowerCase(),
-        }
+        },
       );
 
       const provider = providers.get(chainId);
@@ -189,17 +199,21 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
       const multicallProvider = new UniswapMulticallProvider(
         chainId,
         provider,
-        375000
+        375000,
       );
 
       const erc20Interface = new utils.Interface(erc20Abi);
-      
-      const { results } = await multicallProvider.callSameFunctionOnMultipleContracts({
-        addresses: [getAddress(poolGeneralInfo.pool.token0), getAddress(poolGeneralInfo.pool.token1)],
-        contractInterface: erc20Interface,
-        functionName: 'balanceOf',
-        functionParams: [getAddress(body.address)],
-      })
+
+      const { results } =
+        await multicallProvider.callSameFunctionOnMultipleContracts({
+          addresses: [
+            getAddress(poolGeneralInfo.pool.token0),
+            getAddress(poolGeneralInfo.pool.token1),
+          ],
+          contractInterface: erc20Interface,
+          functionName: "balanceOf",
+          functionParams: [getAddress(body.address)],
+        });
 
       const [token0Balance, token1Balance] = results.map((result) => {
         if (result.success) {
@@ -209,7 +223,10 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
       });
 
       const todaysTimestamp = Math.floor(Date.now() / 1000 / 86400) * 86400;
-      const volumen24h = todaysTimestamp < poolGeneralInfo.poolStats.items?.[0]?.timestamp ? poolGeneralInfo.poolStats.items?.[0]?.volume0 : 0;
+      const volumen24h =
+        todaysTimestamp < poolGeneralInfo.poolStats.items?.[0]?.timestamp
+          ? poolGeneralInfo.poolStats.items?.[0]?.volume0
+          : 0;
 
       const response: PoolDetailsResponse = {
         data: {
@@ -235,7 +252,7 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
                 name: tokenInfo.token0.name,
                 safetyLevel: "VERIFIED",
                 markets: [],
-                logo: null
+                logo: null,
               },
               feeData: null,
               protectionInfo: null,
@@ -244,10 +261,12 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
                 price: {
                   id: tokenInfo.token0.id,
                   value: 0,
-                }
-              }
+                },
+              },
             },
-            token0Supply: parseFloat(formatUnits(token0Balance, tokenInfo.token0.decimals)),
+            token0Supply: parseFloat(
+              formatUnits(token0Balance, tokenInfo.token0.decimals),
+            ),
             token1: {
               id: tokenInfo.token1.id,
               address: tokenInfo.token1.address,
@@ -265,7 +284,7 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
                 name: tokenInfo.token1.name,
                 safetyLevel: "VERIFIED",
                 markets: [],
-                logo: null
+                logo: null,
               },
               feeData: null,
               protectionInfo: null,
@@ -274,10 +293,12 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
                 price: {
                   id: tokenInfo.token1.id,
                   value: 0,
-                }
-              }
+                },
+              },
             },
-            token1Supply: parseFloat(formatUnits(token1Balance, tokenInfo.token1.decimals)),
+            token1Supply: parseFloat(
+              formatUnits(token1Balance, tokenInfo.token1.decimals),
+            ),
             txCount: poolGeneralInfo.poolStat?.txCount || 0,
             volume24h: {
               value: volumen24h || 0,
@@ -288,31 +309,40 @@ export function createPoolDetailsHandler(providers: Map<ChainId, providers.Stati
             },
             totalLiquidityPercentChange24h: {
               value: 0,
-            }
-          }
-        }
+            },
+          },
+        },
       };
 
-      res.setHeader('X-Response-Time', `${Date.now() - startTime}ms`);
+      res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
 
-      log.debug({
-        responseTime: Date.now() - startTime,
-      }, 'Pool details retrieved successfully');
+      log.debug(
+        {
+          responseTime: Date.now() - startTime,
+        },
+        "Pool details retrieved successfully",
+      );
 
       res.json(response);
-
     } catch (error) {
-      log.error({
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        } : error
-      }, 'Failed to get pool details');
+      log.error(
+        {
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+        },
+        "Failed to get pool details",
+      );
 
       res.status(500).json({
-        error: 'Internal server error',
-        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: "Internal server error",
+        detail:
+          error instanceof Error ? error.message : "Unknown error occurred",
       });
     }
   };

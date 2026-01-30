@@ -1,7 +1,7 @@
-import { Request, Response } from 'express';
-import { utils } from 'ethers';
-import Logger from 'bunyan';
-import { getPonderClient } from '../services/PonderClient';
+import { Request, Response } from "express";
+import { utils } from "ethers";
+import Logger from "bunyan";
+import { getPonderClient } from "../services/PonderClient";
 
 /**
  * Launchpad API endpoints - proxy to Ponder's launchpad endpoints
@@ -73,32 +73,36 @@ import { getPonderClient } from '../services/PonderClient';
  *                       type: integer
  */
 export function createLaunchpadTokensHandler(logger: Logger) {
-  return async function handleLaunchpadTokens(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/tokens' });
+  return async function handleLaunchpadTokens(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/tokens" });
 
     try {
       // Build query string from validated params
       const { filter, page, limit, sort, chainId } = req.query;
       const params = new URLSearchParams();
-      if (filter) params.append('filter', String(filter));
-      if (page !== undefined) params.append('page', String(page));
-      if (limit !== undefined) params.append('limit', String(limit));
-      if (sort) params.append('sort', String(sort));
-      if (chainId) params.append('chainId', String(chainId));
+      if (filter) params.append("filter", String(filter));
+      if (page !== undefined) params.append("page", String(page));
+      if (limit !== undefined) params.append("limit", String(limit));
+      if (sort) params.append("sort", String(sort));
+      if (chainId) params.append("chainId", String(chainId));
 
       const queryString = params.toString();
-      const path = `/launchpad/tokens${queryString ? `?${queryString}` : ''}`;
+      const path = `/launchpad/tokens${queryString ? `?${queryString}` : ""}`;
 
-      log.debug({ path }, 'Fetching launchpad tokens from Ponder');
+      log.debug({ path }, "Fetching launchpad tokens from Ponder");
 
       const ponderClient = getPonderClient(logger);
       const response = await ponderClient.get(path);
 
       res.status(200).json(response.data);
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error fetching launchpad tokens');
+      log.error({ error: error.message }, "Error fetching launchpad tokens");
       res.status(error.response?.status || 500).json({
-        error: error.response?.data?.error || 'Failed to fetch launchpad tokens',
+        error:
+          error.response?.data?.error || "Failed to fetch launchpad tokens",
       });
     }
   };
@@ -134,31 +138,34 @@ export function createLaunchpadTokensHandler(logger: Logger) {
  *         description: Token not found
  */
 export function createLaunchpadTokenHandler(logger: Logger) {
-  return async function handleLaunchpadToken(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/token' });
+  return async function handleLaunchpadToken(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/token" });
 
     try {
       const { address } = req.params;
 
       // Validate address format
       if (!address || !utils.isAddress(address)) {
-        log.debug({ address }, 'Validation failed: invalid address format');
-        res.status(400).json({ error: 'Invalid Ethereum address format' });
+        log.debug({ address }, "Validation failed: invalid address format");
+        res.status(400).json({ error: "Invalid Ethereum address format" });
         return;
       }
 
       const path = `/launchpad/token/${address}`;
-      log.debug({ path }, 'Fetching launchpad token from Ponder');
+      log.debug({ path }, "Fetching launchpad token from Ponder");
 
       const ponderClient = getPonderClient(logger);
       const response = await ponderClient.get(path);
 
       res.status(200).json(response.data);
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error fetching launchpad token');
+      log.error({ error: error.message }, "Error fetching launchpad token");
       const status = error.response?.status || 500;
       res.status(status).json({
-        error: error.response?.data?.error || 'Failed to fetch launchpad token',
+        error: error.response?.data?.error || "Failed to fetch launchpad token",
       });
     }
   };
@@ -207,38 +214,44 @@ export function createLaunchpadTokenHandler(logger: Logger) {
  *         description: Invalid address format
  */
 export function createLaunchpadTokenTradesHandler(logger: Logger) {
-  return async function handleLaunchpadTokenTrades(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/token/trades' });
+  return async function handleLaunchpadTokenTrades(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/token/trades" });
 
     try {
       const { address } = req.params;
 
       // Validate address format
       if (!address || !utils.isAddress(address)) {
-        log.debug({ address }, 'Validation failed: invalid address format');
-        res.status(400).json({ error: 'Invalid Ethereum address format' });
+        log.debug({ address }, "Validation failed: invalid address format");
+        res.status(400).json({ error: "Invalid Ethereum address format" });
         return;
       }
 
       // Build query string from validated params
       const { limit, page } = req.query;
       const params = new URLSearchParams();
-      if (limit !== undefined) params.append('limit', String(limit));
-      if (page !== undefined) params.append('page', String(page));
+      if (limit !== undefined) params.append("limit", String(limit));
+      if (page !== undefined) params.append("page", String(page));
 
       const queryString = params.toString();
-      const path = `/launchpad/token/${address}/trades${queryString ? `?${queryString}` : ''}`;
+      const path = `/launchpad/token/${address}/trades${queryString ? `?${queryString}` : ""}`;
 
-      log.debug({ path }, 'Fetching launchpad token trades from Ponder');
+      log.debug({ path }, "Fetching launchpad token trades from Ponder");
 
       const ponderClient = getPonderClient(logger);
       const response = await ponderClient.get(path);
 
       res.status(200).json(response.data);
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error fetching launchpad token trades');
+      log.error(
+        { error: error.message },
+        "Error fetching launchpad token trades",
+      );
       res.status(error.response?.status || 500).json({
-        error: error.response?.data?.error || 'Failed to fetch token trades',
+        error: error.response?.data?.error || "Failed to fetch token trades",
       });
     }
   };
@@ -285,27 +298,30 @@ export function createLaunchpadTokenTradesHandler(logger: Logger) {
  *                   description: Total trading volume in base asset (wei)
  */
 export function createLaunchpadStatsHandler(logger: Logger) {
-  return async function handleLaunchpadStats(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/stats' });
+  return async function handleLaunchpadStats(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/stats" });
 
     try {
       // Build query string with optional chainId
       const { chainId } = req.query;
       const params = new URLSearchParams();
-      if (chainId) params.append('chainId', String(chainId));
+      if (chainId) params.append("chainId", String(chainId));
 
       const queryString = params.toString();
-      const path = `/launchpad/stats${queryString ? `?${queryString}` : ''}`;
-      log.debug({ path }, 'Fetching launchpad stats from Ponder');
+      const path = `/launchpad/stats${queryString ? `?${queryString}` : ""}`;
+      log.debug({ path }, "Fetching launchpad stats from Ponder");
 
       const ponderClient = getPonderClient(logger);
       const response = await ponderClient.get(path);
 
       res.status(200).json(response.data);
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error fetching launchpad stats');
+      log.error({ error: error.message }, "Error fetching launchpad stats");
       res.status(error.response?.status || 500).json({
-        error: error.response?.data?.error || 'Failed to fetch launchpad stats',
+        error: error.response?.data?.error || "Failed to fetch launchpad stats",
       });
     }
   };
@@ -352,29 +368,35 @@ export function createLaunchpadStatsHandler(logger: Logger) {
  *                             type: string
  */
 export function createLaunchpadRecentTradesHandler(logger: Logger) {
-  return async function handleLaunchpadRecentTrades(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'launchpad/recent-trades' });
+  return async function handleLaunchpadRecentTrades(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "launchpad/recent-trades" });
 
     try {
       // Build query string from validated params
       const { limit, chainId } = req.query;
       const params = new URLSearchParams();
-      if (limit !== undefined) params.append('limit', String(limit));
-      if (chainId) params.append('chainId', String(chainId));
+      if (limit !== undefined) params.append("limit", String(limit));
+      if (chainId) params.append("chainId", String(chainId));
 
       const queryString = params.toString();
-      const path = `/launchpad/recent-trades${queryString ? `?${queryString}` : ''}`;
+      const path = `/launchpad/recent-trades${queryString ? `?${queryString}` : ""}`;
 
-      log.debug({ path }, 'Fetching recent launchpad trades from Ponder');
+      log.debug({ path }, "Fetching recent launchpad trades from Ponder");
 
       const ponderClient = getPonderClient(logger);
       const response = await ponderClient.get(path);
 
       res.status(200).json(response.data);
     } catch (error: any) {
-      log.error({ error: error.message }, 'Error fetching recent launchpad trades');
+      log.error(
+        { error: error.message },
+        "Error fetching recent launchpad trades",
+      );
       res.status(error.response?.status || 500).json({
-        error: error.response?.data?.error || 'Failed to fetch recent trades',
+        error: error.response?.data?.error || "Failed to fetch recent trades",
       });
     }
   };

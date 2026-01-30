@@ -1,7 +1,7 @@
-import { log } from '@juiceswapxyz/smart-order-router';
-import { getPonderClient } from '../../../services/PonderClient';
-import Logger from 'bunyan';
-import { ChainId } from '@juiceswapxyz/sdk-core';
+import { log } from "@juiceswapxyz/smart-order-router";
+import { getPonderClient } from "../../../services/PonderClient";
+import Logger from "bunyan";
+import { ChainId } from "@juiceswapxyz/sdk-core";
 
 export interface HttpTokenResponse {
   tokens: {
@@ -14,8 +14,8 @@ export interface HttpTokenResponse {
 
 // Convert smart-order-router log to bunyan logger for PonderClient
 const bunyanLogger = Logger.createLogger({
-  name: 'juiceswap-token-list',
-  level: 'info',
+  name: "juiceswap-token-list",
+  level: "info",
 });
 
 export async function getJuiceswapLatestTokens(chainId: ChainId) {
@@ -39,14 +39,24 @@ export async function getJuiceswapLatestTokens(chainId: ChainId) {
         where: {
           chainId: chainId,
         },
-      }
+      },
     );
 
-    log.debug(`Got juiceswap latest tokens with ${response.tokens.items.length} tokens`);
-    return response.tokens.items.map((token: { address: string; chainId: number; decimals: number; name: string; symbol: string }) => ({
-      ...token,
-      logoURI: '',
-    }));
+    log.debug(
+      `Got juiceswap latest tokens with ${response.tokens.items.length} tokens`,
+    );
+    return response.tokens.items.map(
+      (token: {
+        address: string;
+        chainId: number;
+        decimals: number;
+        name: string;
+        symbol: string;
+      }) => ({
+        ...token,
+        logoURI: "",
+      }),
+    );
   } catch (error) {
     log.error({ error }, `Error getting juiceswap latest tokens`);
     return [];
