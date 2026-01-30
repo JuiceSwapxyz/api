@@ -1,10 +1,10 @@
-import { Request, Response } from 'express';
-import { providers, utils } from 'ethers';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import Logger from 'bunyan';
-import { BalanceService } from '../services/BalanceService';
-import { NftService } from '../services/NftService';
-import { portfolioCache } from '../cache/portfolioCache';
+import { Request, Response } from "express";
+import { providers, utils } from "ethers";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import Logger from "bunyan";
+import { BalanceService } from "../services/BalanceService";
+import { NftService } from "../services/NftService";
+import { portfolioCache } from "../cache/portfolioCache";
 
 /**
  * @swagger
@@ -112,39 +112,45 @@ import { portfolioCache } from '../cache/portfolioCache';
  */
 export function createPortfolioHandler(
   providers: Map<ChainId, providers.StaticJsonRpcProvider>,
-  logger: Logger
+  logger: Logger,
 ) {
-  return async function handlePortfolio(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'portfolio' });
+  return async function handlePortfolio(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "portfolio" });
 
     try {
       const { address } = req.params;
       // Query params are validated and transformed by PortfolioQuerySchema middleware
-      const chainId = (req.query.chainId as unknown) as number;
+      const chainId = req.query.chainId as unknown as number;
 
       // Validate address parameter
       if (!address) {
-        log.debug('Validation failed: missing address parameter');
-        res.status(400).json({ message: 'Missing address parameter' });
+        log.debug("Validation failed: missing address parameter");
+        res.status(400).json({ message: "Missing address parameter" });
         return;
       }
 
       // Validate address format
       if (!utils.isAddress(address)) {
-        log.debug({ address }, 'Validation failed: invalid address format');
-        res.status(400).json({ message: 'Invalid Ethereum address format' });
+        log.debug({ address }, "Validation failed: invalid address format");
+        res.status(400).json({ message: "Invalid Ethereum address format" });
         return;
       }
 
       // Normalize address to lowercase for consistent caching
       const normalizedAddress = address.toLowerCase();
 
-      log.debug({ address: normalizedAddress, chainId }, 'Fetching portfolio');
+      log.debug({ address: normalizedAddress, chainId }, "Fetching portfolio");
 
       // Check cache first
       const cached = portfolioCache.get(chainId, normalizedAddress);
       if (cached) {
-        log.debug({ address: normalizedAddress, chainId }, 'Returning cached portfolio');
+        log.debug(
+          { address: normalizedAddress, chainId },
+          "Returning cached portfolio",
+        );
         res.status(200).json(cached);
         return;
       }
@@ -152,7 +158,7 @@ export function createPortfolioHandler(
       // Get provider for the chain
       const provider = providers.get(chainId);
       if (!provider) {
-        log.warn({ chainId }, 'Provider not found for chain');
+        log.warn({ chainId }, "Provider not found for chain");
         res.status(400).json({ message: `Chain ID ${chainId} not supported` });
         return;
       }
@@ -179,11 +185,11 @@ export function createPortfolioHandler(
           balanceCount: portfolio.portfolio.balances.length,
           nftCount: portfolio.portfolio.nfts.length,
         },
-        'Successfully returned portfolio'
+        "Successfully returned portfolio",
       );
     } catch (error: any) {
-      log.error({ error }, 'Error in handlePortfolio');
-      res.status(500).json({ message: 'Internal server error' });
+      log.error({ error }, "Error in handlePortfolio");
+      res.status(500).json({ message: "Internal server error" });
     }
   };
 }

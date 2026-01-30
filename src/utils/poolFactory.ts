@@ -1,7 +1,7 @@
-import { computePoolAddress, Pool } from '@juiceswapxyz/v3-sdk';
-import { CHAIN_TO_ADDRESSES_MAP, Token } from '@juiceswapxyz/sdk-core';
-import { ethers } from 'ethers';
-import Logger from 'bunyan';
+import { computePoolAddress, Pool } from "@juiceswapxyz/v3-sdk";
+import { CHAIN_TO_ADDRESSES_MAP, Token } from "@juiceswapxyz/sdk-core";
+import { ethers } from "ethers";
+import Logger from "bunyan";
 
 const getPoolInstanceFromOnchainData = async (
   token0: Token,
@@ -9,13 +9,14 @@ const getPoolInstanceFromOnchainData = async (
   fee: number,
   chainId: number,
   provider: any,
-  log?: Logger
+  log?: Logger,
 ) => {
   try {
     // Calculate pool address
-    const chainAddresses = CHAIN_TO_ADDRESSES_MAP[chainId as keyof typeof CHAIN_TO_ADDRESSES_MAP];
+    const chainAddresses =
+      CHAIN_TO_ADDRESSES_MAP[chainId as keyof typeof CHAIN_TO_ADDRESSES_MAP];
     if (!chainAddresses?.v3CoreFactoryAddress) {
-      log?.warn({ chainId }, 'No v3CoreFactoryAddress configured for chain');
+      log?.warn({ chainId }, "No v3CoreFactoryAddress configured for chain");
       return null;
     }
 
@@ -27,43 +28,59 @@ const getPoolInstanceFromOnchainData = async (
       chainId: chainId,
     });
 
-    log?.debug({
-      poolAddress,
-      token0: token0.address,
-      token1: token1.address,
-      fee,
-      chainId,
-      factory: chainAddresses.v3CoreFactoryAddress
-    }, 'Computed pool address for on-chain lookup');
+    log?.debug(
+      {
+        poolAddress,
+        token0: token0.address,
+        token1: token1.address,
+        fee,
+        chainId,
+        factory: chainAddresses.v3CoreFactoryAddress,
+      },
+      "Computed pool address for on-chain lookup",
+    );
 
     const poolContract = new ethers.Contract(
       poolAddress,
       [
-        'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)'
+        "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
       ],
-      provider
+      provider,
     );
 
     const slot0 = await poolContract.slot0();
     const currentSqrtPriceX96 = slot0.sqrtPriceX96;
     const currentTick = slot0.tick;
 
-    log?.debug({
-      poolAddress,
-      tick: currentTick,
-      sqrtPriceX96: currentSqrtPriceX96.toString()
-    }, 'Successfully fetched on-chain pool data');
+    log?.debug(
+      {
+        poolAddress,
+        tick: currentTick,
+        sqrtPriceX96: currentSqrtPriceX96.toString(),
+      },
+      "Successfully fetched on-chain pool data",
+    );
 
-    return new Pool(token0, token1, fee, currentSqrtPriceX96.toString(), '0', currentTick);
+    return new Pool(
+      token0,
+      token1,
+      fee,
+      currentSqrtPriceX96.toString(),
+      "0",
+      currentTick,
+    );
   } catch (e: any) {
-    log?.error({
-      error: e.message,
-      stack: e.stack,
-      chainId,
-      token0: token0.address,
-      token1: token1.address,
-      fee
-    }, 'Failed to fetch pool instance from on-chain data');
+    log?.error(
+      {
+        error: e.message,
+        stack: e.stack,
+        chainId,
+        token0: token0.address,
+        token1: token1.address,
+        fee,
+      },
+      "Failed to fetch pool instance from on-chain data",
+    );
     return null;
   }
 };
@@ -86,14 +103,28 @@ export const getPoolInstance = ({
   fee,
   chainId,
   sqrtPriceX96,
-  liquidity = '0',
+  liquidity = "0",
   tickCurrent,
   provider,
-  log
+  log,
 }: GetPoolInstanceParams) => {
-  if (token0 && token1 && fee && sqrtPriceX96 !== undefined && liquidity !== undefined && tickCurrent !== undefined ) {
+  if (
+    token0 &&
+    token1 &&
+    fee &&
+    sqrtPriceX96 !== undefined &&
+    liquidity !== undefined &&
+    tickCurrent !== undefined
+  ) {
     return new Pool(token0, token1, fee, sqrtPriceX96, liquidity, tickCurrent);
   }
 
-  return getPoolInstanceFromOnchainData(token0, token1, fee, chainId, provider, log);
+  return getPoolInstanceFromOnchainData(
+    token0,
+    token1,
+    fee,
+    chainId,
+    provider,
+    log,
+  );
 };

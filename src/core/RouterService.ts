@@ -16,8 +16,8 @@ import {
   ITokenPropertiesProvider,
   TokenPropertiesResult,
   setGlobalLogger,
-} from '@juiceswapxyz/smart-order-router';
-import NodeCache from 'node-cache';
+} from "@juiceswapxyz/smart-order-router";
+import NodeCache from "node-cache";
 import {
   ChainId,
   CurrencyAmount,
@@ -25,16 +25,16 @@ import {
   Currency,
   Token,
   Percent,
-} from '@juiceswapxyz/sdk-core';
-import { Protocol } from '@juiceswapxyz/router-sdk';
-import { providers } from 'ethers';
-import Logger from 'bunyan';
-import JSBI from 'jsbi';
-import { GraduatedV2SubgraphProvider } from '../providers/GraduatedV2SubgraphProvider';
-import { FallbackTokenProvider } from '../providers/FallbackTokenProvider';
-import { createLocalTokenListProvider } from '../lib/handlers/router-entities/local-token-list-provider';
-import { TokenInfoRequester } from '../utils/tokenInfoRequester';
-import { CitreaV3SubgraphProvider } from '../providers/CitreaV3SubgraphProvider';
+} from "@juiceswapxyz/sdk-core";
+import { Protocol } from "@juiceswapxyz/router-sdk";
+import { providers } from "ethers";
+import Logger from "bunyan";
+import JSBI from "jsbi";
+import { GraduatedV2SubgraphProvider } from "../providers/GraduatedV2SubgraphProvider";
+import { FallbackTokenProvider } from "../providers/FallbackTokenProvider";
+import { createLocalTokenListProvider } from "../lib/handlers/router-entities/local-token-list-provider";
+import { TokenInfoRequester } from "../utils/tokenInfoRequester";
+import { CitreaV3SubgraphProvider } from "../providers/CitreaV3SubgraphProvider";
 
 /**
  * Simple no-op token properties provider for V2 pools.
@@ -43,7 +43,7 @@ import { CitreaV3SubgraphProvider } from '../providers/CitreaV3SubgraphProvider'
 class NoopTokenPropertiesProvider implements ITokenPropertiesProvider {
   async getTokensProperties(
     _currencies: Currency[],
-    _providerConfig?: any
+    _providerConfig?: any,
   ): Promise<Record<string, TokenPropertiesResult>> {
     return {};
   }
@@ -60,7 +60,7 @@ export interface QuoteParams {
   tokenOutName?: string;
   amount: string;
   chainId: ChainId;
-  type: 'exactIn' | 'exactOut';
+  type: "exactIn" | "exactOut";
   recipient?: string;
   slippageTolerance?: number;
   protocols?: Protocol[];
@@ -85,7 +85,7 @@ export class RouterService {
 
   private constructor(
     rpcProviders: Map<ChainId, providers.StaticJsonRpcProvider>,
-    logger: Logger
+    logger: Logger,
   ) {
     this.providers = rpcProviders;
     this.logger = logger;
@@ -97,7 +97,7 @@ export class RouterService {
 
   static async create(
     rpcProviders: Map<ChainId, providers.StaticJsonRpcProvider>,
-    logger: Logger
+    logger: Logger,
   ): Promise<RouterService> {
     const instance = new RouterService(rpcProviders, logger);
     await instance.initialize();
@@ -114,30 +114,37 @@ export class RouterService {
       const multicallProvider = new UniswapMulticallProvider(
         chainId,
         provider,
-        375000
+        375000,
       );
 
       // Initialize token provider with Ponder integration for Citrea
       let tokenProvider;
-      if (chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) {
+      if (
+        chainId === ChainId.CITREA_TESTNET ||
+        chainId === ChainId.CITREA_MAINNET
+      ) {
         // Create token list provider from Ponder + static list
         const tokenListProvider = await createLocalTokenListProvider(chainId);
         // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
         // This is needed for graduated launchpad tokens not yet in the token list
-        tokenProvider = new FallbackTokenProvider(chainId, tokenListProvider, multicallProvider);
+        tokenProvider = new FallbackTokenProvider(
+          chainId,
+          tokenListProvider,
+          multicallProvider,
+        );
       } else {
         // Initialize basic token provider for non-Citrea chains
         const baseTokenProvider = new TokenProvider(chainId, multicallProvider);
 
         // Use caching wrapper with fallback
         const tokenCache = new NodeJSCache<Token>(
-          new NodeCache({ stdTTL: 3600, checkperiod: 600 })
+          new NodeCache({ stdTTL: 3600, checkperiod: 600 }),
         );
         tokenProvider = new CachingTokenProviderWithFallback(
           chainId,
           tokenCache,
           baseTokenProvider,
-          baseTokenProvider
+          baseTokenProvider,
         );
       }
 
@@ -154,7 +161,10 @@ export class RouterService {
       const gasPriceProvider = new EIP1559GasPriceProvider(provider);
 
       // Initialize token info requester
-      const tokenInfoRequester = new TokenInfoRequester(multicallProvider, chainId);
+      const tokenInfoRequester = new TokenInfoRequester(
+        multicallProvider,
+        chainId,
+      );
       this.tokenInfoRequesters.set(chainId, tokenInfoRequester);
 
       // For Citrea: use custom subgraph providers with static pools and graduated V2 pools
@@ -162,39 +172,50 @@ export class RouterService {
       let v2SubgraphProvider = undefined;
       let v2PoolProvider = undefined;
 
-      if (chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) {
+      if (
+        chainId === ChainId.CITREA_TESTNET ||
+        chainId === ChainId.CITREA_MAINNET
+      ) {
         // V3 subgraph provider (Ponder)
         v3SubgraphProvider = new CitreaV3SubgraphProvider(this.logger, chainId);
 
         // V2 providers for graduated launchpad tokens
         // GraduatedV2SubgraphProvider fetches pool list from Ponder and on-chain reserves
-        v2SubgraphProvider = new GraduatedV2SubgraphProvider(chainId, this.logger, multicallProvider);
+        v2SubgraphProvider = new GraduatedV2SubgraphProvider(
+          chainId,
+          this.logger,
+          multicallProvider,
+        );
 
         // V2PoolProvider fetches on-chain data (reserves) for V2 pairs
         // Use NoopTokenPropertiesProvider since we don't need token fee properties for basic routing
         v2PoolProvider = new V2PoolProvider(
           chainId,
           multicallProvider,
-          new NoopTokenPropertiesProvider()
+          new NoopTokenPropertiesProvider(),
         );
       }
 
       // Initialize router with essential providers
-      this.routers.set(chainId, new AlphaRouter({
+      this.routers.set(
         chainId,
-        provider,
-        multicall2Provider: multicallProvider,
-        tokenProvider,
-        v3PoolProvider,
-        gasPriceProvider,
-        ...(v3SubgraphProvider && { v3SubgraphProvider }),
-        ...(v2SubgraphProvider && { v2SubgraphProvider }),
-        ...(v2PoolProvider && { v2PoolProvider }),
-        // V2QuoteProvider computes quotes off-chain using pool reserves
-        ...(v2PoolProvider && { v2QuoteProvider: new V2QuoteProvider() }),
-        // Enable V2 routing for Citrea chains (graduated launchpad pools)
-        ...((chainId === ChainId.CITREA_TESTNET || chainId === ChainId.CITREA_MAINNET) && { v2Supported: [chainId] }),
-      }));
+        new AlphaRouter({
+          chainId,
+          provider,
+          multicall2Provider: multicallProvider,
+          tokenProvider,
+          v3PoolProvider,
+          gasPriceProvider,
+          ...(v3SubgraphProvider && { v3SubgraphProvider }),
+          ...(v2SubgraphProvider && { v2SubgraphProvider }),
+          ...(v2PoolProvider && { v2PoolProvider }),
+          // V2QuoteProvider computes quotes off-chain using pool reserves
+          ...(v2PoolProvider && { v2QuoteProvider: new V2QuoteProvider() }),
+          // Enable V2 routing for Citrea chains (graduated launchpad pools)
+          ...((chainId === ChainId.CITREA_TESTNET ||
+            chainId === ChainId.CITREA_MAINNET) && { v2Supported: [chainId] }),
+        }),
+      );
     }
   }
 
@@ -202,18 +223,25 @@ export class RouterService {
    * Get token information (decimals, symbol, name) from token lists or on-chain
    * Matches develop branch CurrencyLookup behavior
    */
-  async getTokenInfo(address: string, chainId: ChainId): Promise<{
+  async getTokenInfo(
+    address: string,
+    chainId: ChainId,
+  ): Promise<{
     decimals: number;
     symbol?: string;
     name?: string;
   }> {
     // Check if native currency
     const NATIVE_ADDRESSES = [
-      '0x0000000000000000000000000000000000000000',
-      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+      "0x0000000000000000000000000000000000000000",
+      "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
     ];
 
-    if (NATIVE_ADDRESSES.some(addr => addr.toLowerCase() === address.toLowerCase())) {
+    if (
+      NATIVE_ADDRESSES.some(
+        (addr) => addr.toLowerCase() === address.toLowerCase(),
+      )
+    ) {
       const nativeToken = nativeOnChain(chainId);
       return {
         decimals: nativeToken.decimals,
@@ -232,7 +260,10 @@ export class RouterService {
       // Token list providers have getTokenByAddress method
       const token = await tokenProvider.getTokenByAddress(address);
       if (token) {
-        this.logger.debug({ address, chainId, decimals: token.decimals }, 'Found token in token list');
+        this.logger.debug(
+          { address, chainId, decimals: token.decimals },
+          "Found token in token list",
+        );
         return {
           decimals: token.decimals,
           symbol: token.symbol,
@@ -240,18 +271,26 @@ export class RouterService {
         };
       }
     } catch (error) {
-      this.logger.warn({ error, address, chainId }, 'Failed to lookup token using token provider');
+      this.logger.warn(
+        { error, address, chainId },
+        "Failed to lookup token using token provider",
+      );
     }
 
     try {
       const tokenInfoRequester = this.tokenInfoRequesters.get(chainId);
       if (!tokenInfoRequester) {
-        throw new Error(`No token info requester available for chain ${chainId}`);
+        throw new Error(
+          `No token info requester available for chain ${chainId}`,
+        );
       }
-      
+
       const token = await tokenInfoRequester.getTokenInfo(address);
       if (token) {
-        this.logger.debug({ address, chainId, decimals: token.decimals }, 'Found token in token info requester');
+        this.logger.debug(
+          { address, chainId, decimals: token.decimals },
+          "Found token in token info requester",
+        );
         return {
           decimals: token.decimals,
           symbol: token.symbol,
@@ -259,7 +298,10 @@ export class RouterService {
         };
       }
     } catch (error) {
-      this.logger.warn({ error, address, chainId }, 'Failed to lookup token using token info requester');
+      this.logger.warn(
+        { error, address, chainId },
+        "Failed to lookup token using token info requester",
+      );
     }
 
     throw new Error(`Token not found: ${address} on chain ${chainId}`);
@@ -270,27 +312,23 @@ export class RouterService {
     chainId: ChainId,
     decimals: number,
     symbol?: string,
-    name?: string
+    name?: string,
   ): Currency {
     // Check if native currency
     const NATIVE_ADDRESSES = [
-      '0x0000000000000000000000000000000000000000',
-      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+      "0x0000000000000000000000000000000000000000",
+      "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
     ];
 
-    if (NATIVE_ADDRESSES.some(addr =>
-      addr.toLowerCase() === address.toLowerCase()
-    )) {
+    if (
+      NATIVE_ADDRESSES.some(
+        (addr) => addr.toLowerCase() === address.toLowerCase(),
+      )
+    ) {
       return nativeOnChain(chainId);
     }
 
-    return new Token(
-      chainId,
-      address,
-      decimals,
-      symbol,
-      name
-    );
+    return new Token(chainId, address, decimals, symbol, name);
   }
 
   async getQuote(params: QuoteParams): Promise<SwapRoute | null> {
@@ -306,7 +344,7 @@ export class RouterService {
       amount,
       chainId,
       type,
-      recipient = '0x0000000000000000000000000000000000000001',
+      recipient = "0x0000000000000000000000000000000000000001",
       slippageTolerance = 0.5,
       protocols = [Protocol.V3],
     } = params;
@@ -318,21 +356,35 @@ export class RouterService {
 
     // Create currencies using original addresses to properly handle native currency
     // The router will automatically handle native <-> wrapped token conversions
-    const currencyIn = this.createCurrency(tokenIn, chainId, tokenInDecimals, tokenInSymbol, tokenInName);
-    const currencyOut = this.createCurrency(tokenOut, chainId, tokenOutDecimals, tokenOutSymbol, tokenOutName);
+    const currencyIn = this.createCurrency(
+      tokenIn,
+      chainId,
+      tokenInDecimals,
+      tokenInSymbol,
+      tokenInName,
+    );
+    const currencyOut = this.createCurrency(
+      tokenOut,
+      chainId,
+      tokenOutDecimals,
+      tokenOutSymbol,
+      tokenOutName,
+    );
 
     const currencyAmount = CurrencyAmount.fromRawAmount(
       currencyIn,
-      JSBI.BigInt(amount)
+      JSBI.BigInt(amount),
     );
 
-    const tradeType = type === 'exactIn'
-      ? TradeType.EXACT_INPUT
-      : TradeType.EXACT_OUTPUT;
+    const tradeType =
+      type === "exactIn" ? TradeType.EXACT_INPUT : TradeType.EXACT_OUTPUT;
 
     const swapConfig: SwapOptions = {
       recipient,
-      slippageTolerance: new Percent(Math.round(slippageTolerance * 100), 10000),
+      slippageTolerance: new Percent(
+        Math.round(slippageTolerance * 100),
+        10000,
+      ),
       type: SwapType.SWAP_ROUTER_02,
       deadline: params.deadline ?? Math.floor(Date.now() / 1000) + 1800,
     };
@@ -340,67 +392,79 @@ export class RouterService {
     // Configure routing to enable multi-hop routes
     // Matches main branch DEFAULT_ROUTING_CONFIG_BY_CHAIN defaults
     const routingConfig: Partial<AlphaRouterConfig> = {
-          protocols,
-          v2PoolSelection: {
-            topN: 3,
-            topNDirectSwaps: 2,
-            topNTokenInOut: 2,
-            topNSecondHop: 1,
-            topNWithEachBaseToken: 3,
-            topNWithBaseToken: 3,
-          },
-          v3PoolSelection: {
-            topN: 2,
-            topNDirectSwaps: 2,
-            topNTokenInOut: 2,
-            topNSecondHop: 1,
-            topNWithEachBaseToken: 1,
-            topNWithBaseToken: 2,
-          },
-          maxSwapsPerPath: 3,
-          minSplits: 1,
-          maxSplits: 3,
-          distributionPercent: 10,
-          forceCrossProtocol: false,
-          optimisticCachedRoutes: false,
-        }
-      
+      protocols,
+      v2PoolSelection: {
+        topN: 3,
+        topNDirectSwaps: 2,
+        topNTokenInOut: 2,
+        topNSecondHop: 1,
+        topNWithEachBaseToken: 3,
+        topNWithBaseToken: 3,
+      },
+      v3PoolSelection: {
+        topN: 2,
+        topNDirectSwaps: 2,
+        topNTokenInOut: 2,
+        topNSecondHop: 1,
+        topNWithEachBaseToken: 1,
+        topNWithBaseToken: 2,
+      },
+      maxSwapsPerPath: 3,
+      minSplits: 1,
+      maxSplits: 3,
+      distributionPercent: 10,
+      forceCrossProtocol: false,
+      optimisticCachedRoutes: false,
+    };
+
     try {
-      this.logger.debug({
-        chainId,
-        tokenIn,
-        tokenOut,
-        amount,
-        type,
-      }, 'Getting quote from AlphaRouter');
+      this.logger.debug(
+        {
+          chainId,
+          tokenIn,
+          tokenOut,
+          amount,
+          type,
+        },
+        "Getting quote from AlphaRouter",
+      );
 
       const route = await router.route(
         currencyAmount,
         currencyOut,
         tradeType,
         swapConfig,
-        routingConfig
+        routingConfig,
       );
 
       if (route) {
-        this.logger.debug({
-          quote: route.quote.toExact(),
-          gasEstimate: route.estimatedGasUsed.toString(),
-          routes: route.route.length,
-        }, 'Quote obtained successfully');
+        this.logger.debug(
+          {
+            quote: route.quote.toExact(),
+            gasEstimate: route.estimatedGasUsed.toString(),
+            routes: route.route.length,
+          },
+          "Quote obtained successfully",
+        );
       } else {
-        this.logger.warn('No route found');
+        this.logger.warn("No route found");
       }
 
       return route;
     } catch (error) {
-      this.logger.error({
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        } : error
-      }, 'Failed to get quote');
+      this.logger.error(
+        {
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+        },
+        "Failed to get quote",
+      );
       throw error;
     }
   }
@@ -444,11 +508,11 @@ export class RouterService {
         maxPriorityFeePerGas: gasPrice.mul(10).div(100).toHexString(),
       };
     } catch (error) {
-      this.logger.error({ error }, 'Failed to fetch gas prices');
+      this.logger.error({ error }, "Failed to fetch gas prices");
       // Return sensible defaults
       return {
-        maxFeePerGas: '0x1dcd6500', // 500 gwei
-        maxPriorityFeePerGas: '0x3b9aca00', // 1 gwei
+        maxFeePerGas: "0x1dcd6500", // 500 gwei
+        maxPriorityFeePerGas: "0x3b9aca00", // 1 gwei
       };
     }
   }

@@ -1,10 +1,10 @@
-import { Request, Response } from 'express';
-import { RouterService } from '../core/RouterService';
-import { trackUser } from '../services/userTracking';
-import { extractIpAddress } from '../utils/ipAddress';
-import Logger from 'bunyan';
-import { getApproveTxForToken } from '../utils/erc20';
-import { ethers } from 'ethers';
+import { Request, Response } from "express";
+import { RouterService } from "../core/RouterService";
+import { trackUser } from "../services/userTracking";
+import { extractIpAddress } from "../utils/ipAddress";
+import Logger from "bunyan";
+import { getApproveTxForToken } from "../utils/erc20";
+import { ethers } from "ethers";
 
 interface SwapApproveRequestBody {
   walletAddress: string;
@@ -46,38 +46,62 @@ interface SwapApproveRequestBody {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-export function createSwapApproveHandler(routerService: RouterService, logger: Logger) {
-  return async function handleSwapApprove(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'swap_approve' });
+export function createSwapApproveHandler(
+  routerService: RouterService,
+  logger: Logger,
+) {
+  return async function handleSwapApprove(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "swap_approve" });
 
     try {
-      const { walletAddress, chainId, tokenIn, spenderAddress }: SwapApproveRequestBody = req.body;
+      const {
+        walletAddress,
+        chainId,
+        tokenIn,
+        spenderAddress,
+      }: SwapApproveRequestBody = req.body;
 
       trackUser(walletAddress, extractIpAddress(req), log);
 
       if (!walletAddress || !chainId || !tokenIn) {
-        log.debug({ walletAddress, chainId, tokenIn }, 'Validation failed: missing required fields');
+        log.debug(
+          { walletAddress, chainId, tokenIn },
+          "Validation failed: missing required fields",
+        );
         res.status(400).json({
-          message: 'Missing required fields',
-          error: 'MissingRequiredFields'
+          message: "Missing required fields",
+          error: "MissingRequiredFields",
         });
         return;
       }
 
       const provider = routerService.getProvider(chainId);
       if (!provider) {
-        log.debug({ chainId }, 'Validation failed: invalid chainId for Swap approve');
+        log.debug(
+          { chainId },
+          "Validation failed: invalid chainId for Swap approve",
+        );
         res.status(400).json({
-          message: 'Invalid chainId',
-          error: 'InvalidChainId'
+          message: "Invalid chainId",
+          error: "InvalidChainId",
         });
         return;
       }
 
+      const tokenApproval = await getApproveTxForToken(
+        tokenIn,
+        ethers.constants.MaxUint256.toString(),
+        walletAddress,
+        spenderAddress,
+        provider,
+        chainId,
+        log,
+      );
 
-      const tokenApproval = await getApproveTxForToken(tokenIn, ethers.constants.MaxUint256.toString(), walletAddress, spenderAddress, provider, chainId, log)
-
-      let gasEstimate = ethers.BigNumber.from('100000'); // Default gas estimate for approval
+      let gasEstimate = ethers.BigNumber.from("100000"); // Default gas estimate for approval
       try {
         gasEstimate = await provider.estimateGas({
           to: tokenIn,
@@ -85,7 +109,7 @@ export function createSwapApproveHandler(routerService: RouterService, logger: L
           data: tokenApproval?.data,
         });
       } catch (e) {
-        log.warn('Gas estimation failed, using fallback');
+        log.warn("Gas estimation failed, using fallback");
       }
 
       const gasLimit = gasEstimate.mul(110).div(100);
@@ -102,12 +126,15 @@ export function createSwapApproveHandler(routerService: RouterService, logger: L
       // Calculate gas fee using actual gas price (not inflated EIP-1559 values)
       const gasFee = gasLimit.mul(gasPrice);
 
-      log.info({
-        gasLimit: gasLimit.toString(),
-        maxFeePerGas: maxFeePerGas.toString(),
-        maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
-        gasFee: gasFee.toString(),
-      }, 'Approval gas calculation');
+      log.info(
+        {
+          gasLimit: gasLimit.toString(),
+          maxFeePerGas: maxFeePerGas.toString(),
+          maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+          gasFee: gasFee.toString(),
+        },
+        "Approval gas calculation",
+      );
 
       res.status(200).json({
         requestId: `swap-approve-${Date.now()}`,
@@ -120,13 +147,12 @@ export function createSwapApproveHandler(routerService: RouterService, logger: L
         gasFee: gasFee.toString(),
       });
 
-      log.debug({ chainId, walletAddress }, 'Swap approve request completed');
-
+      log.debug({ chainId, walletAddress }, "Swap approve request completed");
     } catch (error: any) {
-      log.error({ error }, 'Error in handleSwapApprove');
+      log.error({ error }, "Error in handleSwapApprove");
       res.status(500).json({
-        message: 'Internal server error',
-        error: error?.message
+        message: "Internal server error",
+        error: error?.message,
       });
     }
   };

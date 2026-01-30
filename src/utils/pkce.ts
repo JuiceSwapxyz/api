@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from "crypto";
 
 /**
  * PKCE (Proof Key for Code Exchange) Utilities
@@ -23,10 +23,7 @@ export function generateCodeVerifier(): string {
  */
 export function generateCodeChallenge(codeVerifier: string): string {
   // SHA256 hash
-  const hash = crypto
-    .createHash('sha256')
-    .update(codeVerifier)
-    .digest();
+  const hash = crypto.createHash("sha256").update(codeVerifier).digest();
 
   // Base64URL encode
   return base64URLEncode(hash);
@@ -38,17 +35,20 @@ export function generateCodeChallenge(codeVerifier: string): string {
  */
 function base64URLEncode(buffer: Buffer): string {
   return buffer
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**
  * Generate both verifier and challenge
  * Returns object with both values
  */
-export function generatePKCE(): { codeVerifier: string; codeChallenge: string } {
+export function generatePKCE(): {
+  codeVerifier: string;
+  codeChallenge: string;
+} {
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = generateCodeChallenge(codeVerifier);
 
@@ -62,5 +62,5 @@ export function generatePKCE(): { codeVerifier: string; codeChallenge: string } 
  * Generate a random state token for CSRF protection
  */
 export function generateState(): string {
-  return crypto.randomBytes(32).toString('hex');
+  return crypto.randomBytes(32).toString("hex");
 }

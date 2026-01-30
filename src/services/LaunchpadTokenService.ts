@@ -1,6 +1,6 @@
-import Logger from 'bunyan';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import { getPonderClient } from './PonderClient';
+import Logger from "bunyan";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import { getPonderClient } from "./PonderClient";
 
 interface GraduatedPool {
   pairAddress: string;
@@ -28,23 +28,26 @@ class LaunchpadTokenService {
     if (!this.logger) {
       // Create a basic logger if none provided
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const bunyan = require('bunyan');
+      const bunyan = require("bunyan");
       this.logger = bunyan.createLogger({
-        name: 'LaunchpadTokenService',
-        level: 'info',
+        name: "LaunchpadTokenService",
+        level: "info",
       });
     }
     return this.logger!;
   }
 
   setLogger(logger: Logger): void {
-    this.logger = logger.child({ service: 'LaunchpadTokenService' });
+    this.logger = logger.child({ service: "LaunchpadTokenService" });
   }
 
   /**
    * Check if a token address is a graduated launchpad token
    */
-  async isGraduatedLaunchpadToken(chainId: number, address: string): Promise<boolean> {
+  async isGraduatedLaunchpadToken(
+    chainId: number,
+    address: string,
+  ): Promise<boolean> {
     // Only check for Citrea Testnet (where launchpad tokens exist)
     if (chainId !== ChainId.CITREA_TESTNET) {
       return false;
@@ -95,7 +98,7 @@ class LaunchpadTokenService {
 
     try {
       const ponderClient = getPonderClient(logger);
-      const response = await ponderClient.get('/graduated-pools');
+      const response = await ponderClient.get("/graduated-pools");
       const pools: GraduatedPool[] = response.data.pools || [];
 
       // Build set of graduated token addresses
@@ -112,10 +115,10 @@ class LaunchpadTokenService {
 
       logger.info(
         { graduatedTokenCount: tokenAddresses.size },
-        'Refreshed graduated launchpad token cache'
+        "Refreshed graduated launchpad token cache",
       );
     } catch (error) {
-      logger.error({ error }, 'Failed to fetch graduated tokens from Ponder');
+      logger.error({ error }, "Failed to fetch graduated tokens from Ponder");
       // Keep existing cache on error
     }
   }
@@ -137,7 +140,7 @@ const launchpadTokenService = new LaunchpadTokenService();
  */
 export async function isGraduatedLaunchpadToken(
   chainId: number,
-  address: string
+  address: string,
 ): Promise<boolean> {
   return launchpadTokenService.isGraduatedLaunchpadToken(chainId, address);
 }

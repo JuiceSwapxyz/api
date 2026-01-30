@@ -1,8 +1,8 @@
-import axios, { AxiosError } from 'axios';
-import Logger from 'bunyan';
-import FormData from 'form-data';
+import axios, { AxiosError } from "axios";
+import Logger from "bunyan";
+import FormData from "form-data";
 
-const PINATA_API_URL = 'https://api.pinata.cloud';
+const PINATA_API_URL = "https://api.pinata.cloud";
 
 interface PinataResponse {
   IpfsHash: string;
@@ -31,12 +31,12 @@ export class PinataService {
     const secretKey = process.env.PINATA_SECRET_KEY;
 
     if (!apiKey || !secretKey) {
-      throw new Error('PINATA_API_KEY and PINATA_SECRET_KEY must be set');
+      throw new Error("PINATA_API_KEY and PINATA_SECRET_KEY must be set");
     }
 
     this.apiKey = apiKey;
     this.secretKey = secretKey;
-    this.logger = logger.child({ service: 'PinataService' });
+    this.logger = logger.child({ service: "PinataService" });
   }
 
   /**
@@ -46,12 +46,16 @@ export class PinataService {
    * @param mimeType - File MIME type
    * @returns ipfs:// prefixed URI
    */
-  async uploadFile(file: Buffer, filename: string, mimeType: string): Promise<string> {
-    const log = this.logger.child({ method: 'uploadFile', filename, mimeType });
+  async uploadFile(
+    file: Buffer,
+    filename: string,
+    mimeType: string,
+  ): Promise<string> {
+    const log = this.logger.child({ method: "uploadFile", filename, mimeType });
 
     try {
       const formData = new FormData();
-      formData.append('file', file, {
+      formData.append("file", file, {
         filename,
         contentType: mimeType,
       });
@@ -60,11 +64,11 @@ export class PinataService {
       const metadata = JSON.stringify({
         name: filename,
         keyvalues: {
-          type: 'launchpad-token-image',
+          type: "launchpad-token-image",
           uploadedAt: new Date().toISOString(),
         },
       });
-      formData.append('pinataMetadata', metadata);
+      formData.append("pinataMetadata", metadata);
 
       const response = await axios.post<PinataResponse>(
         `${PINATA_API_URL}/pinning/pinFileToIPFS`,
@@ -76,16 +80,16 @@ export class PinataService {
             pinata_api_key: this.apiKey,
             pinata_secret_api_key: this.secretKey,
           },
-        }
+        },
       );
 
       const ipfsHash = response.data.IpfsHash;
       const uri = `ipfs://${ipfsHash}`;
 
-      log.info({ ipfsHash, uri }, 'File uploaded to IPFS');
+      log.info({ ipfsHash, uri }, "File uploaded to IPFS");
       return uri;
     } catch (error) {
-      this.handleError(error, log, 'Failed to upload file to IPFS');
+      this.handleError(error, log, "Failed to upload file to IPFS");
       throw error;
     }
   }
@@ -97,7 +101,7 @@ export class PinataService {
    * @returns ipfs:// prefixed URI
    */
   async uploadJSON(data: TokenMetadata, name: string): Promise<string> {
-    const log = this.logger.child({ method: 'uploadJSON', pinName: name });
+    const log = this.logger.child({ method: "uploadJSON", pinName: name });
 
     try {
       const response = await axios.post<PinataResponse>(
@@ -107,27 +111,27 @@ export class PinataService {
           pinataMetadata: {
             name,
             keyvalues: {
-              type: 'launchpad-token-metadata',
+              type: "launchpad-token-metadata",
               uploadedAt: new Date().toISOString(),
             },
           },
         },
         {
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             pinata_api_key: this.apiKey,
             pinata_secret_api_key: this.secretKey,
           },
-        }
+        },
       );
 
       const ipfsHash = response.data.IpfsHash;
       const uri = `ipfs://${ipfsHash}`;
 
-      log.info({ ipfsHash, uri, name }, 'JSON metadata uploaded to IPFS');
+      log.info({ ipfsHash, uri, name }, "JSON metadata uploaded to IPFS");
       return uri;
     } catch (error) {
-      this.handleError(error, log, 'Failed to upload JSON to IPFS');
+      this.handleError(error, log, "Failed to upload JSON to IPFS");
       throw error;
     }
   }
@@ -136,7 +140,7 @@ export class PinataService {
    * Test Pinata connection
    */
   async testConnection(): Promise<boolean> {
-    const log = this.logger.child({ method: 'testConnection' });
+    const log = this.logger.child({ method: "testConnection" });
 
     try {
       await axios.get(`${PINATA_API_URL}/data/testAuthentication`, {
@@ -145,10 +149,10 @@ export class PinataService {
           pinata_secret_api_key: this.secretKey,
         },
       });
-      log.info('Pinata connection verified');
+      log.info("Pinata connection verified");
       return true;
     } catch (error) {
-      log.error({ error }, 'Pinata connection failed');
+      log.error({ error }, "Pinata connection failed");
       return false;
     }
   }
@@ -161,7 +165,7 @@ export class PinataService {
           data: error.response?.data,
           message: error.message,
         },
-        message
+        message,
       );
     } else {
       log.error({ error }, message);

@@ -1,6 +1,6 @@
-import { Request, Response } from 'express';
-import Logger from 'bunyan';
-import { prisma } from '../db/prisma';
+import { Request, Response } from "express";
+import Logger from "bunyan";
+import { prisma } from "../db/prisma";
 
 /**
  * @swagger
@@ -25,7 +25,10 @@ import { prisma } from '../db/prisma';
  *         description: Internal server error
  */
 export function createTotalAddressesWithIpHandler(logger: Logger) {
-  return async function handleTotalAddressesWithIp(_req: Request, res: Response): Promise<void> {
+  return async function handleTotalAddressesWithIp(
+    _req: Request,
+    res: Response,
+  ): Promise<void> {
     const startTime = Date.now();
 
     try {
@@ -37,23 +40,33 @@ export function createTotalAddressesWithIpHandler(logger: Logger) {
         },
       });
 
-      logger.debug({ count, responseTime: Date.now() - startTime }, 'Total addresses with IP hash retrieved');
+      logger.debug(
+        { count, responseTime: Date.now() - startTime },
+        "Total addresses with IP hash retrieved",
+      );
 
       res.json({
         totalAddressesWithIpHash: count,
       });
     } catch (error) {
-      logger.error({
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        } : error,
-      }, 'Failed to fetch total addresses with IP hash');
+      logger.error(
+        {
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+        },
+        "Failed to fetch total addresses with IP hash",
+      );
 
       res.status(500).json({
-        error: 'Internal server error',
-        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: "Internal server error",
+        detail:
+          error instanceof Error ? error.message : "Unknown error occurred",
       });
     }
   };
@@ -82,13 +95,16 @@ export function createTotalAddressesWithIpHandler(logger: Logger) {
  *         description: Internal server error
  */
 export function createUniqueIpHashesHandler(logger: Logger) {
-  return async function handleUniqueIpHashes(_req: Request, res: Response): Promise<void> {
+  return async function handleUniqueIpHashes(
+    _req: Request,
+    res: Response,
+  ): Promise<void> {
     const startTime = Date.now();
 
     try {
       // Use Prisma's aggregation to count distinct IP hashes
       const result = await prisma.user.groupBy({
-        by: ['ipAddressHash'],
+        by: ["ipAddressHash"],
         where: {
           ipAddressHash: {
             not: null,
@@ -99,23 +115,33 @@ export function createUniqueIpHashesHandler(logger: Logger) {
 
       const uniqueCount = result.length;
 
-      logger.debug({ uniqueCount, responseTime: Date.now() - startTime }, 'Unique IP hashes retrieved');
+      logger.debug(
+        { uniqueCount, responseTime: Date.now() - startTime },
+        "Unique IP hashes retrieved",
+      );
 
       res.json({
         uniqueIpHashes: uniqueCount,
       });
     } catch (error) {
-      logger.error({
-        error: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name,
-        } : error,
-      }, 'Failed to fetch unique IP hashes');
+      logger.error(
+        {
+          error:
+            error instanceof Error
+              ? {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name,
+                }
+              : error,
+        },
+        "Failed to fetch unique IP hashes",
+      );
 
       res.status(500).json({
-        error: 'Internal server error',
-        detail: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: "Internal server error",
+        detail:
+          error instanceof Error ? error.message : "Unknown error occurred",
       });
     }
   };

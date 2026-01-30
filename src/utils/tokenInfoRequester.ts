@@ -1,6 +1,9 @@
-import { TokenProvider, UniswapMulticallProvider } from '@juiceswapxyz/smart-order-router';
-import { ChainId, Token } from '@juiceswapxyz/sdk-core';
-import NodeCache from 'node-cache';
+import {
+  TokenProvider,
+  UniswapMulticallProvider,
+} from "@juiceswapxyz/smart-order-router";
+import { ChainId, Token } from "@juiceswapxyz/sdk-core";
+import NodeCache from "node-cache";
 
 export class TokenInfoRequester {
   private readonly cache: NodeCache;
@@ -19,7 +22,10 @@ export class TokenInfoRequester {
       return cachedToken as Token;
     }
 
-    const tokenProvider = new TokenProvider(this.chainId, this.multicallProvider);
+    const tokenProvider = new TokenProvider(
+      this.chainId,
+      this.multicallProvider,
+    );
     const tokenAccessor = await tokenProvider.getTokens([address]);
     const token = await tokenAccessor.getTokenByAddress(address);
     if (!token) {

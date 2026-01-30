@@ -1,13 +1,13 @@
-import type { Config } from 'jest'
+import type { Config } from "jest";
 
 const config: Config = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
+  preset: "ts-jest",
+  testEnvironment: "node",
   verbose: true,
   passWithNoTests: true,
   testMatch: [
-    '**/src/**/__tests__/**/*.[jt]s?(x)',
-    '**/src/**/?(*.)+(spec|test).[jt]s?(x)'
+    "**/src/**/__tests__/**/*.[jt]s?(x)",
+    "**/src/**/?(*.)+(spec|test).[jt]s?(x)",
   ],
   transform: {
     // Use swc to speed up ts-jest's sluggish compilation times.
@@ -16,8 +16,8 @@ const config: Config = {
     // Inspiration from: https://github.com/kulshekhar/ts-jest/issues/259#issuecomment-1332269911
     //
     // https://swc.rs/docs/usage/jest#usage
-    '^.+\\.(t|j)s?$': '@swc/jest',
+    "^.+\\.(t|j)s?$": "@swc/jest",
   },
-}
+};
 
-export default config
+export default config;

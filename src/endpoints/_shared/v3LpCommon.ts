@@ -1,12 +1,16 @@
-import Logger from 'bunyan';
-import { ethers } from 'ethers';
-import { NONFUNGIBLE_POSITION_MANAGER_ADDRESSES, Token, WETH9 } from '@juiceswapxyz/sdk-core';
-import { ADDRESS_ZERO, nearestUsableTick } from '@juiceswapxyz/v3-sdk';
-import { RouterService } from '../../core/RouterService';
-import { getPonderClient } from '../../services/PonderClient';
-import { JuiceGatewayService } from '../../services/JuiceGatewayService';
-import { getPoolInstance } from '../../utils/poolFactory';
-import { fetchV3OnchainPoolInfo } from '../../utils/v3OnchainPositionInfo';
+import Logger from "bunyan";
+import { ethers } from "ethers";
+import {
+  NONFUNGIBLE_POSITION_MANAGER_ADDRESSES,
+  Token,
+  WETH9,
+} from "@juiceswapxyz/sdk-core";
+import { ADDRESS_ZERO, nearestUsableTick } from "@juiceswapxyz/v3-sdk";
+import { RouterService } from "../../core/RouterService";
+import { getPonderClient } from "../../services/PonderClient";
+import { JuiceGatewayService } from "../../services/JuiceGatewayService";
+import { getPoolInstance } from "../../utils/poolFactory";
+import { fetchV3OnchainPoolInfo } from "../../utils/v3OnchainPositionInfo";
 
 export const TICK_SPACING: Record<number, number> = {
   100: 1,
@@ -31,18 +35,20 @@ export interface V3LpPositionInput {
 type ErrResult = { ok: false; status: number; message: string; error: string };
 type OkResult<T> = { ok: true; data: T };
 
-export type V3LpContextResult = OkResult<{
-  provider: any;
-  positionManagerAddress: string;
-  token0Addr: string;
-  token1Addr: string;
-  token0: Token;
-  token1: Token;
-  poolInstance: any;
-  tickLower: number;
-  tickUpper: number;
-  poolAddress: string;
-}> | ErrResult;
+export type V3LpContextResult =
+  | OkResult<{
+      provider: any;
+      positionManagerAddress: string;
+      token0Addr: string;
+      token1Addr: string;
+      token0: Token;
+      token1: Token;
+      poolInstance: any;
+      tickLower: number;
+      tickUpper: number;
+      poolAddress: string;
+    }>
+  | ErrResult;
 
 export function getTokenAddress(token: string, chainId: number) {
   const address = token === ADDRESS_ZERO ? WETH9[chainId].address : token;
@@ -57,27 +63,52 @@ export async function getV3LpContext(params: {
   position: V3LpPositionInput;
   juiceGatewayService?: JuiceGatewayService;
 }): Promise<V3LpContextResult> {
-  const { routerService, logger, chainId, tokenId, position, juiceGatewayService } = params;
+  const {
+    routerService,
+    logger,
+    chainId,
+    tokenId,
+    position,
+    juiceGatewayService,
+  } = params;
 
   const provider = routerService.getProvider(chainId);
   if (!provider) {
-    return { ok: false, status: 400, message: 'Invalid chainId', error: 'InvalidChainId' };
+    return {
+      ok: false,
+      status: 400,
+      message: "Invalid chainId",
+      error: "InvalidChainId",
+    };
   }
 
-  const positionManagerAddress = NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
+  const positionManagerAddress =
+    NONFUNGIBLE_POSITION_MANAGER_ADDRESSES[chainId];
   if (!positionManagerAddress) {
-    return { ok: false, status: 400, message: 'Unsupported chain for LP operations', error: 'UnsupportedChain' };
+    return {
+      ok: false,
+      status: 400,
+      message: "Unsupported chain for LP operations",
+      error: "UnsupportedChain",
+    };
   }
 
   // Map JUSD → svJUSD for internal pool token lookups (Ponder only indexes svJUSD)
-  const token0Input = juiceGatewayService?.getInternalPoolToken(chainId, position.pool.token0)
-                    ?? position.pool.token0;
-  const token1Input = juiceGatewayService?.getInternalPoolToken(chainId, position.pool.token1)
-                    ?? position.pool.token1;
+  const token0Input =
+    juiceGatewayService?.getInternalPoolToken(chainId, position.pool.token0) ??
+    position.pool.token0;
+  const token1Input =
+    juiceGatewayService?.getInternalPoolToken(chainId, position.pool.token1) ??
+    position.pool.token1;
   const token0Addr = getTokenAddress(token0Input, chainId);
   const token1Addr = getTokenAddress(token1Input, chainId);
   if (token0Addr.toLowerCase() >= token1Addr.toLowerCase()) {
-    return { ok: false, status: 400, message: 'token0 must be < token1 by address', error: 'TokenOrderInvalid' };
+    return {
+      ok: false,
+      status: 400,
+      message: "token0 must be < token1 by address",
+      error: "TokenOrderInvalid",
+    };
   }
 
   const ponderClient = getPonderClient(logger);
@@ -114,14 +145,19 @@ export async function getV3LpContext(params: {
       },
       token0Id: token0Addr.toLowerCase(),
       token1Id: token1Addr.toLowerCase(),
-    }
+    },
   );
 
   const positionData = positionInfo.positions.items[0];
   const token0Data = positionInfo.token0;
   const token1Data = positionInfo.token1;
   if (!positionData || !token0Data || !token1Data) {
-    return { ok: false, status: 400, message: 'Token not found', error: 'TokenNotFound' };
+    return {
+      ok: false,
+      status: 400,
+      message: "Token not found",
+      error: "TokenNotFound",
+    };
   }
 
   const token0 = new Token(chainId, token0Data.address, token0Data.decimals);
@@ -143,18 +179,33 @@ export async function getV3LpContext(params: {
     sqrtPriceX96: onchainPoolInfo.currentPrice,
   });
   if (!poolInstance) {
-    return { ok: false, status: 400, message: 'Invalid pool instance', error: 'InvalidPoolInstance' };
+    return {
+      ok: false,
+      status: 400,
+      message: "Invalid pool instance",
+      error: "InvalidPoolInstance",
+    };
   }
 
   const spacing = TICK_SPACING[position.pool.fee] ?? position.pool.tickSpacing;
   if (spacing === undefined) {
-    return { ok: false, status: 400, message: 'Unsupported fee tier', error: 'UnsupportedFee' };
+    return {
+      ok: false,
+      status: 400,
+      message: "Unsupported fee tier",
+      error: "UnsupportedFee",
+    };
   }
 
   const tickLower = nearestUsableTick(position.tickLower, spacing);
   const tickUpper = nearestUsableTick(position.tickUpper, spacing);
   if (tickLower >= tickUpper) {
-    return { ok: false, status: 400, message: 'Invalid tick range: tickLower < tickUpper', error: 'InvalidTickRange' };
+    return {
+      ok: false,
+      status: 400,
+      message: "Invalid tick range: tickLower < tickUpper",
+      error: "InvalidTickRange",
+    };
   }
 
   return {
@@ -188,21 +239,21 @@ export async function estimateEip1559Gas(params: {
 
   const feeData = await provider.getFeeData();
 
-  let gasEstimate = ethers.BigNumber.from('650000');
+  let gasEstimate = ethers.BigNumber.from("650000");
   try {
     gasEstimate = await provider.estimateGas(tx);
   } catch (_e) {
-    logger.warn('Gas estimation failed, using fallback');
+    logger.warn("Gas estimation failed, using fallback");
   }
 
   const gasLimit = gasEstimate.mul(110).div(100);
 
-  const baseFee = feeData.lastBaseFeePerGas || ethers.utils.parseUnits('0.00000136', 'gwei');
-  const maxPriorityFeePerGas = ethers.utils.parseUnits('1', 'gwei');
+  const baseFee =
+    feeData.lastBaseFeePerGas || ethers.utils.parseUnits("0.00000136", "gwei");
+  const maxPriorityFeePerGas = ethers.utils.parseUnits("1", "gwei");
   const maxFeePerGas = baseFee.mul(105).div(100).add(maxPriorityFeePerGas);
 
   const gasFee = gasLimit.mul(maxFeePerGas);
 
   return { gasLimit, maxFeePerGas, maxPriorityFeePerGas, gasFee };
 }
-

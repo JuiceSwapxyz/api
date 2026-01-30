@@ -1,39 +1,39 @@
-import 'dotenv/config';
-import express, { Request, Response } from 'express';
-import Logger from 'bunyan';
-import helmet from 'helmet';
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from './swagger/config';
-import { RouterService } from './core/RouterService';
-import { initializeProviders, verifyProviders } from './providers/rpcProvider';
-import { createQuoteHandler } from './endpoints/quote';
-import { createSwapHandler } from './endpoints/swap';
-import { JuiceGatewayService } from './services/JuiceGatewayService';
-import { SvJusdPriceService } from './services/SvJusdPriceService';
-import { createSvJusdSharePriceHandler } from './endpoints/svJusdSharePrice';
-import { createSwappableTokensHandler } from './endpoints/swappableTokens';
-import { createSwapsHandler } from './endpoints/swaps';
-import { createLpApproveHandler } from './endpoints/lpApprove';
-import { createLpCreateHandler } from './endpoints/lpCreate';
-import { createLpIncreaseHandler } from './endpoints/lpIncrease';
-import { createLpDecreaseHandler } from './endpoints/lpDecrease';
-import { createLpClaimHandler } from './endpoints/lpClaim';
-import { createPortfolioHandler } from './endpoints/portfolio';
+import "dotenv/config";
+import express, { Request, Response } from "express";
+import Logger from "bunyan";
+import helmet from "helmet";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./swagger/config";
+import { RouterService } from "./core/RouterService";
+import { initializeProviders, verifyProviders } from "./providers/rpcProvider";
+import { createQuoteHandler } from "./endpoints/quote";
+import { createSwapHandler } from "./endpoints/swap";
+import { JuiceGatewayService } from "./services/JuiceGatewayService";
+import { SvJusdPriceService } from "./services/SvJusdPriceService";
+import { createSvJusdSharePriceHandler } from "./endpoints/svJusdSharePrice";
+import { createSwappableTokensHandler } from "./endpoints/swappableTokens";
+import { createSwapsHandler } from "./endpoints/swaps";
+import { createLpApproveHandler } from "./endpoints/lpApprove";
+import { createLpCreateHandler } from "./endpoints/lpCreate";
+import { createLpIncreaseHandler } from "./endpoints/lpIncrease";
+import { createLpDecreaseHandler } from "./endpoints/lpDecrease";
+import { createLpClaimHandler } from "./endpoints/lpClaim";
+import { createPortfolioHandler } from "./endpoints/portfolio";
 import {
   createLaunchpadTokensHandler,
   createLaunchpadTokenHandler,
   createLaunchpadTokenTradesHandler,
   createLaunchpadStatsHandler,
   createLaunchpadRecentTradesHandler,
-} from './endpoints/launchpad';
+} from "./endpoints/launchpad";
 import {
   createUploadImageHandler,
   createUploadMetadataHandler,
-} from './endpoints/launchpadMetadata';
+} from "./endpoints/launchpadMetadata";
 import {
   createTotalAddressesWithIpHandler,
   createUniqueIpHashesHandler,
-} from './endpoints/userMetrics';
+} from "./endpoints/userMetrics";
 import {
   createTwitterStartHandler,
   createTwitterCallbackHandler,
@@ -43,15 +43,15 @@ import {
   createDiscordStatusHandler,
   createBAppsStatusHandler,
   createNFTSignatureHandler,
-} from './endpoints/firstSqueezerCampaign';
-import { quoteLimiter, generalLimiter } from './middleware/rateLimiter';
-import { validateBody, validateQuery } from './middleware/validation';
-import { getApolloMiddleware } from './adapters/handleGraphQL';
-import { initializeResolvers } from './adapters/handleGraphQL/resolvers';
-import { quoteCache } from './cache/quoteCache';
-import { portfolioCache } from './cache/portfolioCache';
-import { setLaunchpadTokenServiceLogger } from './services/LaunchpadTokenService';
-import { prisma } from './db/prisma';
+} from "./endpoints/firstSqueezerCampaign";
+import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
+import { validateBody, validateQuery } from "./middleware/validation";
+import { getApolloMiddleware } from "./adapters/handleGraphQL";
+import { initializeResolvers } from "./adapters/handleGraphQL/resolvers";
+import { quoteCache } from "./cache/quoteCache";
+import { portfolioCache } from "./cache/portfolioCache";
+import { setLaunchpadTokenServiceLogger } from "./services/LaunchpadTokenService";
+import { prisma } from "./db/prisma";
 import {
   QuoteRequestSchema,
   SwapRequestSchema,
@@ -72,23 +72,23 @@ import {
   LaunchpadUploadMetadataSchema,
   PositionInfoQuerySchema,
   PoolDetailsRequestSchema,
-} from './validation/schemas';
-import packageJson from '../package.json';
-import { createSwapApproveHandler } from './endpoints/swapApprove';
-import { createLightningInvoiceHandler } from './endpoints/lightningInvoice';
-import { createValidateLightningAddressHandler } from './endpoints/validateLightningAddress';
-import { createPositionInfoHandler } from './endpoints/positionInfo';
-import { createPoolDetailsHandler } from './endpoints/poolDetails';
+} from "./validation/schemas";
+import packageJson from "../package.json";
+import { createSwapApproveHandler } from "./endpoints/swapApprove";
+import { createLightningInvoiceHandler } from "./endpoints/lightningInvoice";
+import { createValidateLightningAddressHandler } from "./endpoints/validateLightningAddress";
+import { createPositionInfoHandler } from "./endpoints/positionInfo";
+import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 
 // Initialize logger
 const logger = Logger.createLogger({
-  name: 'juiceswap-routing-api',
-  level: (process.env.LOG_LEVEL as Logger.LogLevel) || 'info',
+  name: "juiceswap-routing-api",
+  level: (process.env.LOG_LEVEL as Logger.LogLevel) || "info",
   serializers: Logger.stdSerializers,
 });
 
 async function bootstrap() {
-  logger.info('Starting JuiceSwap Clean Routing API...');
+  logger.info("Starting JuiceSwap Clean Routing API...");
 
   // Initialize quote cache with logger
   quoteCache.setLogger(logger);
@@ -122,24 +122,28 @@ async function bootstrap() {
   const app = express();
 
   // Trust proxy for rate limiting
-  app.set('trust proxy', true);
+  app.set("trust proxy", true);
 
   // Body parsing middleware
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: "1mb" }));
 
   // Security headers with Helmet (configured for API use)
-  app.use(helmet({
-    contentSecurityPolicy: false, // Disable CSP for API
-    crossOriginEmbedderPolicy: false, // Allow embedding (for Swagger UI)
-  }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // Disable CSP for API
+      crossOriginEmbedderPolicy: false, // Allow embedding (for Swagger UI)
+    }),
+  );
 
   // CORS configuration
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-    'https://bapp.juiceswap.com',
-    'https://dev.bapp.juiceswap.com',
+  const corsOrigins = process.env.CORS_ORIGINS?.split(",").map((o) =>
+    o.trim(),
+  ) || [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "https://bapp.juiceswap.com",
+    "https://dev.bapp.juiceswap.com",
   ];
 
   app.use((req, res, next) => {
@@ -149,24 +153,24 @@ async function bootstrap() {
     if (origin) {
       // Check exact match
       if (corsOrigins.includes(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
+        res.header("Access-Control-Allow-Origin", origin);
       }
       // Check if it's a juiceswap.com subdomain (supports multi-level subdomains)
       else if (/^https?:\/\/([\w-]+\.)*juiceswap\.com(:\d+)?$/.test(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
+        res.header("Access-Control-Allow-Origin", origin);
       }
     } else {
       // No origin header (e.g., server-to-server request)
-      res.header('Access-Control-Allow-Origin', corsOrigins[0]);
+      res.header("Access-Control-Allow-Origin", corsOrigins[0]);
     }
 
     res.header(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-request-source, x-app-version, x-api-key, x-universal-router-version, x-viem-provider-enabled, x-uniquote-enabled'
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, x-request-source, x-app-version, x-api-key, x-universal-router-version, x-viem-provider-enabled, x-uniquote-enabled",
     );
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
-    if (req.method === 'OPTIONS') {
+    if (req.method === "OPTIONS") {
       res.sendStatus(200);
     } else {
       next();
@@ -175,26 +179,32 @@ async function bootstrap() {
 
   // Request logging middleware
   app.use((req, res, next) => {
-    const requestId = req.headers['x-request-id'] as string ||
-                     `${req.method}-${Date.now()}`;
-    req.headers['x-request-id'] = requestId;
+    const requestId =
+      (req.headers["x-request-id"] as string) || `${req.method}-${Date.now()}`;
+    req.headers["x-request-id"] = requestId;
 
-    logger.debug({
-      requestId,
-      method: req.method,
-      path: req.path,
-      ip: req.ip,
-      userAgent: req.headers['user-agent'],
-    }, 'Incoming request');
+    logger.debug(
+      {
+        requestId,
+        method: req.method,
+        path: req.path,
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      },
+      "Incoming request",
+    );
 
     // Log response
     const originalSend = res.send;
-    res.send = function(data) {
-      logger.debug({
-        requestId,
-        statusCode: res.statusCode,
-        responseTime: res.getHeader('X-Response-Time'),
-      }, 'Request completed');
+    res.send = function (data) {
+      logger.debug(
+        {
+          requestId,
+          statusCode: res.statusCode,
+          responseTime: res.getHeader("X-Response-Time"),
+        },
+        "Request completed",
+      );
       return originalSend.call(this, data);
     };
 
@@ -202,16 +212,44 @@ async function bootstrap() {
   });
 
   // Create endpoint handlers
-  const handleQuote = createQuoteHandler(routerService, logger, juiceGatewayService);
-  const handleSwap = createSwapHandler(routerService, logger, juiceGatewayService);
+  const handleQuote = createQuoteHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
+  const handleSwap = createSwapHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
   const handleSwappableTokens = createSwappableTokensHandler(logger);
   const handleSwapApprove = createSwapApproveHandler(routerService, logger);
   const handleSwaps = createSwapsHandler(routerService, logger);
-  const handleLpApprove = createLpApproveHandler(routerService, logger, juiceGatewayService);
-  const handleLpCreate = createLpCreateHandler(routerService, logger, juiceGatewayService);
-  const handleLpIncrease = createLpIncreaseHandler(routerService, logger, juiceGatewayService);
-  const handleLpDecrease = createLpDecreaseHandler(routerService, logger, juiceGatewayService);
-  const handleLpClaim = createLpClaimHandler(routerService, logger, juiceGatewayService);
+  const handleLpApprove = createLpApproveHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
+  const handleLpCreate = createLpCreateHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
+  const handleLpIncrease = createLpIncreaseHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
+  const handleLpDecrease = createLpDecreaseHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
+  const handleLpClaim = createLpClaimHandler(
+    routerService,
+    logger,
+    juiceGatewayService,
+  );
   const handlePortfolio = createPortfolioHandler(providers, logger);
 
   // User metrics endpoint handlers
@@ -223,7 +261,8 @@ async function bootstrap() {
   const handleLaunchpadToken = createLaunchpadTokenHandler(logger);
   const handleLaunchpadTokenTrades = createLaunchpadTokenTradesHandler(logger);
   const handleLaunchpadStats = createLaunchpadStatsHandler(logger);
-  const handleLaunchpadRecentTrades = createLaunchpadRecentTradesHandler(logger);
+  const handleLaunchpadRecentTrades =
+    createLaunchpadRecentTradesHandler(logger);
   const handleUploadImage = createUploadImageHandler(logger);
   const handleUploadMetadata = createUploadMetadataHandler(logger);
 
@@ -237,133 +276,266 @@ async function bootstrap() {
   const handleBAppsStatus = createBAppsStatusHandler(logger);
   const handleNFTSignature = createNFTSignatureHandler(logger);
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
-  const handleValidateLightningAddress = createValidateLightningAddressHandler(logger);
+  const handleValidateLightningAddress =
+    createValidateLightningAddressHandler(logger);
   const handlePositionInfo = createPositionInfoHandler(routerService, logger);
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
-  const handleSvJusdSharePrice = createSvJusdSharePriceHandler(svJusdPriceService, logger);
+  const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
+    svJusdPriceService,
+    logger,
+  );
 
   // API Routes with validation
-  app.post('/v1/quote', quoteLimiter, validateBody(QuoteRequestSchema, logger), handleQuote);
-  app.post('/v1/swap', generalLimiter, validateBody(SwapRequestSchema, logger), handleSwap);
-  app.post('/v1/swap/approve', generalLimiter, validateBody(SwapApproveRequestSchema, logger), handleSwapApprove);
+  app.post(
+    "/v1/quote",
+    quoteLimiter,
+    validateBody(QuoteRequestSchema, logger),
+    handleQuote,
+  );
+  app.post(
+    "/v1/swap",
+    generalLimiter,
+    validateBody(SwapRequestSchema, logger),
+    handleSwap,
+  );
+  app.post(
+    "/v1/swap/approve",
+    generalLimiter,
+    validateBody(SwapApproveRequestSchema, logger),
+    handleSwapApprove,
+  );
 
   // Swappable tokens endpoint (returns supported tokens)
-  app.get('/v1/swappable_tokens', validateQuery(SwappableTokensQuerySchema, logger), handleSwappableTokens);
+  app.get(
+    "/v1/swappable_tokens",
+    validateQuery(SwappableTokensQuerySchema, logger),
+    handleSwappableTokens,
+  );
 
   // Portfolio endpoint (returns wallet token balances)
-  app.get('/v1/portfolio/:address', generalLimiter, validateQuery(PortfolioQuerySchema, logger), handlePortfolio);
+  app.get(
+    "/v1/portfolio/:address",
+    generalLimiter,
+    validateQuery(PortfolioQuerySchema, logger),
+    handlePortfolio,
+  );
 
   // Position info endpoint (returns liquidity position information)
-  app.get('/v1/positions/:tokenId', generalLimiter, validateQuery(PositionInfoQuerySchema, logger), handlePositionInfo);
+  app.get(
+    "/v1/positions/:tokenId",
+    generalLimiter,
+    validateQuery(PositionInfoQuerySchema, logger),
+    handlePositionInfo,
+  );
 
   // Pool details endpoint
-  app.post('/v1/pools/v3/details', generalLimiter, validateBody(PoolDetailsRequestSchema, logger), handlePoolDetails);
+  app.post(
+    "/v1/pools/v3/details",
+    generalLimiter,
+    validateBody(PoolDetailsRequestSchema, logger),
+    handlePoolDetails,
+  );
 
   // LP endpoints
-  app.post('/v1/lp/approve', generalLimiter, validateBody(LpApproveRequestSchema, logger), handleLpApprove);
-  app.post('/v1/lp/create', generalLimiter, validateBody(LpCreateRequestSchema, logger), handleLpCreate);
-  app.post('/v1/lp/increase', generalLimiter, validateBody(LpIncreaseRequestSchema, logger), handleLpIncrease);
-  app.post('/v1/lp/decrease', generalLimiter, validateBody(LpDecreaseRequestSchema, logger), handleLpDecrease);
-  app.post('/v1/lp/claim', generalLimiter, validateBody(LpClaimRequestSchema, logger), handleLpClaim);
+  app.post(
+    "/v1/lp/approve",
+    generalLimiter,
+    validateBody(LpApproveRequestSchema, logger),
+    handleLpApprove,
+  );
+  app.post(
+    "/v1/lp/create",
+    generalLimiter,
+    validateBody(LpCreateRequestSchema, logger),
+    handleLpCreate,
+  );
+  app.post(
+    "/v1/lp/increase",
+    generalLimiter,
+    validateBody(LpIncreaseRequestSchema, logger),
+    handleLpIncrease,
+  );
+  app.post(
+    "/v1/lp/decrease",
+    generalLimiter,
+    validateBody(LpDecreaseRequestSchema, logger),
+    handleLpDecrease,
+  );
+  app.post(
+    "/v1/lp/claim",
+    generalLimiter,
+    validateBody(LpClaimRequestSchema, logger),
+    handleLpClaim,
+  );
 
   // svJUSD share price endpoint (for frontend price calculations)
-  app.get('/v1/svjusd/sharePrice', generalLimiter, handleSvJusdSharePrice);
+  app.get("/v1/svjusd/sharePrice", generalLimiter, handleSvJusdSharePrice);
 
   // Lightning invoice endpoint
-  app.post('/v1/lightning/invoice', generalLimiter, validateBody(LightningInvoiceRequestSchema, logger), handleLightningInvoice);
-  app.post('/v1/lightning/validate', generalLimiter, validateBody(LightningAddressRequestSchema, logger), handleValidateLightningAddress);
+  app.post(
+    "/v1/lightning/invoice",
+    generalLimiter,
+    validateBody(LightningInvoiceRequestSchema, logger),
+    handleLightningInvoice,
+  );
+  app.post(
+    "/v1/lightning/validate",
+    generalLimiter,
+    validateBody(LightningAddressRequestSchema, logger),
+    handleValidateLightningAddress,
+  );
 
   // Swaps transaction status endpoint
-  app.get('/v1/swaps', validateQuery(SwapsQuerySchema, logger), handleSwaps);
+  app.get("/v1/swaps", validateQuery(SwapsQuerySchema, logger), handleSwaps);
 
   // User metrics endpoints
-  app.get('/v1/metrics/users/total-with-ip', handleTotalAddressesWithIp);
-  app.get('/v1/metrics/users/unique-ips', handleUniqueIpHashes);
+  app.get("/v1/metrics/users/total-with-ip", handleTotalAddressesWithIp);
+  app.get("/v1/metrics/users/unique-ips", handleUniqueIpHashes);
 
   // Launchpad endpoints (proxies to Ponder)
-  app.get('/v1/launchpad/tokens', generalLimiter, validateQuery(LaunchpadTokensQuerySchema, logger), handleLaunchpadTokens);
-  app.get('/v1/launchpad/token/:address', generalLimiter, handleLaunchpadToken);
-  app.get('/v1/launchpad/token/:address/trades', generalLimiter, validateQuery(LaunchpadTradesQuerySchema, logger), handleLaunchpadTokenTrades);
-  app.get('/v1/launchpad/stats', generalLimiter, handleLaunchpadStats);
-  app.get('/v1/launchpad/recent-trades', generalLimiter, validateQuery(LaunchpadRecentTradesQuerySchema, logger), handleLaunchpadRecentTrades);
+  app.get(
+    "/v1/launchpad/tokens",
+    generalLimiter,
+    validateQuery(LaunchpadTokensQuerySchema, logger),
+    handleLaunchpadTokens,
+  );
+  app.get("/v1/launchpad/token/:address", generalLimiter, handleLaunchpadToken);
+  app.get(
+    "/v1/launchpad/token/:address/trades",
+    generalLimiter,
+    validateQuery(LaunchpadTradesQuerySchema, logger),
+    handleLaunchpadTokenTrades,
+  );
+  app.get("/v1/launchpad/stats", generalLimiter, handleLaunchpadStats);
+  app.get(
+    "/v1/launchpad/recent-trades",
+    generalLimiter,
+    validateQuery(LaunchpadRecentTradesQuerySchema, logger),
+    handleLaunchpadRecentTrades,
+  );
 
   // Launchpad metadata upload endpoints (Pinata IPFS)
-  app.post('/v1/launchpad/upload-image', generalLimiter, handleUploadImage);
-  app.post('/v1/launchpad/upload-metadata', generalLimiter, validateBody(LaunchpadUploadMetadataSchema, logger), handleUploadMetadata);
+  app.post("/v1/launchpad/upload-image", generalLimiter, handleUploadImage);
+  app.post(
+    "/v1/launchpad/upload-metadata",
+    generalLimiter,
+    validateBody(LaunchpadUploadMetadataSchema, logger),
+    handleUploadMetadata,
+  );
 
   // Campaign endpoints - Twitter OAuth
-  app.get('/v1/campaigns/first-squeezer/twitter/start', generalLimiter, handleTwitterStart);
-  app.get('/v1/campaigns/first-squeezer/twitter/callback', generalLimiter, handleTwitterCallback);
-  app.get('/v1/campaigns/first-squeezer/twitter/status', generalLimiter, handleTwitterStatus);
+  app.get(
+    "/v1/campaigns/first-squeezer/twitter/start",
+    generalLimiter,
+    handleTwitterStart,
+  );
+  app.get(
+    "/v1/campaigns/first-squeezer/twitter/callback",
+    generalLimiter,
+    handleTwitterCallback,
+  );
+  app.get(
+    "/v1/campaigns/first-squeezer/twitter/status",
+    generalLimiter,
+    handleTwitterStatus,
+  );
 
   // Campaign endpoints - Discord OAuth
-  app.get('/v1/campaigns/first-squeezer/discord/start', generalLimiter, handleDiscordStart);
-  app.get('/v1/campaigns/first-squeezer/discord/callback', generalLimiter, handleDiscordCallback);
-  app.get('/v1/campaigns/first-squeezer/discord/status', generalLimiter, handleDiscordStatus);
+  app.get(
+    "/v1/campaigns/first-squeezer/discord/start",
+    generalLimiter,
+    handleDiscordStart,
+  );
+  app.get(
+    "/v1/campaigns/first-squeezer/discord/callback",
+    generalLimiter,
+    handleDiscordCallback,
+  );
+  app.get(
+    "/v1/campaigns/first-squeezer/discord/status",
+    generalLimiter,
+    handleDiscordStatus,
+  );
 
   // Campaign endpoints - bApps Verification
-  app.get('/v1/campaigns/first-squeezer/bapps/status', generalLimiter, handleBAppsStatus);
+  app.get(
+    "/v1/campaigns/first-squeezer/bapps/status",
+    generalLimiter,
+    handleBAppsStatus,
+  );
 
   // Campaign endpoints - NFT Claiming
-  app.get('/v1/campaigns/first-squeezer/nft/signature', generalLimiter, handleNFTSignature);
+  app.get(
+    "/v1/campaigns/first-squeezer/nft/signature",
+    generalLimiter,
+    handleNFTSignature,
+  );
 
   // GraphQL endpoint
-  app.use('/v1/graphql', await getApolloMiddleware(logger));
+  app.use("/v1/graphql", await getApolloMiddleware(logger));
 
   // API Documentation (Swagger UI)
   // Type assertions needed due to @types/swagger-ui-express bundling its own @types/express
-  app.use('/swagger', swaggerUi.serve as any, swaggerUi.setup(swaggerSpec, {
-    customCss: '.swagger-ui .topbar { display: none }',
-    customSiteTitle: 'JuiceSwap API Documentation',
-  }) as any);
+  app.use(
+    "/swagger",
+    swaggerUi.serve as any,
+    swaggerUi.setup(swaggerSpec, {
+      customCss: ".swagger-ui .topbar { display: none }",
+      customSiteTitle: "JuiceSwap API Documentation",
+    }) as any,
+  );
 
   // Health check endpoints
-  app.get('/healthz', (_req: Request, res: Response) => {
-    res.status(200).send('ok');
+  app.get("/healthz", (_req: Request, res: Response) => {
+    res.status(200).send("ok");
   });
 
-  app.get('/readyz', async (_req: Request, res: Response) => {
+  app.get("/readyz", async (_req: Request, res: Response) => {
     // Check if at least one provider is working
     const chains = routerService.getSupportedChains();
     if (chains.length > 0) {
-      res.status(200).send('ready');
+      res.status(200).send("ready");
     } else {
-      res.status(503).send('not ready');
+      res.status(503).send("not ready");
     }
   });
 
   // Version endpoint
-  app.get('/version', (_req: Request, res: Response) => {
+  app.get("/version", (_req: Request, res: Response) => {
     res.json({
       name: packageJson.name,
       version: packageJson.version,
       node: process.version,
-      environment: process.env.NODE_ENV || 'development',
+      environment: process.env.NODE_ENV || "development",
     });
   });
 
   // Metrics endpoint (basic)
-  app.get('/metrics', async (_req: Request, res: Response) => {
+  app.get("/metrics", async (_req: Request, res: Response) => {
     const userCount = await prisma.user.count().catch((error) => {
-      logger.warn({ error }, 'Failed to fetch user count for metrics');
+      logger.warn({ error }, "Failed to fetch user count for metrics");
       return -1;
     });
 
-    const trackedUsers = await prisma.user.count({
-      where: { ipAddressHash: { not: null } }
-    }).catch((error) => {
-      logger.warn({ error }, 'Failed to fetch tracked users for metrics');
-      return -1;
-    });
+    const trackedUsers = await prisma.user
+      .count({
+        where: { ipAddressHash: { not: null } },
+      })
+      .catch((error) => {
+        logger.warn({ error }, "Failed to fetch tracked users for metrics");
+        return -1;
+      });
 
-    const uniqueIpResult = await prisma.user.groupBy({
-      by: ['ipAddressHash'],
-      where: { ipAddressHash: { not: null } },
-      _count: true,
-    }).catch((error) => {
-      logger.warn({ error }, 'Failed to fetch unique IPs for metrics');
-      return [];
-    });
+    const uniqueIpResult = await prisma.user
+      .groupBy({
+        by: ["ipAddressHash"],
+        where: { ipAddressHash: { not: null } },
+        _count: true,
+      })
+      .catch((error) => {
+        logger.warn({ error }, "Failed to fetch unique IPs for metrics");
+        return [];
+      });
 
     res.json({
       uptime: process.uptime(),
@@ -378,28 +550,33 @@ async function bootstrap() {
 
   // 404 handler
   app.use((req: Request, res: Response) => {
-    logger.warn({ path: req.path, method: req.method }, 'Route not found');
+    logger.warn({ path: req.path, method: req.method }, "Route not found");
     res.status(404).json({
-      error: 'Not found',
+      error: "Not found",
       detail: `The endpoint ${req.method} ${req.path} does not exist`,
     });
   });
 
   // Error handler
   app.use((err: any, req: Request, res: Response, _next: any) => {
-    logger.error({ error: err, path: req.path }, 'Unhandled error');
+    logger.error({ error: err, path: req.path }, "Unhandled error");
     res.status(500).json({
-      error: 'Internal server error',
-      detail: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+      error: "Internal server error",
+      detail:
+        process.env.NODE_ENV === "development"
+          ? err.message
+          : "An error occurred",
     });
   });
 
   // Start server
-  const port = parseInt(process.env.PORT || '3000');
-  const server = app.listen(port, '0.0.0.0', () => {
+  const port = parseInt(process.env.PORT || "3000");
+  const server = app.listen(port, "0.0.0.0", () => {
     logger.info({ port }, `JuiceSwap Routing API listening on port ${port}`);
-    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    logger.info(`Supported chains: ${routerService.getSupportedChains().join(', ')}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
+    logger.info(
+      `Supported chains: ${routerService.getSupportedChains().join(", ")}`,
+    );
   });
 
   // Graceful shutdown
@@ -407,27 +584,30 @@ async function bootstrap() {
     logger.info(`Received ${signal}, starting graceful shutdown...`);
 
     server.close(() => {
-      logger.info('HTTP server closed');
+      logger.info("HTTP server closed");
       process.exit(0);
     });
 
     // Force shutdown after 10 seconds
     setTimeout(() => {
-      logger.error('Forced shutdown after timeout');
+      logger.error("Forced shutdown after timeout");
       process.exit(1);
     }, 10000);
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 // Start the application
 bootstrap().catch((error) => {
-  logger.fatal({
-    error: error.message,
-    stack: error.stack,
-    name: error.name
-  }, 'Failed to start application');
+  logger.fatal(
+    {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+    },
+    "Failed to start application",
+  );
   process.exit(1);
 });

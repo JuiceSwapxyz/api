@@ -1,6 +1,6 @@
-import { ethers } from 'ethers';
-import { ChainId } from '@juiceswapxyz/sdk-core';
-import Logger from 'bunyan';
+import { ethers } from "ethers";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import Logger from "bunyan";
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -10,17 +10,17 @@ import {
   isUsdToken,
   isBridgedStablecoin,
   ChainContracts,
-} from '../config/contracts';
-import { JuiceSwapGatewayAbi } from '../abi/JuiceSwapGateway';
+} from "../config/contracts";
+import { JuiceSwapGatewayAbi } from "../abi/JuiceSwapGateway";
 
 /**
  * ABI fragments for JUICE Equity contract
  */
 const EQUITY_ABI = [
-  'function invest(uint256 amount, uint256 expectedShares) returns (uint256)',
-  'function redeem(address target, uint256 shares) returns (uint256)',
-  'function calculateProceeds(uint256 shares) view returns (uint256)',
-  'function calculateShares(uint256 investment) view returns (uint256)',
+  "function invest(uint256 amount, uint256 expectedShares) returns (uint256)",
+  "function redeem(address target, uint256 shares) returns (uint256)",
+  "function calculateProceeds(uint256 shares) view returns (uint256)",
+  "function calculateShares(uint256 investment) view returns (uint256)",
 ];
 
 export interface GatewayQuoteResult {
@@ -28,8 +28,8 @@ export interface GatewayQuoteResult {
   internalTokenOut: string;
   internalAmountIn: string;
   expectedOutput: string;
-  routingType: 'GATEWAY_JUSD' | 'GATEWAY_JUICE_OUT' | 'GATEWAY_JUICE_IN';
-  isDirectConversion?: boolean;  // True for direct USD↔USD conversions (no pool routing needed)
+  routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN";
+  isDirectConversion?: boolean; // True for direct USD↔USD conversions (no pool routing needed)
 }
 
 export interface GatewaySwapParams {
@@ -93,13 +93,13 @@ export interface BridgeStatus {
 }
 
 export class BridgeLiquidityError extends Error {
-  code = 'INSUFFICIENT_BRIDGE_LIQUIDITY';
+  code = "INSUFFICIENT_BRIDGE_LIQUIDITY";
   available?: string;
   required?: string;
 
   constructor(reason?: string, available?: string, required?: string) {
-    super(reason || 'Insufficient bridge liquidity');
-    this.name = 'BridgeLiquidityError';
+    super(reason || "Insufficient bridge liquidity");
+    this.name = "BridgeLiquidityError";
     this.available = available;
     this.required = required;
   }
@@ -123,9 +123,9 @@ export class JuiceGatewayService {
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
-    logger: Logger
+    logger: Logger,
   ) {
-    this.logger = logger.child({ service: 'JuiceGatewayService' });
+    this.logger = logger.child({ service: "JuiceGatewayService" });
 
     // Initialize contracts for chains with JuiceDollar integration
     for (const [chainId, provider] of providers) {
@@ -139,17 +139,21 @@ export class JuiceGatewayService {
   private initializeContracts(
     chainId: ChainId,
     provider: ethers.providers.StaticJsonRpcProvider,
-    contracts: ChainContracts
+    contracts: ChainContracts,
   ): void {
     this.gatewayContracts.set(
       chainId,
-      new ethers.Contract(contracts.JUICE_SWAP_GATEWAY, JuiceSwapGatewayAbi, provider)
+      new ethers.Contract(
+        contracts.JUICE_SWAP_GATEWAY,
+        JuiceSwapGatewayAbi,
+        provider,
+      ),
     );
     this.equityContracts.set(
       chainId,
-      new ethers.Contract(contracts.JUICE, EQUITY_ABI, provider)
+      new ethers.Contract(contracts.JUICE, EQUITY_ABI, provider),
     );
-    this.logger.info({ chainId }, 'JuiceDollar contracts initialized');
+    this.logger.info({ chainId }, "JuiceDollar contracts initialized");
   }
 
   /**
@@ -164,8 +168,8 @@ export class JuiceGatewayService {
   detectRoutingType(
     chainId: number,
     tokenIn: string,
-    tokenOut: string
-  ): 'GATEWAY_JUSD' | 'GATEWAY_JUICE_OUT' | 'GATEWAY_JUICE_IN' | null {
+    tokenOut: string,
+  ): "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN" | null {
     if (!hasJuiceDollarIntegration(chainId)) {
       return null;
     }
@@ -179,18 +183,18 @@ export class JuiceGatewayService {
 
     // JUICE as input - route through Equity.redeem()
     if (isJuiceIn) {
-      return 'GATEWAY_JUICE_IN';
+      return "GATEWAY_JUICE_IN";
     }
 
     // JUICE as output - route through Gateway (which calls Equity.invest())
     if (isJuiceOut) {
-      return 'GATEWAY_JUICE_OUT';
+      return "GATEWAY_JUICE_OUT";
     }
 
     // Any USD token involved - route through Gateway
     // This includes JUSD, svJUSD, SUSD, USDC, USDT, CTUSD
     if (isUsdIn || isUsdOut) {
-      return 'GATEWAY_JUSD';
+      return "GATEWAY_JUSD";
     }
 
     return null;
@@ -200,7 +204,11 @@ export class JuiceGatewayService {
    * Check if this is a direct USD-to-USD conversion
    * Direct conversions don't need pool routing - they go through the Gateway bridges only
    */
-  isDirectUsdConversion(chainId: number, tokenIn: string, tokenOut: string): boolean {
+  isDirectUsdConversion(
+    chainId: number,
+    tokenIn: string,
+    tokenOut: string,
+  ): boolean {
     return isUsdToken(chainId, tokenIn) && isUsdToken(chainId, tokenOut);
   }
 
@@ -215,7 +223,10 @@ export class JuiceGatewayService {
       const fee = await contract.DEFAULT_FEE();
       return (fee as ethers.BigNumber).toNumber();
     } catch (error) {
-      this.logger.warn({ chainId, error }, 'Failed to get default fee, using 3000');
+      this.logger.warn(
+        { chainId, error },
+        "Failed to get default fee, using 3000",
+      );
       return 3000;
     }
   }
@@ -237,7 +248,7 @@ export class JuiceGatewayService {
       const shares = await contract.jusdToSvJusd(jusdAmount);
       return shares.toString();
     } catch (error) {
-      this.logger.error({ chainId, jusdAmount, error }, 'jusdToSvJusd failed');
+      this.logger.error({ chainId, jusdAmount, error }, "jusdToSvJusd failed");
       throw error;
     }
   }
@@ -255,7 +266,10 @@ export class JuiceGatewayService {
       const assets = await contract.svJusdToJusd(svJusdAmount);
       return assets.toString();
     } catch (error) {
-      this.logger.error({ chainId, svJusdAmount, error }, 'svJusdToJusd failed');
+      this.logger.error(
+        { chainId, svJusdAmount, error },
+        "svJusdToJusd failed",
+      );
       throw error;
     }
   }
@@ -273,7 +287,7 @@ export class JuiceGatewayService {
       const juiceAmount = await contract.jusdToJuice(jusdAmount);
       return juiceAmount.toString();
     } catch (error) {
-      this.logger.error({ chainId, jusdAmount, error }, 'jusdToJuice failed');
+      this.logger.error({ chainId, jusdAmount, error }, "jusdToJuice failed");
       throw error;
     }
   }
@@ -291,7 +305,7 @@ export class JuiceGatewayService {
       const jusdAmount = await contract.juiceToJusd(juiceAmount);
       return jusdAmount.toString();
     } catch (error) {
-      this.logger.error({ chainId, juiceAmount, error }, 'juiceToJusd failed');
+      this.logger.error({ chainId, juiceAmount, error }, "juiceToJusd failed");
       throw error;
     }
   }
@@ -300,7 +314,10 @@ export class JuiceGatewayService {
    * Calculate expected JUSD from Equity.redeem()
    * Uses Equity.calculateProceeds() for accurate estimation
    */
-  async calculateRedeemProceeds(chainId: ChainId, juiceShares: string): Promise<string> {
+  async calculateRedeemProceeds(
+    chainId: ChainId,
+    juiceShares: string,
+  ): Promise<string> {
     const contract = this.equityContracts.get(chainId);
     if (!contract) {
       throw new Error(`No Equity contract for chain ${chainId}`);
@@ -310,7 +327,10 @@ export class JuiceGatewayService {
       const proceeds = await contract.calculateProceeds(juiceShares);
       return proceeds.toString();
     } catch (error) {
-      this.logger.error({ chainId, juiceShares, error }, 'calculateRedeemProceeds failed');
+      this.logger.error(
+        { chainId, juiceShares, error },
+        "calculateRedeemProceeds failed",
+      );
       throw error;
     }
   }
@@ -324,7 +344,7 @@ export class JuiceGatewayService {
    */
   buildGatewaySwapCalldata(params: GatewaySwapParams): string {
     const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
-    return iface.encodeFunctionData('swapExactTokensForTokens', [
+    return iface.encodeFunctionData("swapExactTokensForTokens", [
       params.tokenIn,
       params.tokenOut,
       params.fee,
@@ -340,7 +360,7 @@ export class JuiceGatewayService {
    */
   buildEquityRedeemCalldata(params: EquityRedeemParams): string {
     const iface = new ethers.utils.Interface(EQUITY_ABI);
-    return iface.encodeFunctionData('redeem', [
+    return iface.encodeFunctionData("redeem", [
       params.recipient,
       params.juiceAmount,
     ]);
@@ -381,7 +401,10 @@ export class JuiceGatewayService {
   /**
    * Get bridge status for a bridged token
    */
-  async getBridgeStatus(chainId: ChainId, bridgedToken: string): Promise<BridgeStatus> {
+  async getBridgeStatus(
+    chainId: ChainId,
+    bridgedToken: string,
+  ): Promise<BridgeStatus> {
     const contract = this.gatewayContracts.get(chainId);
     if (!contract) {
       throw new Error(`No Gateway contract for chain ${chainId}`);
@@ -398,7 +421,10 @@ export class JuiceGatewayService {
         burnBlockReason: status.burnBlockReason,
       };
     } catch (error) {
-      this.logger.error({ chainId, bridgedToken, error }, 'getBridgeStatus failed');
+      this.logger.error(
+        { chainId, bridgedToken, error },
+        "getBridgeStatus failed",
+      );
       throw error;
     }
   }
@@ -411,28 +437,32 @@ export class JuiceGatewayService {
     chainId: ChainId,
     bridgedToken: string,
     amount: string,
-    direction: 'mint' | 'burn'
+    direction: "mint" | "burn",
   ): Promise<void> {
     const status = await this.getBridgeStatus(chainId, bridgedToken);
 
-    if (direction === 'burn') {
+    if (direction === "burn") {
       // JUSD → bridged token
       if (!status.canBurn) {
-        throw new BridgeLiquidityError(status.burnBlockReason || 'Bridge burn not available');
+        throw new BridgeLiquidityError(
+          status.burnBlockReason || "Bridge burn not available",
+        );
       }
       const available = ethers.BigNumber.from(status.burnCapacity);
       const required = ethers.BigNumber.from(amount);
       if (required.gt(available)) {
         throw new BridgeLiquidityError(
-          'Insufficient bridge liquidity',
+          "Insufficient bridge liquidity",
           status.burnCapacity,
-          amount
+          amount,
         );
       }
     } else {
       // bridged token → JUSD
       if (!status.canMint) {
-        throw new BridgeLiquidityError(status.mintBlockReason || 'Bridge mint not available');
+        throw new BridgeLiquidityError(
+          status.mintBlockReason || "Bridge mint not available",
+        );
       }
       // Note: For mint, we'd need to convert amount to JUSD to compare against mintCapacity
       // For now, checking canMint is sufficient as limit checks are complex
@@ -447,7 +477,11 @@ export class JuiceGatewayService {
    * Convert bridged stablecoin amount to svJUSD shares
    * Uses Gateway's bridgedToSvJusd() which handles decimal conversion internally
    */
-  async bridgedToSvJusd(chainId: ChainId, bridgedToken: string, amount: string): Promise<string> {
+  async bridgedToSvJusd(
+    chainId: ChainId,
+    bridgedToken: string,
+    amount: string,
+  ): Promise<string> {
     const contract = this.gatewayContracts.get(chainId);
     if (!contract) throw new Error(`No Gateway contract for chain ${chainId}`);
 
@@ -455,7 +489,10 @@ export class JuiceGatewayService {
       const shares = await contract.bridgedToSvJusd(bridgedToken, amount);
       return shares.toString();
     } catch (error) {
-      this.logger.error({ chainId, bridgedToken, amount, error }, 'bridgedToSvJusd failed');
+      this.logger.error(
+        { chainId, bridgedToken, amount, error },
+        "bridgedToSvJusd failed",
+      );
       throw error;
     }
   }
@@ -464,7 +501,11 @@ export class JuiceGatewayService {
    * Convert svJUSD shares to bridged stablecoin amount
    * Uses Gateway's svJusdToBridged() which handles decimal conversion internally
    */
-  async svJusdToBridged(chainId: ChainId, bridgedToken: string, svJusdAmount: string): Promise<string> {
+  async svJusdToBridged(
+    chainId: ChainId,
+    bridgedToken: string,
+    svJusdAmount: string,
+  ): Promise<string> {
     const contract = this.gatewayContracts.get(chainId);
     if (!contract) throw new Error(`No Gateway contract for chain ${chainId}`);
 
@@ -472,7 +513,10 @@ export class JuiceGatewayService {
       const amount = await contract.svJusdToBridged(bridgedToken, svJusdAmount);
       return amount.toString();
     } catch (error) {
-      this.logger.error({ chainId, bridgedToken, svJusdAmount, error }, 'svJusdToBridged failed');
+      this.logger.error(
+        { chainId, bridgedToken, svJusdAmount, error },
+        "svJusdToBridged failed",
+      );
       throw error;
     }
   }
@@ -495,7 +539,7 @@ export class JuiceGatewayService {
     chainId: ChainId,
     tokenIn: string,
     tokenOut: string,
-    amountIn: string
+    amountIn: string,
   ): Promise<GatewayQuoteResult | null> {
     const routingType = this.detectRoutingType(chainId, tokenIn, tokenOut);
     if (!routingType) return null;
@@ -508,7 +552,10 @@ export class JuiceGatewayService {
     let internalAmountIn = amountIn;
 
     // Check if this is a direct USD↔USD conversion (no pool routing needed)
-    if (routingType === 'GATEWAY_JUSD' && this.isDirectUsdConversion(chainId, tokenIn, tokenOut)) {
+    if (
+      routingType === "GATEWAY_JUSD" &&
+      this.isDirectUsdConversion(chainId, tokenIn, tokenOut)
+    ) {
       // Direct conversion between USD tokens using Gateway view functions
       // Chain the appropriate conversions based on token types
       // Bridge liquidity is checked inline to avoid duplicate RPC calls
@@ -523,28 +570,63 @@ export class JuiceGatewayService {
 
       if (isBridgedIn && isBridgedOut) {
         // Bridged → Bridged: check mint, convert, check burn
-        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
-        const svJusdAmount = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
-        expectedOutput = await this.svJusdToBridged(chainId, tokenOut, svJusdAmount);
-        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, "mint");
+        const svJusdAmount = await this.bridgedToSvJusd(
+          chainId,
+          tokenIn,
+          amountIn,
+        );
+        expectedOutput = await this.svJusdToBridged(
+          chainId,
+          tokenOut,
+          svJusdAmount,
+        );
+        await this.checkBridgeLiquidity(
+          chainId,
+          tokenOut,
+          expectedOutput,
+          "burn",
+        );
       } else if (isBridgedIn && isJusdOut) {
         // Bridged → JUSD: check mint, convert
-        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
-        const svJusdAmount = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, "mint");
+        const svJusdAmount = await this.bridgedToSvJusd(
+          chainId,
+          tokenIn,
+          amountIn,
+        );
         expectedOutput = await this.svJusdToJusd(chainId, svJusdAmount);
       } else if (isBridgedIn && isSvJusdOut) {
         // Bridged → svJUSD: check mint, convert
-        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, 'mint');
+        await this.checkBridgeLiquidity(chainId, tokenIn, amountIn, "mint");
         expectedOutput = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
       } else if (isJusdIn && isBridgedOut) {
         // JUSD → Bridged: convert, check burn
         const svJusdAmount = await this.jusdToSvJusd(chainId, amountIn);
-        expectedOutput = await this.svJusdToBridged(chainId, tokenOut, svJusdAmount);
-        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
+        expectedOutput = await this.svJusdToBridged(
+          chainId,
+          tokenOut,
+          svJusdAmount,
+        );
+        await this.checkBridgeLiquidity(
+          chainId,
+          tokenOut,
+          expectedOutput,
+          "burn",
+        );
       } else if (isSvJusdIn && isBridgedOut) {
         // svJUSD → Bridged: convert, check burn
-        expectedOutput = await this.svJusdToBridged(chainId, tokenOut, amountIn);
-        await this.checkBridgeLiquidity(chainId, tokenOut, expectedOutput, 'burn');
+        expectedOutput = await this.svJusdToBridged(
+          chainId,
+          tokenOut,
+          amountIn,
+        );
+        await this.checkBridgeLiquidity(
+          chainId,
+          tokenOut,
+          expectedOutput,
+          "burn",
+        );
       } else if (isJusdIn && isSvJusdOut) {
         // JUSD → svJUSD (no bridge involved)
         expectedOutput = await this.jusdToSvJusd(chainId, amountIn);
@@ -567,7 +649,7 @@ export class JuiceGatewayService {
     }
 
     switch (routingType) {
-      case 'GATEWAY_JUSD': {
+      case "GATEWAY_JUSD": {
         // USD token input/output - convert to svJUSD for internal routing
         const isUsdIn = isUsdToken(chainId, tokenIn);
         const isUsdOut = isUsdToken(chainId, tokenOut);
@@ -576,7 +658,11 @@ export class JuiceGatewayService {
           internalTokenIn = contracts.SV_JUSD;
           if (isBridgedStablecoin(chainId, tokenIn)) {
             // Bridged stablecoin → svJUSD directly via Gateway view function
-            internalAmountIn = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+            internalAmountIn = await this.bridgedToSvJusd(
+              chainId,
+              tokenIn,
+              amountIn,
+            );
           } else if (isSvJusdAddress(chainId, tokenIn)) {
             // svJUSD → use as-is
             internalAmountIn = amountIn;
@@ -591,14 +677,18 @@ export class JuiceGatewayService {
         break;
       }
 
-      case 'GATEWAY_JUICE_OUT': {
+      case "GATEWAY_JUICE_OUT": {
         // Buying JUICE - route to svJUSD first
         const isUsdIn = isUsdToken(chainId, tokenIn);
 
         if (isUsdIn) {
           internalTokenIn = contracts.SV_JUSD;
           if (isBridgedStablecoin(chainId, tokenIn)) {
-            internalAmountIn = await this.bridgedToSvJusd(chainId, tokenIn, amountIn);
+            internalAmountIn = await this.bridgedToSvJusd(
+              chainId,
+              tokenIn,
+              amountIn,
+            );
           } else if (isSvJusdAddress(chainId, tokenIn)) {
             internalAmountIn = amountIn;
           } else {
@@ -610,7 +700,7 @@ export class JuiceGatewayService {
         break;
       }
 
-      case 'GATEWAY_JUICE_IN': {
+      case "GATEWAY_JUICE_IN": {
         // JUICE can only be swapped directly to JUSD
         // Multi-hop swaps (JUICE → X where X is not JUSD) are not supported
         // Users must manually redeem JUICE for JUSD first, then swap JUSD → X
@@ -618,7 +708,10 @@ export class JuiceGatewayService {
           return null; // Signal unsupported - will fall through to NO_ROUTE
         }
         // Selling JUICE - first get JUSD via Equity.redeem()
-        const jusdFromRedeem = await this.calculateRedeemProceeds(chainId, amountIn);
+        const jusdFromRedeem = await this.calculateRedeemProceeds(
+          chainId,
+          amountIn,
+        );
         internalTokenIn = contracts.SV_JUSD;
         internalAmountIn = await this.jusdToSvJusd(chainId, jusdFromRedeem);
         internalTokenOut = contracts.SV_JUSD;
@@ -630,7 +723,7 @@ export class JuiceGatewayService {
       internalTokenIn,
       internalTokenOut,
       internalAmountIn,
-      expectedOutput: '0', // To be filled by router
+      expectedOutput: "0", // To be filled by router
       routingType,
     };
   }
@@ -648,10 +741,10 @@ export class JuiceGatewayService {
     chainId: ChainId,
     tokenOut: string,
     routerOutput: string,
-    routingType: 'GATEWAY_JUSD' | 'GATEWAY_JUICE_OUT' | 'GATEWAY_JUICE_IN'
+    routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN",
   ): Promise<string> {
     switch (routingType) {
-      case 'GATEWAY_JUSD': {
+      case "GATEWAY_JUSD": {
         // If output is any USD token, convert from svJUSD
         const isUsdOut = isUsdToken(chainId, tokenOut);
         if (isUsdOut) {
@@ -669,13 +762,13 @@ export class JuiceGatewayService {
         return routerOutput;
       }
 
-      case 'GATEWAY_JUICE_OUT': {
+      case "GATEWAY_JUICE_OUT": {
         // Convert svJUSD output to JUICE via Equity
         const jusdOutput = await this.svJusdToJusd(chainId, routerOutput);
         return await this.jusdToJuice(chainId, jusdOutput);
       }
 
-      case 'GATEWAY_JUICE_IN': {
+      case "GATEWAY_JUICE_IN": {
         // If output is any USD token, convert from svJUSD
         const isUsdOut = isUsdToken(chainId, tokenOut);
         if (isUsdOut) {
@@ -703,7 +796,11 @@ export class JuiceGatewayService {
    * Check if LP operation involves JUSD and should route through Gateway
    * @returns true if either token is JUSD (requires Gateway for JUSD → svJUSD conversion)
    */
-  detectLpGatewayRouting(chainId: number, tokenA: string, tokenB: string): boolean {
+  detectLpGatewayRouting(
+    chainId: number,
+    tokenA: string,
+    tokenB: string,
+  ): boolean {
     if (!hasJuiceDollarIntegration(chainId)) {
       return false;
     }
@@ -716,7 +813,7 @@ export class JuiceGatewayService {
    */
   buildGatewayAddLiquidityCalldata(params: GatewayLpParams): string {
     const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
-    return iface.encodeFunctionData('addLiquidity', [
+    return iface.encodeFunctionData("addLiquidity", [
       params.tokenA,
       params.tokenB,
       params.fee,
@@ -735,9 +832,11 @@ export class JuiceGatewayService {
    * Build Gateway.increaseLiquidity() calldata
    * Increases liquidity for an existing position with automatic JUSD→svJUSD conversion
    */
-  buildGatewayIncreaseLiquidityCalldata(params: GatewayIncreaseLiquidityParams): string {
+  buildGatewayIncreaseLiquidityCalldata(
+    params: GatewayIncreaseLiquidityParams,
+  ): string {
     const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
-    return iface.encodeFunctionData('increaseLiquidity', [
+    return iface.encodeFunctionData("increaseLiquidity", [
       params.tokenId,
       params.tokenA,
       params.tokenB,
@@ -754,9 +853,11 @@ export class JuiceGatewayService {
    * Removes liquidity from a position with automatic svJUSD→JUSD conversion
    * @param params.liquidityToRemove - Amount of liquidity to remove (0 = remove all)
    */
-  buildGatewayRemoveLiquidityCalldata(params: GatewayRemoveLiquidityParams): string {
+  buildGatewayRemoveLiquidityCalldata(
+    params: GatewayRemoveLiquidityParams,
+  ): string {
     const iface = new ethers.utils.Interface(JuiceSwapGatewayAbi);
-    return iface.encodeFunctionData('removeLiquidity', [
+    return iface.encodeFunctionData("removeLiquidity", [
       params.tokenId,
       params.liquidityToRemove,
       params.tokenA,

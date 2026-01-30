@@ -1,9 +1,5 @@
-import {
-  WETH9,
-  CHAIN_TO_ADDRESSES_MAP,
-  ChainId,
-} from '@juiceswapxyz/sdk-core';
-import { ADDRESS } from '@juicedollar/jusd';
+import { WETH9, CHAIN_TO_ADDRESSES_MAP, ChainId } from "@juiceswapxyz/sdk-core";
+import { ADDRESS } from "@juicedollar/jusd";
 
 /**
  * Contract addresses for JuiceDollar + JuiceSwap integration
@@ -61,14 +57,14 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     SV_JUSD: juiceDollarAddresses.savingsVaultJUSD,
     JUICE: juiceDollarAddresses.equity,
     SUSD: juiceDollarAddresses.startUSD,
-    USDC: juiceDollarAddresses.USDC ?? '',
-    USDT: juiceDollarAddresses.USDT ?? '',
-    CTUSD: juiceDollarAddresses.CTUSD ?? '',
+    USDC: juiceDollarAddresses.USDC ?? "",
+    USDT: juiceDollarAddresses.USDT ?? "",
+    CTUSD: juiceDollarAddresses.CTUSD ?? "",
     // From @juiceswapxyz/sdk-core
     WCBTC: wcbtc.address,
-    JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? '',
-    SWAP_ROUTER: dexAddresses.swapRouter02Address ?? '',
-    POSITION_MANAGER: dexAddresses.nonfungiblePositionManagerAddress ?? '',
+    JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? "",
+    SWAP_ROUTER: dexAddresses.swapRouter02Address ?? "",
+    POSITION_MANAGER: dexAddresses.nonfungiblePositionManagerAddress ?? "",
   };
 }
 
@@ -103,7 +99,11 @@ export function getChainContracts(chainId: number): ChainContracts | null {
  */
 export function hasJuiceDollarIntegration(chainId: number): boolean {
   const contracts = getChainContracts(chainId);
-  return contracts !== null && contracts.JUSD !== '' && contracts.JUICE_SWAP_GATEWAY !== '';
+  return (
+    contracts !== null &&
+    contracts.JUSD !== "" &&
+    contracts.JUICE_SWAP_GATEWAY !== ""
+  );
 }
 
 /**
@@ -207,15 +207,14 @@ export function isUsdToken(chainId: number, address: string): boolean {
  */
 export function detectJuiceDollarToken(
   chainId: number,
-  address: string
-): 'JUSD' | 'SV_JUSD' | 'JUICE' | 'SUSD' | 'USDC' | 'USDT' | 'CTUSD' | null {
-  if (isJusdAddress(chainId, address)) return 'JUSD';
-  if (isSvJusdAddress(chainId, address)) return 'SV_JUSD';
-  if (isJuiceAddress(chainId, address)) return 'JUICE';
-  if (isSusdAddress(chainId, address)) return 'SUSD';
-  if (isUsdcAddress(chainId, address)) return 'USDC';
-  if (isUsdtAddress(chainId, address)) return 'USDT';
-  if (isCtusdAddress(chainId, address)) return 'CTUSD';
+  address: string,
+): "JUSD" | "SV_JUSD" | "JUICE" | "SUSD" | "USDC" | "USDT" | "CTUSD" | null {
+  if (isJusdAddress(chainId, address)) return "JUSD";
+  if (isSvJusdAddress(chainId, address)) return "SV_JUSD";
+  if (isJuiceAddress(chainId, address)) return "JUICE";
+  if (isSusdAddress(chainId, address)) return "SUSD";
+  if (isUsdcAddress(chainId, address)) return "USDC";
+  if (isUsdtAddress(chainId, address)) return "USDT";
+  if (isCtusdAddress(chainId, address)) return "CTUSD";
   return null;
 }
-

@@ -1,8 +1,8 @@
-import { Request, Response } from 'express';
-import Logger from 'bunyan';
-import { citreaMainnetTokenList } from '../config/citrea-mainnet.tokenlist';
-import { citreaTestnetTokenList } from '../config/citrea-testnet.tokenlist';
-import { getJuiceswapLatestTokens } from '../lib/handlers/router-entities/getJuiceswapLatestTokens';
+import { Request, Response } from "express";
+import Logger from "bunyan";
+import { citreaMainnetTokenList } from "../config/citrea-mainnet.tokenlist";
+import { citreaTestnetTokenList } from "../config/citrea-testnet.tokenlist";
+import { getJuiceswapLatestTokens } from "../lib/handlers/router-entities/getJuiceswapLatestTokens";
 
 interface Token {
   address: string;
@@ -20,7 +20,7 @@ const TOKEN_LISTS: Record<number, { tokens: Token[] }> = {
 };
 
 // Tokens to hide from UI (internal vault/collateral tokens)
-const HIDDEN_TOKENS = new Set(['svJUSD', 'startUSD', 'SUSD']);
+const HIDDEN_TOKENS = new Set(["svJUSD", "startUSD", "SUSD"]);
 
 /**
  * @swagger
@@ -53,15 +53,18 @@ const HIDDEN_TOKENS = new Set(['svJUSD', 'startUSD', 'SUSD']);
  *               $ref: '#/components/schemas/Error'
  */
 export function createSwappableTokensHandler(logger: Logger) {
-  return async function handleSwappableTokens(req: Request, res: Response): Promise<void> {
-    const log = logger.child({ endpoint: 'swappable_tokens' });
+  return async function handleSwappableTokens(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "swappable_tokens" });
 
     try {
       const { tokenIn, tokenInChainId } = req.query;
 
       if (!tokenInChainId) {
-        log.debug('Validation failed: missing tokenInChainId parameter');
-        res.status(400).json({ message: 'Missing tokenInChainId parameter' });
+        log.debug("Validation failed: missing tokenInChainId parameter");
+        res.status(400).json({ message: "Missing tokenInChainId parameter" });
         return;
       }
 
@@ -75,9 +78,15 @@ export function createSwappableTokensHandler(logger: Logger) {
       let ponderTokens: Token[] = [];
       try {
         ponderTokens = await getJuiceswapLatestTokens(chainId);
-        log.debug({ chainId, ponderTokenCount: ponderTokens.length }, 'Fetched Ponder tokens');
+        log.debug(
+          { chainId, ponderTokenCount: ponderTokens.length },
+          "Fetched Ponder tokens",
+        );
       } catch (ponderError) {
-        log.warn({ ponderError }, 'Failed to fetch Ponder tokens, using hardcoded only');
+        log.warn(
+          { ponderError },
+          "Failed to fetch Ponder tokens, using hardcoded only",
+        );
       }
 
       // Merge: hardcoded tokens take precedence (they have complete metadata)
@@ -94,7 +103,10 @@ export function createSwappableTokensHandler(logger: Logger) {
 
       // Add Ponder tokens not already in hardcoded list
       for (const token of ponderTokens) {
-        if (!HIDDEN_TOKENS.has(token.symbol) && !seenAddresses.has(token.address.toLowerCase())) {
+        if (
+          !HIDDEN_TOKENS.has(token.symbol) &&
+          !seenAddresses.has(token.address.toLowerCase())
+        ) {
           seenAddresses.add(token.address.toLowerCase());
           mergedTokens.push(token);
         }
@@ -104,26 +116,35 @@ export function createSwappableTokensHandler(logger: Logger) {
       let filteredTokens = mergedTokens;
       if (tokenIn) {
         const tokenInAddress = tokenIn.toString().toLowerCase();
-        filteredTokens = mergedTokens.filter(token => token.address.toLowerCase() !== tokenInAddress);
+        filteredTokens = mergedTokens.filter(
+          (token) => token.address.toLowerCase() !== tokenInAddress,
+        );
       }
 
       // Return tokens in the expected format
       res.status(200).json({
-        tokens: filteredTokens.map(token => ({
+        tokens: filteredTokens.map((token) => ({
           address: token.address,
           chainId: token.chainId,
           decimals: token.decimals,
           name: token.name,
           symbol: token.symbol,
-          logoURI: token.logoURI || '',
-        }))
+          logoURI: token.logoURI || "",
+        })),
       });
 
-      log.debug({ chainId, tokenCount: filteredTokens.length, hardcodedCount: hardcodedTokens.length, ponderCount: ponderTokens.length }, 'Returned merged swappable tokens');
-
+      log.debug(
+        {
+          chainId,
+          tokenCount: filteredTokens.length,
+          hardcodedCount: hardcodedTokens.length,
+          ponderCount: ponderTokens.length,
+        },
+        "Returned merged swappable tokens",
+      );
     } catch (error: any) {
-      log.error({ error }, 'Error in handleSwappableTokens');
-      res.status(500).json({ message: 'Internal server error' });
+      log.error({ error }, "Error in handleSwappableTokens");
+      res.status(500).json({ message: "Internal server error" });
     }
   };
 }
