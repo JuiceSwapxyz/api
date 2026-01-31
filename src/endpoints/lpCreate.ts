@@ -404,8 +404,8 @@ export function createLpCreateHandler(
       const feeData = await provider.getFeeData();
 
       let gasEstimate = isNewPool
-        ? ethers.BigNumber.from("5500000")
-        : ethers.BigNumber.from("600000");
+        ? ethers.BigNumber.from("6000000") // 6M - based on Citrea Mainnet pool creation P95 (5.2M) + 15% buffer
+        : ethers.BigNumber.from("6000000"); // 6M - based on Citrea Mainnet P95 (5.2M) + 15% buffer
       try {
         gasEstimate = await provider.estimateGas({
           to: positionManagerAddress,
@@ -854,7 +854,7 @@ async function handleGatewayLpCreate(
       NonfungiblePositionManager.createCallParameters(poolInstance);
 
     // Estimate gas for pool creation
-    let createPoolGasEstimate = ethers.BigNumber.from("650000");
+    let createPoolGasEstimate = ethers.BigNumber.from("6000000"); // 6M - based on Citrea Mainnet pool creation P95 (5.2M) + 15% buffer
     try {
       createPoolGasEstimate = await provider.estimateGas({
         to: positionManagerAddress,
@@ -869,7 +869,7 @@ async function handleGatewayLpCreate(
       );
     }
 
-    const createPoolGasLimit = createPoolGasEstimate.mul(156).div(100);
+    const createPoolGasLimit = createPoolGasEstimate.mul(115).div(100); // 15% buffer (was 56%)
     const baseFeeForCreatePool =
       feeData.lastBaseFeePerGas ||
       ethers.utils.parseUnits("0.00000136", "gwei");
@@ -902,8 +902,8 @@ async function handleGatewayLpCreate(
   }
 
   let gasEstimate = isActuallyNewPool
-    ? ethers.BigNumber.from("1040000")
-    : ethers.BigNumber.from("650000");
+    ? ethers.BigNumber.from("6000000") // 6M - based on Citrea Mainnet pool creation P95 (5.2M) + 15% buffer
+    : ethers.BigNumber.from("6000000"); // 6M - based on Citrea Mainnet P95 (5.2M) + 15% buffer
 
   try {
     // Only estimate gas for Gateway tx if pool exists or will be created first
@@ -923,7 +923,7 @@ async function handleGatewayLpCreate(
     );
   }
 
-  const gasLimit = gasEstimate.mul(156).div(100);
+  const gasLimit = gasEstimate.mul(115).div(100); // 15% buffer (was 56%)
 
   const baseFee =
     feeData.lastBaseFeePerGas || ethers.utils.parseUnits("0.00000136", "gwei");
