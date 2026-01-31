@@ -542,7 +542,7 @@ async function handleGatewaySwap(
 
       // Estimate gas for the direct conversion swap
       const gasPrice = await provider.getGasPrice();
-      let gasLimit = ethers.BigNumber.from("200000"); // Default for direct conversions
+      let gasLimit = ethers.BigNumber.from("400000"); // 400K - based on Citrea Mainnet P95 (345K) + 15% buffer
       try {
         const estimatedGas = await provider.estimateGas({
           to: gatewayAddress,
@@ -657,7 +657,7 @@ async function handleGatewaySwap(
 
     // Estimate gas for the swap transaction
     const gasPrice = await provider.getGasPrice();
-    let gasLimit = ethers.BigNumber.from("300000"); // Default for complex Gateway swaps
+    let gasLimit = ethers.BigNumber.from("400000"); // 400K - based on Citrea Mainnet P95 (345K) + 15% buffer
     try {
       const estimatedGas = await provider.estimateGas({
         to: gatewayAddress,
@@ -875,7 +875,7 @@ async function handleClassicSwap(
 
     // Estimate gas for the swap transaction
     const gasPrice = await provider.getGasPrice();
-    let gasLimit = ethers.BigNumber.from("250000"); // Default for classic swaps
+    let gasLimit = ethers.BigNumber.from("300000"); // 300K - based on Citrea Mainnet P95 (230K) + 30% buffer
     try {
       const estimatedGas = await provider.estimateGas({
         to: routerAddress,

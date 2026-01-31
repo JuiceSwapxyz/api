@@ -239,7 +239,7 @@ export async function estimateEip1559Gas(params: {
 
   const feeData = await provider.getFeeData();
 
-  let gasEstimate = ethers.BigNumber.from("650000");
+  let gasEstimate = ethers.BigNumber.from("6000000"); // 6M - based on Citrea Mainnet P95 (5.2M) + 15% buffer
   try {
     gasEstimate = await provider.estimateGas(tx);
   } catch (_e) {

@@ -101,7 +101,7 @@ export function createSwapApproveHandler(
         log,
       );
 
-      let gasEstimate = ethers.BigNumber.from("100000"); // Default gas estimate for approval
+      let gasEstimate = ethers.BigNumber.from("65000"); // 65K - based on Citrea Mainnet P95 (56K) + 16% buffer
       try {
         gasEstimate = await provider.estimateGas({
           to: tokenIn,
