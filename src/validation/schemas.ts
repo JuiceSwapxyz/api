@@ -314,6 +314,10 @@ export const LaunchpadTokensQuerySchema = z.object({
     .transform((val) => parseInt(val, 10))
     .pipe(z.number().int().min(1).max(100)),
   sort: z.enum(["newest", "volume", "trades"]).optional().default("newest"),
+  chainId: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : undefined)),
 });
 
 export type LaunchpadTokensQuery = z.infer<typeof LaunchpadTokensQuerySchema>;
