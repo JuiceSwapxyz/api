@@ -32,11 +32,12 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
     const tokenOutAddress = getAddress(tokenOut.address);
 
     const ponderPools = await this.ponderClient.query<{
-      pools: { items: PonderPool[] };
+      allPools: { items: PonderPool[] };
+      direct: { items: PonderPool[] };
     }>(
       `
             query AllPoolsWithTokens($tokenIn: String = "", $tokenOut: String = "", $chainId: Int = 0) {
-                pools(
+                allPools:pools(
                     where: {OR: {token0: $tokenIn, token1: $tokenIn, OR: {token0: $tokenOut, token1: $tokenOut}}, AND: {chainId: $chainId}}
                     limit: 1000
                 ) {
@@ -48,6 +49,21 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
                     tickSpacing
                     }
                 }
+                direct:pools(
+                  where: {
+                    OR:[
+                      {AND: {token0: $tokenIn, token1: $tokenOut, chainId: $chainId}}
+                      {AND: {token1: $tokenIn, token0: $tokenOut, chainId: $chainId}}
+                    ]
+                  }) {
+                  items{
+                    address
+                    token0
+                    token1
+                    fee
+                    tickSpacing
+                  }
+                }
             }
             `,
       {
@@ -57,7 +73,11 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
       },
     );
 
-    const pools: V3SubgraphPool[] = ponderPools.pools.items.map((pool) => {
+    const directPools = ponderPools.direct.items;
+    const allPools = ponderPools.allPools.items;
+    const resultPools = directPools.length > 0 ? directPools : allPools;
+
+    const pools: V3SubgraphPool[] = resultPools.map((pool) => {
       return {
         id: pool.address,
         token0: { id: pool.token0 },
