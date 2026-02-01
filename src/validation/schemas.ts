@@ -348,6 +348,10 @@ export const LaunchpadRecentTradesQuerySchema = z.object({
     .default("20")
     .transform((val) => parseInt(val, 10))
     .pipe(z.number().int().min(1).max(50)),
+  chainId: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : undefined)),
 });
 
 export type LaunchpadRecentTradesQuery = z.infer<
