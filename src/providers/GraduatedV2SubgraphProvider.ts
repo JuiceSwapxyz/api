@@ -41,6 +41,7 @@ const V2_PAIR_ABI = [
  * Used by AlphaRouter to discover V2 pools for routing.
  */
 export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
+  private chainId: ChainId;
   private logger: Logger;
   private poolsCache: V2SubgraphPool[] = [];
   private lastFetch: number = 0;
@@ -49,13 +50,12 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
   private multicallProvider: UniswapMulticallProvider | undefined;
 
   constructor(
-    _chainId: ChainId,
+    chainId: ChainId,
     logger: Logger,
     multicallProvider?: UniswapMulticallProvider,
   ) {
-    // chainId is accepted for API compatibility but not currently used
-    // Ponder returns all graduated pools regardless of chain
-    this.logger = logger.child({ provider: "GraduatedV2SubgraphProvider" });
+    this.chainId = chainId;
+    this.logger = logger.child({ provider: "GraduatedV2SubgraphProvider", chainId });
     this.multicallProvider = multicallProvider;
   }
 
@@ -115,7 +115,7 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
     try {
       const ponderClient = getPonderClient(this.logger);
-      const response = await ponderClient.get("/graduated-pools");
+      const response = await ponderClient.get(`/graduated-pools?chainId=${this.chainId}`);
       const pools: GraduatedPool[] = response.data.pools || [];
 
       if (pools.length === 0) {
@@ -177,6 +177,7 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
       this.lastFetch = now;
       this.logger.info(
         {
+          chainId: this.chainId,
           ponderPoolCount: pools.length,
           staticPoolCount: STATIC_V2_POOLS.length,
           totalPoolCount: this.poolsCache.length,

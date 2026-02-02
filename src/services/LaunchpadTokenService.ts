@@ -7,6 +7,7 @@ interface GraduatedPool {
   token0: string;
   token1: string;
   launchpadTokenAddress: string;
+  chainId: number;
 }
 
 /**
@@ -17,12 +18,13 @@ interface GraduatedPool {
  * when a graduated launchpad token is involved in the trade.
  */
 class LaunchpadTokenService {
-  private graduatedTokens: Set<string> = new Set();
-  private lastFetch: number = 0;
+  // Per-chain cache of graduated token addresses
+  private graduatedTokensByChain: Map<number, Set<string>> = new Map();
+  private lastFetchByChain: Map<number, number> = new Map();
   private readonly CACHE_TTL = 60_000; // 1 minute (same as GraduatedV2SubgraphProvider)
   private logger: Logger | null = null;
-  private isFetching: boolean = false;
-  private fetchPromise: Promise<void> | null = null;
+  private fetchingChains: Set<number> = new Set();
+  private fetchPromiseByChain: Map<number, Promise<void>> = new Map();
 
   private getLogger(): Logger {
     if (!this.logger) {
@@ -48,60 +50,66 @@ class LaunchpadTokenService {
     chainId: number,
     address: string,
   ): Promise<boolean> {
-    // Only check for Citrea Testnet (where launchpad tokens exist)
-    if (chainId !== ChainId.CITREA_TESTNET) {
+    // Only check for Citrea chains (where launchpad tokens exist)
+    if (chainId !== ChainId.CITREA_TESTNET && chainId !== ChainId.CITREA_MAINNET) {
       return false;
     }
 
-    await this.refreshCacheIfNeeded();
-    return this.graduatedTokens.has(address.toLowerCase());
+    await this.refreshCacheIfNeeded(chainId);
+    const chainTokens = this.graduatedTokensByChain.get(chainId);
+    return chainTokens?.has(address.toLowerCase()) ?? false;
   }
 
   /**
-   * Get all graduated token addresses (for debugging/logging)
+   * Get all graduated token addresses for a specific chain (for debugging/logging)
    */
-  async getGraduatedTokenAddresses(): Promise<Set<string>> {
-    await this.refreshCacheIfNeeded();
-    return new Set(this.graduatedTokens);
+  async getGraduatedTokenAddresses(chainId: number): Promise<Set<string>> {
+    await this.refreshCacheIfNeeded(chainId);
+    return new Set(this.graduatedTokensByChain.get(chainId) ?? []);
   }
 
   /**
-   * Refresh cache if TTL expired
+   * Refresh cache if TTL expired for a specific chain
    */
-  private async refreshCacheIfNeeded(): Promise<void> {
+  private async refreshCacheIfNeeded(chainId: number): Promise<void> {
     const now = Date.now();
-    if (now - this.lastFetch < this.CACHE_TTL) {
+    const lastFetch = this.lastFetchByChain.get(chainId) ?? 0;
+    if (now - lastFetch < this.CACHE_TTL) {
       return;
     }
 
-    // Avoid concurrent fetches
-    if (this.isFetching && this.fetchPromise) {
-      return this.fetchPromise;
+    // Avoid concurrent fetches for the same chain
+    if (this.fetchingChains.has(chainId)) {
+      const existingPromise = this.fetchPromiseByChain.get(chainId);
+      if (existingPromise) {
+        return existingPromise;
+      }
     }
 
-    this.isFetching = true;
-    this.fetchPromise = this.fetchGraduatedTokens();
+    this.fetchingChains.add(chainId);
+    const fetchPromise = this.fetchGraduatedTokens(chainId);
+    this.fetchPromiseByChain.set(chainId, fetchPromise);
 
     try {
-      await this.fetchPromise;
+      await fetchPromise;
     } finally {
-      this.isFetching = false;
-      this.fetchPromise = null;
+      this.fetchingChains.delete(chainId);
+      this.fetchPromiseByChain.delete(chainId);
     }
   }
 
   /**
-   * Fetch graduated tokens from Ponder
+   * Fetch graduated tokens from Ponder for a specific chain
    */
-  private async fetchGraduatedTokens(): Promise<void> {
+  private async fetchGraduatedTokens(chainId: number): Promise<void> {
     const logger = this.getLogger();
 
     try {
       const ponderClient = getPonderClient(logger);
-      const response = await ponderClient.get("/graduated-pools");
+      const response = await ponderClient.get(`/graduated-pools?chainId=${chainId}`);
       const pools: GraduatedPool[] = response.data.pools || [];
 
-      // Build set of graduated token addresses
+      // Build set of graduated token addresses for this chain
       const tokenAddresses = new Set<string>();
       for (const pool of pools) {
         // Add the launchpad token address
@@ -110,15 +118,15 @@ class LaunchpadTokenService {
         }
       }
 
-      this.graduatedTokens = tokenAddresses;
-      this.lastFetch = Date.now();
+      this.graduatedTokensByChain.set(chainId, tokenAddresses);
+      this.lastFetchByChain.set(chainId, Date.now());
 
       logger.info(
-        { graduatedTokenCount: tokenAddresses.size },
+        { chainId, graduatedTokenCount: tokenAddresses.size },
         "Refreshed graduated launchpad token cache",
       );
     } catch (error) {
-      logger.error({ error }, "Failed to fetch graduated tokens from Ponder");
+      logger.error({ error, chainId }, "Failed to fetch graduated tokens from Ponder");
       // Keep existing cache on error
     }
   }
@@ -127,8 +135,10 @@ class LaunchpadTokenService {
    * Clear cache (useful for testing)
    */
   clearCache(): void {
-    this.graduatedTokens.clear();
-    this.lastFetch = 0;
+    this.graduatedTokensByChain.clear();
+    this.lastFetchByChain.clear();
+    this.fetchingChains.clear();
+    this.fetchPromiseByChain.clear();
   }
 }
 
@@ -146,10 +156,10 @@ export async function isGraduatedLaunchpadToken(
 }
 
 /**
- * Get all graduated token addresses
+ * Get all graduated token addresses for a specific chain
  */
-export async function getGraduatedTokenAddresses(): Promise<Set<string>> {
-  return launchpadTokenService.getGraduatedTokenAddresses();
+export async function getGraduatedTokenAddresses(chainId: number): Promise<Set<string>> {
+  return launchpadTokenService.getGraduatedTokenAddresses(chainId);
 }
 
 /**
