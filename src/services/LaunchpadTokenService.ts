@@ -51,7 +51,10 @@ class LaunchpadTokenService {
     address: string,
   ): Promise<boolean> {
     // Only check for Citrea chains (where launchpad tokens exist)
-    if (chainId !== ChainId.CITREA_TESTNET && chainId !== ChainId.CITREA_MAINNET) {
+    if (
+      chainId !== ChainId.CITREA_TESTNET &&
+      chainId !== ChainId.CITREA_MAINNET
+    ) {
       return false;
     }
 
@@ -106,7 +109,9 @@ class LaunchpadTokenService {
 
     try {
       const ponderClient = getPonderClient(logger);
-      const response = await ponderClient.get(`/graduated-pools?chainId=${chainId}`);
+      const response = await ponderClient.get(
+        `/graduated-pools?chainId=${chainId}`,
+      );
       const pools: GraduatedPool[] = response.data.pools || [];
 
       // Build set of graduated token addresses for this chain
@@ -126,7 +131,10 @@ class LaunchpadTokenService {
         "Refreshed graduated launchpad token cache",
       );
     } catch (error) {
-      logger.error({ error, chainId }, "Failed to fetch graduated tokens from Ponder");
+      logger.error(
+        { error, chainId },
+        "Failed to fetch graduated tokens from Ponder",
+      );
       // Keep existing cache on error
     }
   }
@@ -158,7 +166,9 @@ export async function isGraduatedLaunchpadToken(
 /**
  * Get all graduated token addresses for a specific chain
  */
-export async function getGraduatedTokenAddresses(chainId: number): Promise<Set<string>> {
+export async function getGraduatedTokenAddresses(
+  chainId: number,
+): Promise<Set<string>> {
   return launchpadTokenService.getGraduatedTokenAddresses(chainId);
 }
 

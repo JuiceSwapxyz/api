@@ -55,7 +55,10 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
     multicallProvider?: UniswapMulticallProvider,
   ) {
     this.chainId = chainId;
-    this.logger = logger.child({ provider: "GraduatedV2SubgraphProvider", chainId });
+    this.logger = logger.child({
+      provider: "GraduatedV2SubgraphProvider",
+      chainId,
+    });
     this.multicallProvider = multicallProvider;
   }
 
@@ -115,7 +118,9 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
     try {
       const ponderClient = getPonderClient(this.logger);
-      const response = await ponderClient.get(`/graduated-pools?chainId=${this.chainId}`);
+      const response = await ponderClient.get(
+        `/graduated-pools?chainId=${this.chainId}`,
+      );
       const pools: GraduatedPool[] = response.data.pools || [];
 
       if (pools.length === 0) {
