@@ -411,9 +411,17 @@ export function createQuoteHandler(
                 tokenOutDecimals,
               );
 
+              // Map routing type to Routing enum for direct conversions
+              const directConversionRouting =
+                gatewayQuote.routingType === "GATEWAY_JUICE_IN"
+                  ? Routing.GATEWAY_JUICE_IN
+                  : gatewayQuote.routingType === "GATEWAY_JUICE_OUT"
+                    ? Routing.GATEWAY_JUICE_OUT
+                    : Routing.GATEWAY_JUSD;
+
               const directConversionResponse: QuoteResponse = {
                 requestId: quoteId,
-                routing: Routing.GATEWAY_JUSD,
+                routing: directConversionRouting,
                 permitData: null,
                 quote: {
                   chainId: chainId,

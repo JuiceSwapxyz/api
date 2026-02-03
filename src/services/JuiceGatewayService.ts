@@ -551,6 +551,59 @@ export class JuiceGatewayService {
     let internalTokenOut = tokenOut;
     let internalAmountIn = amountIn;
 
+    // Check for direct JUICE → JUSD conversion (no pool routing needed)
+    if (
+      routingType === "GATEWAY_JUICE_IN" &&
+      isJusdAddress(chainId, tokenOut)
+    ) {
+      // Calculate JUSD output via Equity.redeem()
+      const expectedOutput = await this.calculateRedeemProceeds(
+        chainId,
+        amountIn,
+      );
+
+      return {
+        internalTokenIn: tokenIn,
+        internalTokenOut: tokenOut,
+        internalAmountIn: amountIn,
+        expectedOutput,
+        routingType,
+        isDirectConversion: true,
+      };
+    }
+
+    // Check for direct USD → JUICE conversion (no pool routing needed)
+    if (routingType === "GATEWAY_JUICE_OUT" && isUsdToken(chainId, tokenIn)) {
+      // Convert input USD token to JUSD equivalent
+      let jusdEquivalent: string;
+
+      if (isBridgedStablecoin(chainId, tokenIn)) {
+        const svJusdAmount = await this.bridgedToSvJusd(
+          chainId,
+          tokenIn,
+          amountIn,
+        );
+        jusdEquivalent = await this.svJusdToJusd(chainId, svJusdAmount);
+      } else if (isSvJusdAddress(chainId, tokenIn)) {
+        jusdEquivalent = await this.svJusdToJusd(chainId, amountIn);
+      } else {
+        // Already JUSD
+        jusdEquivalent = amountIn;
+      }
+
+      // Calculate JUICE output via Equity
+      const expectedOutput = await this.jusdToJuice(chainId, jusdEquivalent);
+
+      return {
+        internalTokenIn: tokenIn,
+        internalTokenOut: tokenOut,
+        internalAmountIn: amountIn,
+        expectedOutput,
+        routingType,
+        isDirectConversion: true,
+      };
+    }
+
     // Check if this is a direct USD↔USD conversion (no pool routing needed)
     if (
       routingType === "GATEWAY_JUSD" &&
