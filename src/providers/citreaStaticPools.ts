@@ -2,16 +2,16 @@ import { WETH9, ChainId, Token } from "@juiceswapxyz/sdk-core";
 import { ADDRESS } from "@juicedollar/jusd";
 
 /**
- * Static pool configuration for Citrea Testnet (5115)
- * Hardcoded pools to avoid expensive on-chain discovery.
+ * Static pool configuration for Citrea chains
+ * Hardcoded pools for gas estimation (required for V2 gas model to price gas in USD)
  */
 
 // Get JuiceDollar addresses from package (single source of truth)
-const JUSD_ADDRESSES = ADDRESS[ChainId.CITREA_TESTNET];
+const JUSD_ADDRESSES_TESTNET = ADDRESS[ChainId.CITREA_TESTNET];
+const JUSD_ADDRESSES_MAINNET = ADDRESS[ChainId.CITREA_MAINNET];
 
-// Citrea tokens - using checksummed addresses from canonical packages
-const CITREA_TOKENS = {
-  // WcBTC from SDK WETH9 - single source of truth
+// Citrea Testnet tokens
+const CITREA_TESTNET_TOKENS = {
   WCBTC: new Token(
     ChainId.CITREA_TESTNET,
     WETH9[ChainId.CITREA_TESTNET].address,
@@ -19,79 +19,66 @@ const CITREA_TOKENS = {
     "WCBTC",
     "Wrapped cBTC",
   ),
-  // JuiceDollar tokens from @juicedollar/jusd package
   JUSD: new Token(
     ChainId.CITREA_TESTNET,
-    JUSD_ADDRESSES.juiceDollar,
+    JUSD_ADDRESSES_TESTNET.juiceDollar,
     18,
     "JUSD",
     "Juice Dollar",
   ),
-  SV_JUSD: new Token(
-    ChainId.CITREA_TESTNET,
-    JUSD_ADDRESSES.savingsVaultJUSD,
+};
+
+// Citrea Mainnet tokens
+const CITREA_MAINNET_TOKENS = {
+  WCBTC: new Token(
+    ChainId.CITREA_MAINNET,
+    WETH9[ChainId.CITREA_MAINNET].address,
     18,
-    "svJUSD",
-    "Savings Vault JUSD",
+    "WCBTC",
+    "Wrapped cBTC",
   ),
-  JUICE: new Token(
-    ChainId.CITREA_TESTNET,
-    JUSD_ADDRESSES.equity,
+  JUSD: new Token(
+    ChainId.CITREA_MAINNET,
+    JUSD_ADDRESSES_MAINNET.juiceDollar,
     18,
-    "JUICE",
-    "JUICE Equity",
-  ),
-  USDC: new Token(
-    ChainId.CITREA_TESTNET,
-    "0x2fFC18aC99D367b70dd922771dF8c2074af4aCE0",
-    18,
-    "USDC",
-    "USDC",
-  ),
-  NUSD: new Token(
-    ChainId.CITREA_TESTNET,
-    "0x9B28B690550522608890C3C7e63c0b4A7eBab9AA",
-    18,
-    "NUSD",
-    "Nectra USD",
-  ),
-  TFC: new Token(
-    ChainId.CITREA_TESTNET,
-    "0x14ADf6B87096Ef750a956756BA191fc6BE94e473",
-    18,
-    "TFC",
-    "TaprootFreakCoin",
-  ),
-  KCDU: new Token(
-    ChainId.CITREA_TESTNET,
-    "0x302670d7830684C14fB8bb9B20f5D8F874e65cA4",
-    18,
-    "KCDU",
-    "KucingDully",
-  ),
-  MTK: new Token(
-    ChainId.CITREA_TESTNET,
-    "0x6434B863529F585633A1A71a9bfe9bbd7119Dd25",
-    18,
-    "MTK",
-    "MyToken",
-  ),
-  CTR: new Token(
-    ChainId.CITREA_TESTNET,
-    "0x8025aAfab9881D9E9163e1956c3bfb8D3606bb55",
-    18,
-    "CTR",
-    "CITREAN",
+    "JUSD",
+    "Juice Dollar",
   ),
 };
 
-// V2 pools for gas estimation (required for V2 gas model to price gas in USD)
+// V2 pool type
+interface V2PoolConfig {
+  pairAddress: string;
+  token0: Token;
+  token1: Token;
+}
+
+// V2 pools by chain for gas estimation
+export const CITREA_V2_POOLS_BY_CHAIN: Record<number, V2PoolConfig[]> = {
+  [ChainId.CITREA_TESTNET]: [
+    {
+      pairAddress: "0x6d091877B1Fb834E3dBdB14a98533573BC963AAB",
+      token0: CITREA_TESTNET_TOKENS.WCBTC,
+      token1: CITREA_TESTNET_TOKENS.JUSD,
+    },
+  ],
+  [ChainId.CITREA_MAINNET]: [
+    {
+      pairAddress: "0x8e7474c310bDC74b1eac1f983c242Bb77a4fe158",
+      token0: CITREA_MAINNET_TOKENS.JUSD, // token0 is JUSD (lower address)
+      token1: CITREA_MAINNET_TOKENS.WCBTC, // token1 is WcBTC (higher address)
+    },
+  ],
+};
+
+// Legacy export for backwards compatibility
 export const CITREA_V2_POOLS = {
   WCBTC_JUSD: {
     pairAddress: "0x6d091877B1Fb834E3dBdB14a98533573BC963AAB",
-    token0: CITREA_TOKENS.WCBTC,
-    token1: CITREA_TOKENS.JUSD,
+    token0: CITREA_TESTNET_TOKENS.WCBTC,
+    token1: CITREA_TESTNET_TOKENS.JUSD,
   },
 };
 
-export { CITREA_TOKENS };
+// Legacy export
+export const CITREA_TOKENS = CITREA_TESTNET_TOKENS;

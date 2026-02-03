@@ -7,7 +7,7 @@ import {
 import Logger from "bunyan";
 import { ethers } from "ethers";
 import { getPonderClient } from "../services/PonderClient";
-import { CITREA_V2_POOLS } from "./citreaStaticPools";
+import { CITREA_V2_POOLS_BY_CHAIN } from "./citreaStaticPools";
 
 interface GraduatedPool {
   pairAddress: string;
@@ -22,13 +22,23 @@ interface GraduatedPool {
   totalSwaps: number;
 }
 
-// Static V2 pools for gas estimation (not from Ponder)
-// Uses centralized config from citreaStaticPools.ts
-const STATIC_V2_POOLS = Object.values(CITREA_V2_POOLS).map((pool) => ({
-  pairAddress: pool.pairAddress,
-  token0: pool.token0.address,
-  token1: pool.token1.address,
-}));
+interface StaticPool {
+  pairAddress: string;
+  token0: string;
+  token1: string;
+}
+
+/**
+ * Get static V2 pools for a specific chain (used for gas estimation)
+ */
+function getStaticPoolsForChain(chainId: ChainId): StaticPool[] {
+  const pools = CITREA_V2_POOLS_BY_CHAIN[chainId] || [];
+  return pools.map((pool) => ({
+    pairAddress: pool.pairAddress,
+    token0: pool.token0.address,
+    token1: pool.token1.address,
+  }));
+}
 
 // V2 Pair ABI for getReserves
 const V2_PAIR_ABI = [
@@ -41,6 +51,7 @@ const V2_PAIR_ABI = [
  * Used by AlphaRouter to discover V2 pools for routing.
  */
 export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
+  private chainId: ChainId;
   private logger: Logger;
   private poolsCache: V2SubgraphPool[] = [];
   private lastFetch: number = 0;
@@ -49,13 +60,15 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
   private multicallProvider: UniswapMulticallProvider | undefined;
 
   constructor(
-    _chainId: ChainId,
+    chainId: ChainId,
     logger: Logger,
     multicallProvider?: UniswapMulticallProvider,
   ) {
-    // chainId is accepted for API compatibility but not currently used
-    // Ponder returns all graduated pools regardless of chain
-    this.logger = logger.child({ provider: "GraduatedV2SubgraphProvider" });
+    this.chainId = chainId;
+    this.logger = logger.child({
+      provider: "GraduatedV2SubgraphProvider",
+      chainId,
+    });
     this.multicallProvider = multicallProvider;
   }
 
@@ -72,8 +85,9 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
     // Filter by tokens if provided, but always include static pools (needed for gas estimation)
     if (tokenIn && tokenOut) {
+      const staticPools = getStaticPoolsForChain(this.chainId);
       const staticPoolIds = new Set(
-        STATIC_V2_POOLS.map((p) => p.pairAddress.toLowerCase()),
+        staticPools.map((p) => p.pairAddress.toLowerCase()),
       );
       const filtered = this.poolsCache.filter((pool) => {
         // Always include static pools for gas estimation
@@ -115,19 +129,18 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
 
     try {
       const ponderClient = getPonderClient(this.logger);
-      const response = await ponderClient.get("/graduated-pools");
+      const response = await ponderClient.get(
+        `/graduated-pools?chainId=${this.chainId}`,
+      );
       const pools: GraduatedPool[] = response.data.pools || [];
 
-      if (pools.length === 0) {
-        this.poolsCache = [];
-        this.lastFetch = now;
-        return;
-      }
+      // Get static pools for this chain (needed for gas estimation)
+      const staticPools = getStaticPoolsForChain(this.chainId);
 
       // Combine Ponder pools with static pools
       const allPairAddresses = [
         ...pools.map((p) => p.pairAddress),
-        ...STATIC_V2_POOLS.map((p) => p.pairAddress),
+        ...staticPools.map((p) => p.pairAddress),
       ];
 
       // Fetch on-chain reserves for all pools (including static)
@@ -154,7 +167,7 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
       });
 
       // Map static pools (WcBTC/JUSD for gas estimation)
-      const staticPools = STATIC_V2_POOLS.map((p) => {
+      const staticPoolsMapped = staticPools.map((p) => {
         const pairAddressLower = p.pairAddress.toLowerCase();
         const reserves = reservesMap.get(pairAddressLower);
         const reserve0 = reserves?.reserve0 ?? BigInt(0);
@@ -172,13 +185,14 @@ export class GraduatedV2SubgraphProvider implements IV2SubgraphProvider {
       });
 
       // Combine Ponder pools with static pools
-      this.poolsCache = [...ponderPools, ...staticPools];
+      this.poolsCache = [...ponderPools, ...staticPoolsMapped];
 
       this.lastFetch = now;
       this.logger.info(
         {
+          chainId: this.chainId,
           ponderPoolCount: pools.length,
-          staticPoolCount: STATIC_V2_POOLS.length,
+          staticPoolCount: staticPools.length,
           totalPoolCount: this.poolsCache.length,
           hasOnChainReserves: reservesMap.size > 0,
         },
