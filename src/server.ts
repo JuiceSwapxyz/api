@@ -72,12 +72,14 @@ import {
   LaunchpadUploadMetadataSchema,
   PositionInfoQuerySchema,
   PoolDetailsRequestSchema,
+  PositionsOwnerRequestSchema,
 } from "./validation/schemas";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
 import { createLightningInvoiceHandler } from "./endpoints/lightningInvoice";
 import { createValidateLightningAddressHandler } from "./endpoints/validateLightningAddress";
 import { createPositionInfoHandler } from "./endpoints/positionInfo";
+import { createPositionsOwnerHandler } from "./endpoints/positionsOwner";
 import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 
 // Initialize logger
@@ -279,6 +281,10 @@ async function bootstrap() {
   const handleValidateLightningAddress =
     createValidateLightningAddressHandler(logger);
   const handlePositionInfo = createPositionInfoHandler(routerService, logger);
+  const handlePositionsOwner = createPositionsOwnerHandler(
+    routerService,
+    logger,
+  );
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
@@ -326,6 +332,14 @@ async function bootstrap() {
     generalLimiter,
     validateQuery(PositionInfoQuerySchema, logger),
     handlePositionInfo,
+  );
+
+  // Positions by owner endpoint (returns all positions for an owner with live on-chain data)
+  app.post(
+    "/v1/positions/owner",
+    generalLimiter,
+    validateBody(PositionsOwnerRequestSchema, logger),
+    handlePositionsOwner,
   );
 
   // Pool details endpoint

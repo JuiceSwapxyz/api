@@ -456,3 +456,11 @@ export const PoolDetailsRequestSchema = z.object({
 });
 
 export type PositionInfoQuery = z.infer<typeof PositionInfoQuerySchema>;
+
+// Positions by owner endpoint schema
+export const PositionsOwnerRequestSchema = z.object({
+  address: AddressSchema,
+  chainIds: z.array(ChainIdSchema).optional(),
+});
+
+export type PositionsOwnerRequest = z.infer<typeof PositionsOwnerRequestSchema>;
