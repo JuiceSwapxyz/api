@@ -68,7 +68,7 @@ export const citreaMainnetTokenList = {
     {
       address: ADDRESS[4114]!.CTUSD,
       chainId: ChainId.CITREA_MAINNET,
-      decimals: 18,
+      decimals: 6,
       name: "Citrea USD",
       symbol: "ctUSD",
       logoURI: "",
