@@ -113,8 +113,6 @@ export async function fetchV3OnchainPositionLiquidityInfo(params: {
     amount1Max: maxUint128,
   });
 
-  console.log("DANS amounts", amounts);
-
   return {
     liquidity: pos.liquidity.toString(),
     tickLower: pos.tickLower.toString(),
