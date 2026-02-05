@@ -438,6 +438,13 @@ export type LaunchpadUploadMetadataRequest = z.infer<
   typeof LaunchpadUploadMetadataSchema
 >;
 
+// Protocol Stats endpoint schema
+export const ProtocolStatsRequestSchema = z.object({
+  chainId: ChainIdSchema,
+});
+
+export type ProtocolStatsRequest = z.infer<typeof ProtocolStatsRequestSchema>;
+
 // Position Info query schema
 export const PositionInfoQuerySchema = z.object({
   chainId: z
