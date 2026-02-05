@@ -20,6 +20,7 @@ export interface ChainContracts {
   USDT: string;
   CTUSD: string;
   WCBTC: string;
+  SY_BTC: string;
   JUICE_SWAP_GATEWAY: string;
   SWAP_ROUTER: string;
   POSITION_MANAGER: string;
@@ -51,6 +52,10 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     return null;
   }
 
+  // syBTC (Solv Protocol yield-bearing BTC) — not yet available in any package.
+  // Mainnet address verified from Citrea explorer. Update here if the token is redeployed.
+  const SY_BTC_MAINNET = "0x384157027B1CDEAc4e26e3709667BB28735379Bb";
+
   return {
     // From @juicedollar/jusd
     JUSD: juiceDollarAddresses.juiceDollar,
@@ -62,6 +67,8 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     CTUSD: juiceDollarAddresses.CTUSD ?? "",
     // From @juiceswapxyz/sdk-core
     WCBTC: wcbtc.address,
+    // Hardcoded — not in any package yet (only deployed on mainnet)
+    SY_BTC: chainId === ChainId.CITREA_MAINNET ? SY_BTC_MAINNET : "",
     JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? "",
     SWAP_ROUTER: dexAddresses.swapRouter02Address ?? "",
     POSITION_MANAGER: dexAddresses.nonfungiblePositionManagerAddress ?? "",

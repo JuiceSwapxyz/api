@@ -2,10 +2,14 @@ import Logger from "bunyan";
 import { ChainId } from "@juiceswapxyz/sdk-core";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ethers } from "ethers";
-import { formatUnits, getAddress, erc20Abi } from "viem";
 import { PriceService } from "./PriceService";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
+
+// Minimal ERC20 ABI — only balanceOf is needed for TVL calculations
+const ERC20_BALANCE_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+];
 
 // V2 Pair ABI for getReserves
 const V2_PAIR_ABI = [
@@ -151,7 +155,9 @@ export class ProtocolStatsService {
       }
 
       // Get pool addresses and their token info from the Ponder GraphQL
-      const poolAddresses = poolStatsV3.map((ps) => getAddress(ps.poolAddress));
+      const poolAddresses = poolStatsV3.map((ps) =>
+        ethers.utils.getAddress(ps.poolAddress),
+      );
 
       // Query pool info for token addresses and decimals
       const poolInfoQuery = `
@@ -236,11 +242,11 @@ export class ProtocolStatsService {
         const decimals0 = token0Info?.decimals || 18;
         const decimals1 = token1Info?.decimals || 18;
 
-        const volume0 = Number(
-          formatUnits(BigInt(ps.volume0 || "0"), decimals0),
+        const volume0 = parseFloat(
+          ethers.utils.formatUnits(ps.volume0 || "0", decimals0),
         );
-        const volume1 = Number(
-          formatUnits(BigInt(ps.volume1 || "0"), decimals1),
+        const volume1 = parseFloat(
+          ethers.utils.formatUnits(ps.volume1 || "0", decimals1),
         );
 
         // Use whichever side has a known price, avoid double counting
@@ -261,48 +267,60 @@ export class ProtocolStatsService {
             provider,
             375000,
           );
-          const erc20Interface = new ethers.utils.Interface(erc20Abi);
+          const erc20Interface = new ethers.utils.Interface(ERC20_BALANCE_ABI);
 
-          // For each pool, fetch token0 and token1 balances
-          for (const pool of pools) {
-            try {
-              const { results } =
-                await multicallProvider.callSameFunctionOnMultipleContracts({
-                  addresses: [getAddress(pool.token0), getAddress(pool.token1)],
-                  contractInterface: erc20Interface,
-                  functionName: "balanceOf",
-                  functionParams: [getAddress(pool.address)],
-                });
-
-              const token0Info = tokenMap.get(pool.token0.toLowerCase());
-              const token1Info = tokenMap.get(pool.token1.toLowerCase());
-              const price0 = prices.get(pool.token0.toLowerCase()) || 0;
-              const price1 = prices.get(pool.token1.toLowerCase()) || 0;
-
-              if (results[0]?.success && price0 > 0) {
-                const balance0 = Number(
-                  formatUnits(
-                    BigInt(results[0].result.toString()),
-                    token0Info?.decimals || 18,
-                  ),
+          // Fetch all pool token balances concurrently (one multicall per pool, all in parallel)
+          const poolBalanceResults = await Promise.all(
+            pools.map(async (pool) => {
+              try {
+                const { results } =
+                  await multicallProvider.callSameFunctionOnMultipleContracts({
+                    addresses: [
+                      ethers.utils.getAddress(pool.token0),
+                      ethers.utils.getAddress(pool.token1),
+                    ],
+                    contractInterface: erc20Interface,
+                    functionName: "balanceOf",
+                    functionParams: [ethers.utils.getAddress(pool.address)],
+                  });
+                return { pool, results };
+              } catch (poolError) {
+                this.logger.debug(
+                  { pool: pool.address, error: poolError },
+                  "Failed to fetch balance for V3 pool",
                 );
-                totalTvlUsd += balance0 * price0;
+                return null;
               }
+            }),
+          );
 
-              if (results[1]?.success && price1 > 0) {
-                const balance1 = Number(
-                  formatUnits(
-                    BigInt(results[1].result.toString()),
-                    token1Info?.decimals || 18,
-                  ),
-                );
-                totalTvlUsd += balance1 * price1;
-              }
-            } catch (poolError) {
-              this.logger.debug(
-                { pool: pool.address, error: poolError },
-                "Failed to fetch balance for V3 pool",
+          for (const entry of poolBalanceResults) {
+            if (!entry) continue;
+            const { pool, results } = entry;
+
+            const token0Info = tokenMap.get(pool.token0.toLowerCase());
+            const token1Info = tokenMap.get(pool.token1.toLowerCase());
+            const price0 = prices.get(pool.token0.toLowerCase()) || 0;
+            const price1 = prices.get(pool.token1.toLowerCase()) || 0;
+
+            if (results[0]?.success && price0 > 0) {
+              const balance0 = parseFloat(
+                ethers.utils.formatUnits(
+                  results[0].result[0],
+                  token0Info?.decimals || 18,
+                ),
               );
+              totalTvlUsd += balance0 * price0;
+            }
+
+            if (results[1]?.success && price1 > 0) {
+              const balance1 = parseFloat(
+                ethers.utils.formatUnits(
+                  results[1].result[0],
+                  token1Info?.decimals || 18,
+                ),
+              );
+              totalTvlUsd += balance1 * price1;
             }
           }
         } catch (error) {
@@ -359,6 +377,34 @@ export class ProtocolStatsService {
         v2StatsMap.set(stat.poolAddress.toLowerCase(), stat);
       }
 
+      // Fetch token decimals from Ponder (avoids hardcoding 18 for all tokens)
+      const v2TokenAddrs = new Set<string>();
+      for (const pool of v2Pools) {
+        v2TokenAddrs.add(pool.token0.toLowerCase());
+        v2TokenAddrs.add(pool.token1.toLowerCase());
+      }
+
+      const v2TokenMap = new Map<string, number>(); // address -> decimals
+      try {
+        const tokenDetailsQuery = `
+          query GetTokens($whereToken: tokenFilter = {}) {
+            tokens(where: $whereToken, limit: 100) {
+              items { address, decimals }
+            }
+          }
+        `;
+        const tokenResult = await ponderClient.query(tokenDetailsQuery, {
+          whereToken: { address_in: Array.from(v2TokenAddrs) },
+        });
+        for (const t of tokenResult.tokens?.items || []) {
+          v2TokenMap.set(t.address.toLowerCase(), t.decimals);
+        }
+      } catch {
+        this.logger.warn(
+          "Failed to query V2 token decimals via GraphQL, falling back to 18",
+        );
+      }
+
       // Fetch reserves via RPC
       const provider = this.providers.get(chainId as ChainId);
       let totalTvlUsd = 0;
@@ -373,7 +419,9 @@ export class ProtocolStatsService {
         const v2PairInterface = new ethers.utils.Interface(V2_PAIR_ABI);
 
         // Fetch reserves for all V2 pools
-        const pairAddresses = v2Pools.map((p) => getAddress(p.pairAddress));
+        const pairAddresses = v2Pools.map((p) =>
+          ethers.utils.getAddress(p.pairAddress),
+        );
 
         try {
           const { results } =
@@ -401,12 +449,16 @@ export class ProtocolStatsService {
             const isToken0Jusd = pool.token0.toLowerCase() === jusdAddress;
             const isToken1Jusd = pool.token1.toLowerCase() === jusdAddress;
 
+            const decimals0 = v2TokenMap.get(pool.token0.toLowerCase()) ?? 18;
+            const decimals1 = v2TokenMap.get(pool.token1.toLowerCase()) ?? 18;
+
             if (isToken0Jusd || isToken1Jusd) {
               // JUSD reserve gives us the USD value of one side
+              const jusdDecimals = isToken0Jusd ? decimals0 : decimals1;
               const jusdReserve = isToken0Jusd ? reserve0Raw : reserve1Raw;
               // TVL = 2 * JUSD reserve (both sides are equal value in AMM)
-              const jusdReserveFormatted = Number(
-                formatUnits(BigInt(jusdReserve.toString()), 18),
+              const jusdReserveFormatted = parseFloat(
+                ethers.utils.formatUnits(jusdReserve, jusdDecimals),
               );
               totalTvlUsd += 2 * jusdReserveFormatted;
             } else {
@@ -421,13 +473,13 @@ export class ProtocolStatsService {
               );
 
               if (price0 > 0) {
-                const reserve0Formatted = Number(
-                  formatUnits(BigInt(reserve0Raw.toString()), 18),
+                const reserve0Formatted = parseFloat(
+                  ethers.utils.formatUnits(reserve0Raw, decimals0),
                 );
                 totalTvlUsd += 2 * reserve0Formatted * price0;
               } else if (price1 > 0) {
-                const reserve1Formatted = Number(
-                  formatUnits(BigInt(reserve1Raw.toString()), 18),
+                const reserve1Formatted = parseFloat(
+                  ethers.utils.formatUnits(reserve1Raw, decimals1),
                 );
                 totalTvlUsd += 2 * reserve1Formatted * price1;
               }
@@ -450,15 +502,19 @@ export class ProtocolStatsService {
         const jusdAddress = contracts?.JUSD?.toLowerCase();
         const isToken0Jusd = pool.token0.toLowerCase() === jusdAddress;
 
+        const jusdDecimals = isToken0Jusd
+          ? (v2TokenMap.get(pool.token0.toLowerCase()) ?? 18)
+          : (v2TokenMap.get(pool.token1.toLowerCase()) ?? 18);
+
         if (isToken0Jusd) {
           // volume0 is JUSD volume
-          totalVolume24hUsd += Number(
-            formatUnits(BigInt(stats.volume0 || "0"), 18),
+          totalVolume24hUsd += parseFloat(
+            ethers.utils.formatUnits(stats.volume0 || "0", jusdDecimals),
           );
         } else if (pool.token1.toLowerCase() === jusdAddress) {
           // volume1 is JUSD volume
-          totalVolume24hUsd += Number(
-            formatUnits(BigInt(stats.volume1 || "0"), 18),
+          totalVolume24hUsd += parseFloat(
+            ethers.utils.formatUnits(stats.volume1 || "0", jusdDecimals),
           );
         }
         // Non-JUSD pairs: skip (no USD volume attribution without price data)

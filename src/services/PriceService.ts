@@ -23,6 +23,7 @@ type TokenCategory = "BTC" | "STABLECOIN";
 export class PriceService {
   private logger: Logger;
   private btcPriceCache: PriceCache | null = null;
+  private btcPriceInflight: Promise<number> | null = null;
   private readonly CACHE_TTL = 60_000; // 60 seconds
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
@@ -49,9 +50,9 @@ export class PriceService {
         btcSet.add(wcbtc.address.toLowerCase());
       }
 
-      // syBTC on mainnet
-      if (chainId === ChainId.CITREA_MAINNET) {
-        btcSet.add("0x384157027B1CDEAc4e26e3709667BB28735379Bb".toLowerCase());
+      // syBTC (yield-bearing BTC, sourced from ChainContracts config)
+      if (contracts?.SY_BTC) {
+        btcSet.add(contracts.SY_BTC.toLowerCase());
       }
 
       // Stablecoin tokens
@@ -81,6 +82,21 @@ export class PriceService {
       return this.btcPriceCache.price;
     }
 
+    // Deduplicate concurrent requests: if a fetch is already in progress, await the same promise
+    if (this.btcPriceInflight) {
+      return this.btcPriceInflight;
+    }
+
+    this.btcPriceInflight = this.fetchBtcPriceWithFallback();
+    try {
+      return await this.btcPriceInflight;
+    } finally {
+      this.btcPriceInflight = null;
+    }
+  }
+
+  private async fetchBtcPriceWithFallback(): Promise<number> {
+    const now = Date.now();
     try {
       const price = await this.fetchBtcPriceCoinGecko();
       this.btcPriceCache = { price, timestamp: now };
