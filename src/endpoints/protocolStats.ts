@@ -52,7 +52,7 @@ export interface ProtocolStatsRequestBody {
  *                             type: number
  *                     v3:
  *                       type: array
- *                     v4:
+ *                     bridge:
  *                       type: array
  *                 historicalProtocolVolume:
  *                   type: object
@@ -64,7 +64,7 @@ export interface ProtocolStatsRequestBody {
  *                           type: array
  *                         v3:
  *                           type: array
- *                         v4:
+ *                         bridge:
  *                           type: array
  *       400:
  *         description: Invalid request
