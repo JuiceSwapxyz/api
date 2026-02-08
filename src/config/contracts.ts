@@ -24,6 +24,10 @@ export interface ChainContracts {
   JUICE_SWAP_GATEWAY: string;
   SWAP_ROUTER: string;
   POSITION_MANAGER: string;
+  BRIDGE_SUSD: string;
+  BRIDGE_USDC: string;
+  BRIDGE_USDT: string;
+  BRIDGE_CTUSD: string;
 }
 
 // Type for supported chains in CHAIN_TO_ADDRESSES_MAP
@@ -72,6 +76,11 @@ function buildChainContracts(chainId: number): ChainContracts | null {
     JUICE_SWAP_GATEWAY: dexAddresses.juiceSwapGatewayAddress ?? "",
     SWAP_ROUTER: dexAddresses.swapRouter02Address ?? "",
     POSITION_MANAGER: dexAddresses.nonfungiblePositionManagerAddress ?? "",
+    // Bridge contracts (StablecoinBridge instances from @juicedollar/jusd)
+    BRIDGE_SUSD: juiceDollarAddresses.bridgeStartUSD,
+    BRIDGE_USDC: juiceDollarAddresses.bridgeUSDC ?? "",
+    BRIDGE_USDT: juiceDollarAddresses.bridgeUSDT ?? "",
+    BRIDGE_CTUSD: juiceDollarAddresses.bridgeCTUSD ?? "",
   };
 }
 

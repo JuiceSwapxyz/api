@@ -2,6 +2,7 @@ import Logger from "bunyan";
 import { ChainId } from "@juiceswapxyz/sdk-core";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ethers } from "ethers";
+import axios from "axios";
 import { PriceService } from "./PriceService";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
@@ -14,6 +15,11 @@ const ERC20_BALANCE_ABI = [
 // V2 Pair ABI for getReserves
 const V2_PAIR_ABI = [
   "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+];
+
+// StablecoinBridge ABI — minted() returns total JUSD minted through the bridge
+const STABLECOIN_BRIDGE_ABI = [
+  "function minted() view returns (uint256)",
 ];
 
 interface ProtocolStats {
@@ -30,13 +36,13 @@ export interface ProtocolStatsResponse {
   dailyProtocolTvl: {
     v2: TimestampedAmount[];
     v3: TimestampedAmount[];
-    v4: TimestampedAmount[];
+    bridge: TimestampedAmount[];
   };
   historicalProtocolVolume: {
     Month: {
       v2: TimestampedAmount[];
       v3: TimestampedAmount[];
-      v4: TimestampedAmount[];
+      bridge: TimestampedAmount[];
     };
   };
 }
@@ -75,6 +81,7 @@ interface V2PoolStatEntry {
   volume0: string;
   volume1: string;
   txCount: string;
+  timestamp: string;
 }
 
 interface StatsCache {
@@ -112,9 +119,10 @@ export class ProtocolStatsService {
       return cached.response;
     }
 
-    const [v3Stats, v2Stats] = await Promise.all([
+    const [v3Stats, v2Stats, bridgeStats] = await Promise.all([
       this.getV3Stats(chainId),
       this.getV2Stats(chainId),
+      this.getBridgeStats(chainId),
     ]);
 
     const currentTimestamp = Math.floor(now / 1000);
@@ -123,13 +131,18 @@ export class ProtocolStatsService {
       dailyProtocolTvl: {
         v2: [{ timestamp: currentTimestamp, value: v2Stats.tvlUsd }],
         v3: [{ timestamp: currentTimestamp, value: v3Stats.tvlUsd }],
-        v4: [],
+        bridge: [{ timestamp: currentTimestamp, value: bridgeStats.tvlUsd }],
       },
       historicalProtocolVolume: {
         Month: {
           v2: [{ timestamp: currentTimestamp, value: v2Stats.volume24hUsd }],
           v3: [{ timestamp: currentTimestamp, value: v3Stats.volume24hUsd }],
-          v4: [],
+          bridge: [
+            {
+              timestamp: currentTimestamp,
+              value: bridgeStats.volume24hUsd,
+            },
+          ],
         },
       },
     };
@@ -142,22 +155,28 @@ export class ProtocolStatsService {
     try {
       const ponderClient = getPonderClient(this.logger);
 
-      // Fetch V3 pool stats and pool info from Ponder
-      const exploreResponse = await ponderClient.get(
-        `/exploreStats?chainId=${chainId}`,
-      );
+      // Fetch pool discovery (all-time, for TVL) and 24h volume stats in parallel
+      const [exploreResponse, poolStats24h] = await Promise.all([
+        ponderClient.get(`/exploreStats?chainId=${chainId}`),
+        this.queryV3PoolStats24h(ponderClient, chainId),
+      ]);
       const exploreData = exploreResponse.data;
 
       const poolStatsV3: V3PoolStat[] = exploreData?.stats?.poolStatsV3 || [];
 
-      if (poolStatsV3.length === 0) {
+      if (poolStatsV3.length === 0 && poolStats24h.length === 0) {
         return { tvlUsd: 0, volume24hUsd: 0 };
       }
 
-      // Get pool addresses and their token info from the Ponder GraphQL
-      const poolAddresses = poolStatsV3.map((ps) =>
-        ethers.utils.getAddress(ps.poolAddress),
-      );
+      // Merge pool addresses from both sources for info queries
+      const poolAddressSet = new Set<string>();
+      for (const ps of poolStatsV3) {
+        poolAddressSet.add(ethers.utils.getAddress(ps.poolAddress));
+      }
+      for (const ps of poolStats24h) {
+        poolAddressSet.add(ethers.utils.getAddress(ps.poolAddress));
+      }
+      const poolAddresses = Array.from(poolAddressSet);
 
       // Query pool info for token addresses and decimals
       const poolInfoQuery = `
@@ -224,36 +243,43 @@ export class ProtocolStatsService {
         Array.from(allTokenAddrs),
       );
 
-      // Calculate 24h volume
+      // Calculate 24h volume from daily pool stats (not all-time)
       let totalVolume24hUsd = 0;
 
-      for (const ps of poolStatsV3) {
-        const poolAddr = ps.poolAddress?.toLowerCase();
-        const pool = pools.find(
-          (p: V3Pool) => p.address.toLowerCase() === poolAddr,
-        );
-        if (!pool) continue;
+      if (poolStats24h.length > 0) {
+        // Only sum entries from the latest daily bucket
+        const latestTimestamp = poolStats24h[0].timestamp;
 
-        const token0Info = tokenMap.get(pool.token0.toLowerCase());
-        const token1Info = tokenMap.get(pool.token1.toLowerCase());
-        const price0 = prices.get(pool.token0.toLowerCase()) || 0;
-        const price1 = prices.get(pool.token1.toLowerCase()) || 0;
+        for (const ps of poolStats24h) {
+          if (ps.timestamp !== latestTimestamp) break;
 
-        const decimals0 = token0Info?.decimals || 18;
-        const decimals1 = token1Info?.decimals || 18;
+          const poolAddr = ps.poolAddress?.toLowerCase();
+          const pool = pools.find(
+            (p: V3Pool) => p.address.toLowerCase() === poolAddr,
+          );
+          if (!pool) continue;
 
-        const volume0 = parseFloat(
-          ethers.utils.formatUnits(ps.volume0 || "0", decimals0),
-        );
-        const volume1 = parseFloat(
-          ethers.utils.formatUnits(ps.volume1 || "0", decimals1),
-        );
+          const token0Info = tokenMap.get(pool.token0.toLowerCase());
+          const token1Info = tokenMap.get(pool.token1.toLowerCase());
+          const price0 = prices.get(pool.token0.toLowerCase()) || 0;
+          const price1 = prices.get(pool.token1.toLowerCase()) || 0;
 
-        // Use whichever side has a known price, avoid double counting
-        if (price0 > 0) {
-          totalVolume24hUsd += volume0 * price0;
-        } else if (price1 > 0) {
-          totalVolume24hUsd += volume1 * price1;
+          const decimals0 = token0Info?.decimals || 18;
+          const decimals1 = token1Info?.decimals || 18;
+
+          const volume0 = parseFloat(
+            ethers.utils.formatUnits(ps.volume0 || "0", decimals0),
+          );
+          const volume1 = parseFloat(
+            ethers.utils.formatUnits(ps.volume1 || "0", decimals1),
+          );
+
+          // Use whichever side has a known price, avoid double counting
+          if (price0 > 0) {
+            totalVolume24hUsd += volume0 * price0;
+          } else if (price1 > 0) {
+            totalVolume24hUsd += volume1 * price1;
+          }
         }
       }
 
@@ -343,6 +369,58 @@ export class ProtocolStatsService {
     }
   }
 
+  /**
+   * Query 24h V3 pool stats from Ponder GraphQL.
+   * Returns stats sorted desc by timestamp for latest-bucket filtering.
+   */
+  private async queryV3PoolStats24h(
+    ponderClient: ReturnType<typeof getPonderClient>,
+    chainId: number,
+  ): Promise<V3PoolStat[]> {
+    try {
+      const query = `
+        query Get24hPoolStats($where: poolStatFilter = {}) {
+          poolStats(where: $where, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
+            items { poolAddress, volume0, volume1, txCount, timestamp, type }
+          }
+        }
+      `;
+      const result = await ponderClient.query(query, {
+        where: { type: "24h", chainId },
+      });
+      return result.poolStats?.items || [];
+    } catch {
+      this.logger.warn("Failed to query 24h V3 pool stats via GraphQL");
+      return [];
+    }
+  }
+
+  /**
+   * Query 24h V2 pool stats from Ponder GraphQL.
+   * Returns stats sorted desc by timestamp for latest-bucket filtering.
+   */
+  private async queryV2PoolStats24h(
+    ponderClient: ReturnType<typeof getPonderClient>,
+    chainId: number,
+  ): Promise<V2PoolStatEntry[]> {
+    try {
+      const query = `
+        query Get24hV2PoolStats($where: v2PoolStatFilter = {}) {
+          v2PoolStats(where: $where, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
+            items { poolAddress, volume0, volume1, txCount, timestamp, type }
+          }
+        }
+      `;
+      const result = await ponderClient.query(query, {
+        where: { type: "24h", chainId },
+      });
+      return result.v2PoolStats?.items || [];
+    } catch {
+      this.logger.warn("Failed to query 24h V2 pool stats via GraphQL");
+      return [];
+    }
+  }
+
   private async getV2Stats(chainId: number): Promise<ProtocolStats> {
     try {
       const ponderClient = getPonderClient(this.logger);
@@ -358,24 +436,11 @@ export class ProtocolStatsService {
         return { tvlUsd: 0, volume24hUsd: 0 };
       }
 
-      // Fetch V2 volume stats from Ponder
-      let v2PoolStats: V2PoolStatEntry[] = [];
-      try {
-        const statsResponse = await ponderClient.get(
-          `/v2-pool-stats?chainId=${chainId}&type=24h`,
-        );
-        v2PoolStats = statsResponse.data?.stats || [];
-      } catch {
-        this.logger.warn(
-          "V2 pool stats not available yet (indexing may not be complete)",
-        );
-      }
-
-      // Create lookup map for V2 stats by pool address
-      const v2StatsMap = new Map<string, V2PoolStatEntry>();
-      for (const stat of v2PoolStats) {
-        v2StatsMap.set(stat.poolAddress.toLowerCase(), stat);
-      }
+      // Fetch V2 24h volume stats from Ponder GraphQL
+      const v2PoolStats24h = await this.queryV2PoolStats24h(
+        ponderClient,
+        chainId,
+      );
 
       // Fetch token decimals from Ponder (avoids hardcoding 18 for all tokens)
       const v2TokenAddrs = new Set<string>();
@@ -493,31 +558,46 @@ export class ProtocolStatsService {
         }
       }
 
-      // Calculate V2 volume from indexed stats
-      for (const pool of v2Pools) {
-        const stats = v2StatsMap.get(pool.pairAddress.toLowerCase());
-        if (!stats) continue;
-
-        // For V2 launchpad pools paired with JUSD, the JUSD-side volume gives USD volume
+      // Calculate V2 volume from 24h stats — only sum the latest daily bucket
+      if (v2PoolStats24h.length > 0) {
+        const latestTimestamp = v2PoolStats24h[0].timestamp;
         const jusdAddress = contracts?.JUSD?.toLowerCase();
-        const isToken0Jusd = pool.token0.toLowerCase() === jusdAddress;
 
-        const jusdDecimals = isToken0Jusd
-          ? (v2TokenMap.get(pool.token0.toLowerCase()) ?? 18)
-          : (v2TokenMap.get(pool.token1.toLowerCase()) ?? 18);
-
-        if (isToken0Jusd) {
-          // volume0 is JUSD volume
-          totalVolume24hUsd += parseFloat(
-            ethers.utils.formatUnits(stats.volume0 || "0", jusdDecimals),
-          );
-        } else if (pool.token1.toLowerCase() === jusdAddress) {
-          // volume1 is JUSD volume
-          totalVolume24hUsd += parseFloat(
-            ethers.utils.formatUnits(stats.volume1 || "0", jusdDecimals),
-          );
+        // Build a map from pool address to token info for graduated pools
+        const v2PoolMap = new Map<
+          string,
+          { token0: string; token1: string }
+        >();
+        for (const pool of v2Pools) {
+          v2PoolMap.set(pool.pairAddress.toLowerCase(), {
+            token0: pool.token0,
+            token1: pool.token1,
+          });
         }
-        // Non-JUSD pairs: skip (no USD volume attribution without price data)
+
+        for (const stats of v2PoolStats24h) {
+          if (stats.timestamp !== latestTimestamp) break;
+
+          const pool = v2PoolMap.get(stats.poolAddress.toLowerCase());
+          if (!pool) continue;
+
+          const isToken0Jusd = pool.token0.toLowerCase() === jusdAddress;
+          const isToken1Jusd = pool.token1.toLowerCase() === jusdAddress;
+
+          if (isToken0Jusd) {
+            const jusdDecimals =
+              v2TokenMap.get(pool.token0.toLowerCase()) ?? 18;
+            totalVolume24hUsd += parseFloat(
+              ethers.utils.formatUnits(stats.volume0 || "0", jusdDecimals),
+            );
+          } else if (isToken1Jusd) {
+            const jusdDecimals =
+              v2TokenMap.get(pool.token1.toLowerCase()) ?? 18;
+            totalVolume24hUsd += parseFloat(
+              ethers.utils.formatUnits(stats.volume1 || "0", jusdDecimals),
+            );
+          }
+        }
       }
 
       this.logger.info(
@@ -529,6 +609,192 @@ export class ProtocolStatsService {
     } catch (error) {
       this.logger.error({ chainId, error }, "Failed to get V2 stats");
       return { tvlUsd: 0, volume24hUsd: 0 };
+    }
+  }
+
+  /**
+   * Bridge stats: TVL from StablecoinBridge minted() totals,
+   * volume from JuiceDollar Ponder + LDS Ponder GraphQL queries
+   */
+  private async getBridgeStats(chainId: number): Promise<ProtocolStats> {
+    try {
+      const [tvlUsd, volume24hUsd] = await Promise.all([
+        this.getBridgeTvl(chainId),
+        this.getBridgeVolume(chainId),
+      ]);
+
+      this.logger.info(
+        { chainId, bridgeTvlUsd: tvlUsd, bridgeVolume24hUsd: volume24hUsd },
+        "Calculated bridge stats",
+      );
+
+      return { tvlUsd, volume24hUsd };
+    } catch (error) {
+      this.logger.error({ chainId, error }, "Failed to get bridge stats");
+      return { tvlUsd: 0, volume24hUsd: 0 };
+    }
+  }
+
+  /**
+   * Bridge TVL = sum of minted() across all 4 StablecoinBridge contracts.
+   * Each bridge mints JUSD (18 decimals) at $1.
+   */
+  private async getBridgeTvl(chainId: number): Promise<number> {
+    const contracts = getChainContracts(chainId);
+    const provider = this.providers.get(chainId as ChainId);
+    if (!contracts || !provider) return 0;
+
+    const bridgeAddresses = [
+      contracts.BRIDGE_SUSD,
+      contracts.BRIDGE_USDC,
+      contracts.BRIDGE_USDT,
+      contracts.BRIDGE_CTUSD,
+    ].filter((addr) => addr && addr !== "");
+
+    if (bridgeAddresses.length === 0) return 0;
+
+    try {
+      const multicallProvider = new UniswapMulticallProvider(
+        chainId as ChainId,
+        provider,
+        375000,
+      );
+      const bridgeInterface = new ethers.utils.Interface(
+        STABLECOIN_BRIDGE_ABI,
+      );
+
+      const { results } =
+        await multicallProvider.callSameFunctionOnMultipleContracts({
+          addresses: bridgeAddresses.map((a) => ethers.utils.getAddress(a)),
+          contractInterface: bridgeInterface,
+          functionName: "minted",
+        });
+
+      let totalMinted = 0;
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r?.success) {
+          totalMinted += parseFloat(
+            ethers.utils.formatUnits(r.result[0], 18),
+          );
+        }
+      }
+
+      return totalMinted;
+    } catch (error) {
+      this.logger.warn({ error }, "Failed to fetch bridge TVL via multicall");
+      return 0;
+    }
+  }
+
+  /**
+   * Bridge volume = stablecoin bridge volume + LDS bridge volume (24h).
+   */
+  private async getBridgeVolume(chainId: number): Promise<number> {
+    const [stablecoinVolume, ldsVolume] = await Promise.all([
+      this.getStablecoinBridgeVolume(),
+      this.getLdsBridgeVolume(chainId),
+    ]);
+    return stablecoinVolume + ldsVolume;
+  }
+
+  /**
+   * Query JuiceDollar Ponder for 24h stablecoin bridge volume.
+   * All values are JUSD (18 decimals, $1).
+   */
+  private async getStablecoinBridgeVolume(): Promise<number> {
+    try {
+      const baseUrl =
+        process.env.JUICEDOLLAR_PONDER_URL || "https://ponder.juicedollar.com";
+      const query = `
+        query {
+          bridgeVolumeStats(where: { type: "24h" }, orderBy: "timestamp", orderDirection: "desc", limit: 10) {
+            items { stablecoinAddress, timestamp, volume, type }
+          }
+        }
+      `;
+
+      const response = await axios.post(
+        `${baseUrl}/graphql`,
+        { query },
+        { timeout: 10000 },
+      );
+
+      const items = response.data?.data?.bridgeVolumeStats?.items || [];
+      if (items.length === 0) return 0;
+
+      // Items are sorted desc by timestamp — only sum the latest day's bucket
+      const latestTimestamp = items[0].timestamp;
+      let totalVolume = 0;
+      for (const item of items) {
+        if (item.timestamp !== latestTimestamp) break;
+        totalVolume += parseFloat(
+          ethers.utils.formatUnits(item.volume || "0", 18),
+        );
+      }
+      return totalVolume;
+    } catch (error) {
+      this.logger.warn(
+        { error },
+        "Failed to fetch stablecoin bridge volume from JuiceDollar Ponder",
+      );
+      return 0;
+    }
+  }
+
+  /**
+   * Query LDS Ponder for 24h bridge volume (BTC/Lightning/ERC20 atomic swaps).
+   * tokenAddress="native" → cBTC volume (needs BTC price)
+   * tokenAddress=JUSD address → already USD at $1
+   */
+  private async getLdsBridgeVolume(chainId: number): Promise<number> {
+    try {
+      const baseUrl =
+        process.env.LDS_PONDER_URL || "https://lightning.space/v1/claim";
+      const query = `
+        query {
+          volumeStats(where: { chainId: ${chainId}, type: "24h" }, orderBy: "timestamp", orderDirection: "desc", limit: 10) {
+            items { tokenAddress, timestamp, volume, type }
+          }
+        }
+      `;
+
+      const response = await axios.post(
+        `${baseUrl}/graphql`,
+        { query },
+        { timeout: 10000 },
+      );
+
+      const items = response.data?.data?.volumeStats?.items || [];
+      if (items.length === 0) return 0;
+
+      // Items are sorted desc by timestamp — only sum the latest day's bucket
+      const latestTimestamp = items[0].timestamp;
+
+      // Get BTC price for native token volume conversion
+      const btcPrice = await this.priceService.getBtcPriceUsd();
+
+      let totalVolume = 0;
+      for (const item of items) {
+        if (item.timestamp !== latestTimestamp) break;
+        const volume = parseFloat(
+          ethers.utils.formatUnits(item.volume || "0", 18),
+        );
+        if (item.tokenAddress === "native") {
+          // cBTC volume — convert to USD using BTC price
+          totalVolume += volume * btcPrice;
+        } else {
+          // ERC20 volume (JUSD) — already USD at $1
+          totalVolume += volume;
+        }
+      }
+      return totalVolume;
+    } catch (error) {
+      this.logger.warn(
+        { error },
+        "Failed to fetch LDS bridge volume from LDS Ponder",
+      );
+      return 0;
     }
   }
 }
