@@ -93,20 +93,20 @@ Returns TVL and 24h volume for the Explore page. All values are in USD.
 
 Sum of V2 + V3 + Bridge 24h volume.
 
-| Component | Source | Method |
-|-----------|--------|--------|
-| **V3** | JuiceSwap Ponder (`poolStat`, `type: "24h"`) | One-sided volume × token price (avoids double counting) |
-| **V2** | JuiceSwap Ponder (`v2PoolStat`, `type: "24h"`) | JUSD-side volume from graduated launchpad pools |
+| Component  | Source                                                                | Method                                                             |
+| ---------- | --------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **V3**     | JuiceSwap Ponder (`poolStat`, `type: "24h"`)                          | One-sided volume × token price (avoids double counting)            |
+| **V2**     | JuiceSwap Ponder (`v2PoolStat`, `type: "24h"`)                        | JUSD-side volume from graduated launchpad pools                    |
 | **Bridge** | JuiceDollar Ponder (`bridgeVolumeStats`) + LDS Ponder (`volumeStats`) | Stablecoin bridges: JUSD at $1. LDS: cBTC × BTC price + JUSD at $1 |
 
 ### TVL
 
-| Stat | Source | Method |
-|------|--------|--------|
-| **V3 TVL** | On-chain RPC | `balanceOf(pool)` for each token × token price |
-| **V2 TVL** | On-chain RPC | `getReserves()` → `2 × JUSD reserve` for JUSD-paired pools |
+| Stat           | Source       | Method                                                                |
+| -------------- | ------------ | --------------------------------------------------------------------- |
+| **V3 TVL**     | On-chain RPC | `balanceOf(pool)` for each token × token price                        |
+| **V2 TVL**     | On-chain RPC | `getReserves()` → `2 × JUSD reserve` for JUSD-paired pools            |
 | **Bridge TVL** | On-chain RPC | `minted()` on 4 StablecoinBridge contracts (net of burns, JUSD at $1) |
-| **Total TVL** | Computed | V2 + V3 + Bridge |
+| **Total TVL**  | Computed     | V2 + V3 + Bridge                                                      |
 
 ## Architecture
 

@@ -18,9 +18,7 @@ const V2_PAIR_ABI = [
 ];
 
 // StablecoinBridge ABI — minted() returns total JUSD minted through the bridge
-const STABLECOIN_BRIDGE_ABI = [
-  "function minted() view returns (uint256)",
-];
+const STABLECOIN_BRIDGE_ABI = ["function minted() view returns (uint256)"];
 
 interface ProtocolStats {
   tvlUsd: number;
@@ -243,43 +241,36 @@ export class ProtocolStatsService {
         Array.from(allTokenAddrs),
       );
 
-      // Calculate 24h volume from daily pool stats (not all-time)
+      // Calculate rolling 24h volume from hourly pool stats
       let totalVolume24hUsd = 0;
 
-      if (poolStats24h.length > 0) {
-        // Only sum entries from the latest daily bucket
-        const latestTimestamp = poolStats24h[0].timestamp;
+      for (const ps of poolStats24h) {
+        const poolAddr = ps.poolAddress?.toLowerCase();
+        const pool = pools.find(
+          (p: V3Pool) => p.address.toLowerCase() === poolAddr,
+        );
+        if (!pool) continue;
 
-        for (const ps of poolStats24h) {
-          if (ps.timestamp !== latestTimestamp) break;
+        const token0Info = tokenMap.get(pool.token0.toLowerCase());
+        const token1Info = tokenMap.get(pool.token1.toLowerCase());
+        const price0 = prices.get(pool.token0.toLowerCase()) || 0;
+        const price1 = prices.get(pool.token1.toLowerCase()) || 0;
 
-          const poolAddr = ps.poolAddress?.toLowerCase();
-          const pool = pools.find(
-            (p: V3Pool) => p.address.toLowerCase() === poolAddr,
-          );
-          if (!pool) continue;
+        const decimals0 = token0Info?.decimals || 18;
+        const decimals1 = token1Info?.decimals || 18;
 
-          const token0Info = tokenMap.get(pool.token0.toLowerCase());
-          const token1Info = tokenMap.get(pool.token1.toLowerCase());
-          const price0 = prices.get(pool.token0.toLowerCase()) || 0;
-          const price1 = prices.get(pool.token1.toLowerCase()) || 0;
+        const volume0 = parseFloat(
+          ethers.utils.formatUnits(ps.volume0 || "0", decimals0),
+        );
+        const volume1 = parseFloat(
+          ethers.utils.formatUnits(ps.volume1 || "0", decimals1),
+        );
 
-          const decimals0 = token0Info?.decimals || 18;
-          const decimals1 = token1Info?.decimals || 18;
-
-          const volume0 = parseFloat(
-            ethers.utils.formatUnits(ps.volume0 || "0", decimals0),
-          );
-          const volume1 = parseFloat(
-            ethers.utils.formatUnits(ps.volume1 || "0", decimals1),
-          );
-
-          // Use whichever side has a known price, avoid double counting
-          if (price0 > 0) {
-            totalVolume24hUsd += volume0 * price0;
-          } else if (price1 > 0) {
-            totalVolume24hUsd += volume1 * price1;
-          }
+        // Use whichever side has a known price, avoid double counting
+        if (price0 > 0) {
+          totalVolume24hUsd += volume0 * price0;
+        } else if (price1 > 0) {
+          totalVolume24hUsd += volume1 * price1;
         }
       }
 
@@ -369,54 +360,61 @@ export class ProtocolStatsService {
     }
   }
 
+  /** Returns a Unix timestamp (seconds) string for 24 hours ago. */
+  private get24hAgoCutoff(): string {
+    return (Math.floor(Date.now() / 1000) - 86400).toString();
+  }
+
   /**
-   * Query 24h V3 pool stats from Ponder GraphQL.
-   * Returns stats sorted desc by timestamp for latest-bucket filtering.
+   * Query rolling 24h V3 pool stats from Ponder GraphQL.
+   * Uses hourly buckets (type: "1h") with a 24h-ago cutoff for a true rolling window.
    */
   private async queryV3PoolStats24h(
     ponderClient: ReturnType<typeof getPonderClient>,
     chainId: number,
   ): Promise<V3PoolStat[]> {
     try {
+      const cutoff = this.get24hAgoCutoff();
       const query = `
-        query Get24hPoolStats($where: poolStatFilter = {}) {
-          poolStats(where: $where, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
+        query GetRolling24hPoolStats($where: poolStatFilter = {}) {
+          poolStats(where: $where, orderBy: "timestamp", orderDirection: "desc", limit: 1000) {
             items { poolAddress, volume0, volume1, txCount, timestamp, type }
           }
         }
       `;
       const result = await ponderClient.query(query, {
-        where: { type: "24h", chainId },
+        where: { type: "1h", chainId, timestamp_gte: cutoff },
       });
       return result.poolStats?.items || [];
     } catch {
-      this.logger.warn("Failed to query 24h V3 pool stats via GraphQL");
+      this.logger.warn("Failed to query rolling 24h V3 pool stats via GraphQL");
       return [];
     }
   }
 
   /**
-   * Query 24h V2 pool stats from Ponder GraphQL.
-   * Returns stats sorted desc by timestamp for latest-bucket filtering.
+   * Query rolling 24h V2 pool stats from Ponder GraphQL.
+   * Uses hourly buckets (type: "1h") with a 24h-ago cutoff for a true rolling window.
    */
   private async queryV2PoolStats24h(
     ponderClient: ReturnType<typeof getPonderClient>,
     chainId: number,
   ): Promise<V2PoolStatEntry[]> {
     try {
+      const cutoff = this.get24hAgoCutoff();
       const query = `
-        query Get24hV2PoolStats($where: v2PoolStatFilter = {}) {
-          v2PoolStats(where: $where, orderBy: "timestamp", orderDirection: "desc", limit: 100) {
+        query GetRolling24hV2PoolStats($where: v2PoolStatFilter = {}) {
+          v2PoolStats(where: $where, orderBy: "timestamp", orderDirection: "desc", limit: 1000) {
             items { poolAddress, volume0, volume1, txCount, timestamp, type }
           }
         }
       `;
       const result = await ponderClient.query(query, {
-        where: { type: "24h", chainId },
+        where: { type: "1h", chainId, timestamp_gte: cutoff },
       });
       return result.v2PoolStats?.items || [];
     } catch {
-      this.logger.warn("Failed to query 24h V2 pool stats via GraphQL");
+      this.logger.warn("Failed to query rolling 24h V2 pool stats via GraphQL");
       return [];
     }
   }
@@ -558,16 +556,12 @@ export class ProtocolStatsService {
         }
       }
 
-      // Calculate V2 volume from 24h stats — only sum the latest daily bucket
+      // Calculate rolling 24h V2 volume from hourly stats
       if (v2PoolStats24h.length > 0) {
-        const latestTimestamp = v2PoolStats24h[0].timestamp;
         const jusdAddress = contracts?.JUSD?.toLowerCase();
 
         // Build a map from pool address to token info for graduated pools
-        const v2PoolMap = new Map<
-          string,
-          { token0: string; token1: string }
-        >();
+        const v2PoolMap = new Map<string, { token0: string; token1: string }>();
         for (const pool of v2Pools) {
           v2PoolMap.set(pool.pairAddress.toLowerCase(), {
             token0: pool.token0,
@@ -576,8 +570,6 @@ export class ProtocolStatsService {
         }
 
         for (const stats of v2PoolStats24h) {
-          if (stats.timestamp !== latestTimestamp) break;
-
           const pool = v2PoolMap.get(stats.poolAddress.toLowerCase());
           if (!pool) continue;
 
@@ -659,9 +651,7 @@ export class ProtocolStatsService {
         provider,
         375000,
       );
-      const bridgeInterface = new ethers.utils.Interface(
-        STABLECOIN_BRIDGE_ABI,
-      );
+      const bridgeInterface = new ethers.utils.Interface(STABLECOIN_BRIDGE_ABI);
 
       const { results } =
         await multicallProvider.callSameFunctionOnMultipleContracts({
@@ -674,9 +664,7 @@ export class ProtocolStatsService {
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (r?.success) {
-          totalMinted += parseFloat(
-            ethers.utils.formatUnits(r.result[0], 18),
-          );
+          totalMinted += parseFloat(ethers.utils.formatUnits(r.result[0], 18));
         }
       }
 
@@ -699,16 +687,17 @@ export class ProtocolStatsService {
   }
 
   /**
-   * Query JuiceDollar Ponder for 24h stablecoin bridge volume.
-   * All values are JUSD (18 decimals, $1).
+   * Query JuiceDollar Ponder for rolling 24h stablecoin bridge volume.
+   * Uses hourly buckets with a 24h-ago cutoff. All values are JUSD (18 decimals, $1).
    */
   private async getStablecoinBridgeVolume(): Promise<number> {
     try {
       const baseUrl =
         process.env.JUICEDOLLAR_PONDER_URL || "https://ponder.juicedollar.com";
+      const cutoff = this.get24hAgoCutoff();
       const query = `
         query {
-          bridgeVolumeStats(where: { type: "24h" }, orderBy: "timestamp", orderDirection: "desc", limit: 10) {
+          bridgeVolumeStats(where: { type: "1h", timestamp_gte: "${cutoff}" }, orderBy: "timestamp", orderDirection: "desc", limit: 200) {
             items { stablecoinAddress, timestamp, volume, type }
           }
         }
@@ -721,13 +710,8 @@ export class ProtocolStatsService {
       );
 
       const items = response.data?.data?.bridgeVolumeStats?.items || [];
-      if (items.length === 0) return 0;
-
-      // Items are sorted desc by timestamp — only sum the latest day's bucket
-      const latestTimestamp = items[0].timestamp;
       let totalVolume = 0;
       for (const item of items) {
-        if (item.timestamp !== latestTimestamp) break;
         totalVolume += parseFloat(
           ethers.utils.formatUnits(item.volume || "0", 18),
         );
@@ -743,7 +727,8 @@ export class ProtocolStatsService {
   }
 
   /**
-   * Query LDS Ponder for 24h bridge volume (BTC/Lightning/ERC20 atomic swaps).
+   * Query LDS Ponder for rolling 24h bridge volume (BTC/Lightning/ERC20 atomic swaps).
+   * Uses hourly buckets with a 24h-ago cutoff.
    * tokenAddress="native" → cBTC volume (needs BTC price)
    * tokenAddress=JUSD address → already USD at $1
    */
@@ -751,9 +736,10 @@ export class ProtocolStatsService {
     try {
       const baseUrl =
         process.env.LDS_PONDER_URL || "https://lightning.space/v1/claim";
+      const cutoff = this.get24hAgoCutoff();
       const query = `
         query {
-          volumeStats(where: { chainId: ${chainId}, type: "24h" }, orderBy: "timestamp", orderDirection: "desc", limit: 10) {
+          volumeStats(where: { chainId: ${chainId}, type: "1h", timestamp_gte: "${cutoff}" }, orderBy: "timestamp", orderDirection: "desc", limit: 200) {
             items { tokenAddress, timestamp, volume, type }
           }
         }
@@ -768,15 +754,11 @@ export class ProtocolStatsService {
       const items = response.data?.data?.volumeStats?.items || [];
       if (items.length === 0) return 0;
 
-      // Items are sorted desc by timestamp — only sum the latest day's bucket
-      const latestTimestamp = items[0].timestamp;
-
       // Get BTC price for native token volume conversion
       const btcPrice = await this.priceService.getBtcPriceUsd();
 
       let totalVolume = 0;
       for (const item of items) {
-        if (item.timestamp !== latestTimestamp) break;
         const volume = parseFloat(
           ethers.utils.formatUnits(item.volume || "0", 18),
         );
