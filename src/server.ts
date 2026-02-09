@@ -73,6 +73,7 @@ import {
   PositionInfoQuerySchema,
   PoolDetailsRequestSchema,
   PositionsOwnerRequestSchema,
+  ProtocolStatsRequestSchema,
 } from "./validation/schemas";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
@@ -81,6 +82,7 @@ import { createValidateLightningAddressHandler } from "./endpoints/validateLight
 import { createPositionInfoHandler } from "./endpoints/positionInfo";
 import { createPositionsOwnerHandler } from "./endpoints/positionsOwner";
 import { createPoolDetailsHandler } from "./endpoints/poolDetails";
+import { createProtocolStatsHandler } from "./endpoints/protocolStats";
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -286,6 +288,7 @@ async function bootstrap() {
     logger,
   );
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
+  const handleProtocolStats = createProtocolStatsHandler(providers, logger);
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
     logger,
@@ -348,6 +351,14 @@ async function bootstrap() {
     generalLimiter,
     validateBody(PoolDetailsRequestSchema, logger),
     handlePoolDetails,
+  );
+
+  // Protocol stats endpoint
+  app.post(
+    "/v1/protocol/stats",
+    generalLimiter,
+    validateBody(ProtocolStatsRequestSchema, logger),
+    handleProtocolStats,
   );
 
   // LP endpoints
