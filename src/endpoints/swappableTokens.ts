@@ -3,6 +3,7 @@ import Logger from "bunyan";
 import { citreaMainnetTokenList } from "../config/citrea-mainnet.tokenlist";
 import { citreaTestnetTokenList } from "../config/citrea-testnet.tokenlist";
 import { getJuiceswapLatestTokens } from "../lib/handlers/router-entities/getJuiceswapLatestTokens";
+import { getGraduatedLaunchpadTokens } from "../lib/handlers/router-entities/getGraduatedLaunchpadTokens";
 
 interface Token {
   address: string;
@@ -89,6 +90,21 @@ export function createSwappableTokensHandler(logger: Logger) {
         );
       }
 
+      // Get graduated launchpad tokens (they have V2 pools and should be tradeable on /swap)
+      let graduatedTokens: Token[] = [];
+      try {
+        graduatedTokens = await getGraduatedLaunchpadTokens(chainId);
+        log.debug(
+          { chainId, graduatedTokenCount: graduatedTokens.length },
+          "Fetched graduated launchpad tokens",
+        );
+      } catch (graduatedError) {
+        log.warn(
+          { graduatedError },
+          "Failed to fetch graduated launchpad tokens",
+        );
+      }
+
       // Merge: hardcoded tokens take precedence (they have complete metadata)
       const seenAddresses = new Set<string>();
       const mergedTokens: Token[] = [];
@@ -103,6 +119,17 @@ export function createSwappableTokensHandler(logger: Logger) {
 
       // Add Ponder tokens not already in hardcoded list
       for (const token of ponderTokens) {
+        if (
+          !HIDDEN_TOKENS.has(token.symbol) &&
+          !seenAddresses.has(token.address.toLowerCase())
+        ) {
+          seenAddresses.add(token.address.toLowerCase());
+          mergedTokens.push(token);
+        }
+      }
+
+      // Add graduated launchpad tokens (not already in hardcoded or ponder list)
+      for (const token of graduatedTokens) {
         if (
           !HIDDEN_TOKENS.has(token.symbol) &&
           !seenAddresses.has(token.address.toLowerCase())
@@ -139,6 +166,7 @@ export function createSwappableTokensHandler(logger: Logger) {
           tokenCount: filteredTokens.length,
           hardcodedCount: hardcodedTokens.length,
           ponderCount: ponderTokens.length,
+          graduatedCount: graduatedTokens.length,
         },
         "Returned merged swappable tokens",
       );
