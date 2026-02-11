@@ -554,7 +554,7 @@ async function bootstrap() {
     handleGetBridgeSwapById,
   );
   app.get(
-    "/v1/bridge-swap/user/:userId",
+    "/v1/bridge-swap/user",
     generalLimiter,
     requireAuth,
     validateQuery(GetBridgeSwapsByUserQuerySchema, logger),

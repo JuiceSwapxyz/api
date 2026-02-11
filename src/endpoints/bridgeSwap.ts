@@ -191,6 +191,14 @@ export function createGetBridgeSwapByIdHandler(logger: Logger) {
         return;
       }
 
+      if (bridgeSwap.userId.toLowerCase() !== req.user!.address.toLowerCase()) {
+        res.status(403).json({
+          error: "Forbidden",
+          detail: "You do not own this swap",
+        });
+        return;
+      }
+
       res.json(serializeSwap(bridgeSwap));
     } catch (error) {
       logger.error(
@@ -216,7 +224,7 @@ export function createGetBridgeSwapsByUserHandler(logger: Logger) {
     req: Request,
     res: Response,
   ): Promise<void> {
-    const { userId } = req.params;
+    const userId = req.user!.address;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const offset = parseInt(req.query.offset as string) || 0;
     const status = req.query.status as string | undefined;
