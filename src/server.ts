@@ -93,7 +93,11 @@ import {
   createGetBridgeSwapByIdHandler,
   createGetBridgeSwapsByUserHandler,
 } from "./endpoints/bridgeSwap";
-import { createNonceHandler, createVerifyHandler, createMeHandler } from "./endpoints/auth";
+import {
+  createNonceHandler,
+  createVerifyHandler,
+  createMeHandler,
+} from "./endpoints/auth";
 import { requireAuth } from "./middleware/auth";
 
 // Initialize logger
@@ -543,7 +547,12 @@ async function bootstrap() {
     validateBody(BulkCreateBridgeSwapSchema, logger),
     handleBulkCreateBridgeSwap,
   );
-  app.get("/v1/bridge-swap/:id", generalLimiter, requireAuth, handleGetBridgeSwapById);
+  app.get(
+    "/v1/bridge-swap/:id",
+    generalLimiter,
+    requireAuth,
+    handleGetBridgeSwapById,
+  );
   app.get(
     "/v1/bridge-swap/user/:userId",
     generalLimiter,

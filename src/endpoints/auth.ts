@@ -18,11 +18,16 @@ function parseExpiresIn(val: string): number {
   const num = parseInt(match[1], 10);
   const unit = match[2];
   switch (unit) {
-    case "s": return num;
-    case "m": return num * 60;
-    case "h": return num * 3600;
-    case "d": return num * 86400;
-    default: return 86400;
+    case "s":
+      return num;
+    case "m":
+      return num * 60;
+    case "h":
+      return num * 3600;
+    case "d":
+      return num * 86400;
+    default:
+      return 86400;
   }
 }
 
@@ -66,7 +71,9 @@ export function createVerifyHandler(logger: Logger) {
       const lowerAddress = address.toLowerCase();
 
       // Retrieve and consume the nonce
-      const stored = nonceCache.get<{ nonce: string; message: string }>(lowerAddress);
+      const stored = nonceCache.get<{ nonce: string; message: string }>(
+        lowerAddress,
+      );
       if (!stored) {
         res.status(400).json({
           error: "Nonce not found or expired",
@@ -93,11 +100,9 @@ export function createVerifyHandler(logger: Logger) {
 
       // Issue JWT
       const expiresInSeconds = parseExpiresIn(JWT_EXPIRES_IN);
-      const token = jwt.sign(
-        { address: lowerAddress },
-        JWT_SECRET,
-        { expiresIn: expiresInSeconds },
-      );
+      const token = jwt.sign({ address: lowerAddress }, JWT_SECRET, {
+        expiresIn: expiresInSeconds,
+      });
 
       logger.info({ address: lowerAddress }, "Wallet authenticated");
       res.json({ token, expiresIn: JWT_EXPIRES_IN });

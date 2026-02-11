@@ -473,7 +473,9 @@ export const PositionsOwnerRequestSchema = z.object({
 export type PositionsOwnerRequest = z.infer<typeof PositionsOwnerRequestSchema>;
 
 // Bridge Swap creation schema (matches example.json structure, userId is mandatory)
-const numericString = z.union([z.string().regex(/^\d+$/), z.number()]).transform(String);
+const numericString = z
+  .union([z.string().regex(/^\d+$/), z.number()])
+  .transform(String);
 
 export const CreateBridgeSwapSchema = z.object({
   id: z.string(),
@@ -514,10 +516,14 @@ export type CreateBridgeSwapRequest = z.infer<typeof CreateBridgeSwapSchema>;
 
 // Bulk Bridge Swap creation schema
 export const BulkCreateBridgeSwapSchema = z.object({
-  swaps: z.array(CreateBridgeSwapSchema).min(1, "At least one swap is required"),
+  swaps: z
+    .array(CreateBridgeSwapSchema)
+    .min(1, "At least one swap is required"),
 });
 
-export type BulkCreateBridgeSwapRequest = z.infer<typeof BulkCreateBridgeSwapSchema>;
+export type BulkCreateBridgeSwapRequest = z.infer<
+  typeof BulkCreateBridgeSwapSchema
+>;
 
 // Bridge Swap query schemas
 export const GetBridgeSwapsByUserQuerySchema = z.object({
@@ -540,12 +546,8 @@ export type GetBridgeSwapsByUserQuery = z.infer<
 
 // Auth schemas
 export const AuthVerifyRequestSchema = z.object({
-  address: z
-    .string()
-    .refine((val) => ethers.utils.isAddress(val), {
-      message: "Invalid Ethereum address",
-    }),
-  signature: z
-    .string()
-    .regex(/^0x[a-fA-F0-9]+$/, "Invalid hex signature"),
+  address: z.string().refine((val) => ethers.utils.isAddress(val), {
+    message: "Invalid Ethereum address",
+  }),
+  signature: z.string().regex(/^0x[a-fA-F0-9]+$/, "Invalid hex signature"),
 });

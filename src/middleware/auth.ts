@@ -30,7 +30,11 @@ declare global {
  * Verifies Bearer token from the Authorization header and attaches
  * the decoded payload (wallet address) to req.user.
  */
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): void {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {

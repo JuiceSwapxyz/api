@@ -31,8 +31,10 @@ function toSwapData(data: any) {
     lockupTx: data.lockupTx ?? null,
     invoice: data.invoice ?? null,
     acceptZeroConf: data.acceptZeroConf ?? null,
-    expectedAmount: data.expectedAmount != null ? BigInt(data.expectedAmount) : null,
-    onchainAmount: data.onchainAmount != null ? BigInt(data.onchainAmount) : null,
+    expectedAmount:
+      data.expectedAmount != null ? BigInt(data.expectedAmount) : null,
+    onchainAmount:
+      data.onchainAmount != null ? BigInt(data.onchainAmount) : null,
     timeoutBlockHeight: data.timeoutBlockHeight ?? null,
     claimDetails: data.claimDetails ?? null,
     lockupDetails: data.lockupDetails ?? null,
@@ -75,19 +77,42 @@ export function createBridgeSwapHandler(logger: Logger) {
       });
 
       logger.info(
-        { id: bridgeSwap.id, userId: bridgeSwap.userId, type: bridgeSwap.type, responseTime: Date.now() - startTime },
+        {
+          id: bridgeSwap.id,
+          userId: bridgeSwap.userId,
+          type: bridgeSwap.type,
+          responseTime: Date.now() - startTime,
+        },
         "Bridge swap created",
       );
 
       res.status(201).json(serializeSwap(bridgeSwap));
     } catch (error: any) {
       if (error.code === "P2002") {
-        res.status(409).json({ error: "Conflict", detail: "A swap with this ID already exists" });
+        res
+          .status(409)
+          .json({
+            error: "Conflict",
+            detail: "A swap with this ID already exists",
+          });
         return;
       }
 
-      logger.error({ error: error instanceof Error ? { message: error.message, stack: error.stack } : error }, "Failed to create bridge swap");
-      res.status(500).json({ error: "Internal server error", detail: error instanceof Error ? error.message : "Unknown error" });
+      logger.error(
+        {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : error,
+        },
+        "Failed to create bridge swap",
+      );
+      res
+        .status(500)
+        .json({
+          error: "Internal server error",
+          detail: error instanceof Error ? error.message : "Unknown error",
+        });
     }
   };
 }
@@ -103,11 +128,15 @@ export function createBulkBridgeSwapHandler(logger: Logger) {
       const { swaps } = req.body;
 
       // Ensure all userIds match authenticated wallet
-      const invalidSwap = swaps.find((swap: any) => swap.userId.toLowerCase() !== req.user?.address.toLowerCase());
+      const invalidSwap = swaps.find(
+        (swap: any) =>
+          swap.userId.toLowerCase() !== req.user?.address.toLowerCase(),
+      );
       if (invalidSwap) {
         res.status(403).json({
           error: "Forbidden",
-          detail: "All swaps must have userId matching authenticated wallet address",
+          detail:
+            "All swaps must have userId matching authenticated wallet address",
         });
         return;
       }
@@ -118,7 +147,11 @@ export function createBulkBridgeSwapHandler(logger: Logger) {
       });
 
       logger.info(
-        { count: result.count, requested: swaps.length, responseTime: Date.now() - startTime },
+        {
+          count: result.count,
+          requested: swaps.length,
+          responseTime: Date.now() - startTime,
+        },
         "Bulk bridge swaps created",
       );
 
@@ -128,8 +161,21 @@ export function createBulkBridgeSwapHandler(logger: Logger) {
         skipped: swaps.length - result.count,
       });
     } catch (error: any) {
-      logger.error({ error: error instanceof Error ? { message: error.message, stack: error.stack } : error }, "Failed to create bulk bridge swaps");
-      res.status(500).json({ error: "Internal server error", detail: error instanceof Error ? error.message : "Unknown error" });
+      logger.error(
+        {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : error,
+        },
+        "Failed to create bulk bridge swaps",
+      );
+      res
+        .status(500)
+        .json({
+          error: "Internal server error",
+          detail: error instanceof Error ? error.message : "Unknown error",
+        });
     }
   };
 }
@@ -145,14 +191,30 @@ export function createGetBridgeSwapByIdHandler(logger: Logger) {
       const bridgeSwap = await prisma.bridgeSwap.findUnique({ where: { id } });
 
       if (!bridgeSwap) {
-        res.status(404).json({ error: "Not found", detail: `Bridge swap ${id} not found` });
+        res
+          .status(404)
+          .json({ error: "Not found", detail: `Bridge swap ${id} not found` });
         return;
       }
 
       res.json(serializeSwap(bridgeSwap));
     } catch (error) {
-      logger.error({ error: error instanceof Error ? { message: error.message, stack: error.stack } : error, id }, "Failed to get bridge swap");
-      res.status(500).json({ error: "Internal server error", detail: error instanceof Error ? error.message : "Unknown error" });
+      logger.error(
+        {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : error,
+          id,
+        },
+        "Failed to get bridge swap",
+      );
+      res
+        .status(500)
+        .json({
+          error: "Internal server error",
+          detail: error instanceof Error ? error.message : "Unknown error",
+        });
     }
   };
 }
@@ -187,8 +249,22 @@ export function createGetBridgeSwapsByUserHandler(logger: Logger) {
         offset,
       });
     } catch (error) {
-      logger.error({ error: error instanceof Error ? { message: error.message, stack: error.stack } : error, userId }, "Failed to get bridge swaps by user");
-      res.status(500).json({ error: "Internal server error", detail: error instanceof Error ? error.message : "Unknown error" });
+      logger.error(
+        {
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : error,
+          userId,
+        },
+        "Failed to get bridge swaps by user",
+      );
+      res
+        .status(500)
+        .json({
+          error: "Internal server error",
+          detail: error instanceof Error ? error.message : "Unknown error",
+        });
     }
   };
 }
