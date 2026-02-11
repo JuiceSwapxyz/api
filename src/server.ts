@@ -540,6 +540,7 @@ async function bootstrap() {
     validateBody(CreateBridgeSwapSchema, logger),
     handleCreateBridgeSwap,
   );
+  
   app.post(
     "/v1/bridge-swap/bulk",
     generalLimiter,
@@ -547,18 +548,20 @@ async function bootstrap() {
     validateBody(BulkCreateBridgeSwapSchema, logger),
     handleBulkCreateBridgeSwap,
   );
-  app.get(
-    "/v1/bridge-swap/:id",
-    generalLimiter,
-    requireAuth,
-    handleGetBridgeSwapById,
-  );
+
   app.get(
     "/v1/bridge-swap/user",
     generalLimiter,
     requireAuth,
     validateQuery(GetBridgeSwapsByUserQuerySchema, logger),
     handleGetBridgeSwapsByUser,
+  );
+
+  app.get(
+    "/v1/bridge-swap/:id",
+    generalLimiter,
+    requireAuth,
+    handleGetBridgeSwapById,
   );
 
   // GraphQL endpoint
