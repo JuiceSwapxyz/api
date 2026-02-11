@@ -47,7 +47,8 @@ export class PriceService {
   private btcPriceDataCache: BtcPriceDataCache | null = null;
   private btcPriceDataInflight: Promise<BtcPriceData> | null = null;
   private btcPriceHistoryCache: BtcPriceHistoryCache | null = null;
-  private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null = null;
+  private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null =
+    null;
   private readonly CACHE_TTL = 60_000; // 60 seconds
 
   // Known BTC-pegged tokens by chain (lowercased addresses)

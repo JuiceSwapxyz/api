@@ -1421,10 +1421,7 @@ export class ExploreStatsService {
     chainId: number,
   ): Promise<PonderPoolActivity[]> {
     try {
-      const cutoff = (
-        Math.floor(Date.now() / 1000) -
-        25 * 3600
-      ).toString();
+      const cutoff = (Math.floor(Date.now() / 1000) - 25 * 3600).toString();
       const query = `
         query GetPoolActivities($where: poolActivityFilter = {}) {
           poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: 1000) {
@@ -1589,7 +1586,10 @@ export class ExploreStatsService {
       const closest24h = this.findClosestActivity(activities, target24h, 3600); // ±60 min tolerance
 
       if (closest1h) {
-        const historicalPrice = computeHistoricalPrice(closest1h, btcPrice1hAgo);
+        const historicalPrice = computeHistoricalPrice(
+          closest1h,
+          btcPrice1hAgo,
+        );
         if (historicalPrice && historicalPrice > 0) {
           const pctChange =
             ((currentPrice - historicalPrice) / historicalPrice) * 100;
@@ -1600,7 +1600,10 @@ export class ExploreStatsService {
       }
 
       if (closest24h) {
-        const historicalPrice = computeHistoricalPrice(closest24h, btcPrice24hAgo);
+        const historicalPrice = computeHistoricalPrice(
+          closest24h,
+          btcPrice24hAgo,
+        );
         if (historicalPrice && historicalPrice > 0) {
           const pctChange =
             ((currentPrice - historicalPrice) / historicalPrice) * 100;
@@ -1909,7 +1912,7 @@ export class ExploreStatsService {
     // Backfill leading zeros if we have a first known value
     const firstKnownIdx = values.findIndex((v) => v !== null);
     if (firstKnownIdx > 0) {
-      const firstVal = values[firstKnownIdx]!;
+      const firstVal = values[firstKnownIdx] as number;
       for (let i = 0; i < firstKnownIdx; i++) {
         filled[i] = firstVal;
       }
