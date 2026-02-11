@@ -2,13 +2,17 @@ import Logger from "bunyan";
 import { ChainId } from "@juiceswapxyz/sdk-core";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ethers } from "ethers";
-import { PriceService } from "./PriceService";
+import { PriceService, BtcPriceData } from "./PriceService";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
 
-// Minimal ERC20 ABI — only balanceOf is needed for TVL calculations
+// Minimal ERC20 ABI — balanceOf for TVL, totalSupply for FDV
 const ERC20_BALANCE_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
+];
+
+const ERC20_TOTAL_SUPPLY_ABI = [
+  "function totalSupply() view returns (uint256)",
 ];
 
 // V2 Pair ABI for getReserves
@@ -76,6 +80,12 @@ interface PonderV2PoolStat {
   volume1: string;
   txCount: string;
   timestamp: string;
+}
+
+interface PonderPoolActivity {
+  poolAddress: string;
+  sqrtPriceX96: string;
+  blockTimestamp: string;
 }
 
 interface PonderSwap {
@@ -213,6 +223,8 @@ export class ExploreStatsService {
       v2PoolStats365d,
       tokenStats1h,
       recentSwaps,
+      poolActivities,
+      btcPriceData,
     ] = await Promise.all([
       this.fetchTokens(ponderClient, chainId),
       this.fetchV3Pools(ponderClient, chainId),
@@ -225,6 +237,11 @@ export class ExploreStatsService {
       this.fetchV2PoolStats(ponderClient, chainId, "24h", 365 * 24),
       this.fetchTokenStats(ponderClient, chainId, "1h", 24),
       this.fetchRecentSwaps(ponderClient, chainId),
+      this.fetchPoolActivities(ponderClient, chainId),
+      this.priceService.getBtcPriceData().catch((err) => {
+        this.logger.warn({ error: err }, "Failed to fetch BTC price data");
+        return { price: 0, change1h: 0, change24h: 0 } as BtcPriceData;
+      }),
     ]);
 
     // 2. Build token map (from Ponder + known contract tokens as fallback)
@@ -292,6 +309,17 @@ export class ExploreStatsService {
 
     // 4c. Derive unknown token prices from V3 pool slot0()
     await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
+
+    // 4d. Compute token price changes (1h, 24h) and FDV
+    const { pctChange1h, pctChange24h } = this.computeTokenPriceChanges(
+      v3Pools,
+      tokenMap,
+      prices,
+      btcPriceData,
+      poolActivities,
+      chainId,
+    );
+    const fdvMap = await this.computeTokenFdv(chainId, tokens, prices);
 
     // 5. Compute V3 pool TVL via multicall
     const v3PoolTvl = await this.computeV3PoolTvl(
@@ -434,6 +462,16 @@ export class ExploreStatsService {
         symbol: t.symbol,
         decimals: t.decimals,
         price: priceUsd > 0 ? { currency: "USD", value: priceUsd } : undefined,
+        pricePercentChange1Hour: pctChange1h.has(addr)
+          ? { currency: "USD", value: pctChange1h.get(addr)! }
+          : undefined,
+        pricePercentChange1Day: pctChange24h.has(addr)
+          ? { currency: "USD", value: pctChange24h.get(addr)! }
+          : undefined,
+        fullyDilutedValuation:
+          fdvMap.get(addr) != null && fdvMap.get(addr)! > 0
+            ? { currency: "USD", value: fdvMap.get(addr)! }
+            : undefined,
         volume1Day: { currency: "USD", value: tokenVol1d.get(addr) ?? 0 },
         volume1Hour: { currency: "USD", value: tokenVol1h.get(addr) ?? 0 },
         volume1Week: { currency: "USD", value: tokenVol1w.get(addr) ?? 0 },
@@ -1351,5 +1389,305 @@ export class ExploreStatsService {
     }
 
     return tokenVolMap;
+  }
+
+  // ---------- Pool activity fetching for price change computation ----------
+
+  private async fetchPoolActivities(
+    ponderClient: ReturnType<typeof getPonderClient>,
+    chainId: number,
+  ): Promise<PonderPoolActivity[]> {
+    try {
+      const cutoff = (
+        Math.floor(Date.now() / 1000) -
+        25 * 3600
+      ).toString();
+      const query = `
+        query GetPoolActivities($where: poolActivityFilter = {}) {
+          poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: 1000) {
+            items { poolAddress, sqrtPriceX96, blockTimestamp }
+          }
+        }
+      `;
+      const result = await ponderClient.query(query, {
+        where: { chainId, blockTimestamp_gte: cutoff },
+      });
+      return result.poolActivitys?.items || [];
+    } catch {
+      this.logger.warn("Failed to fetch pool activities from Ponder");
+      return [];
+    }
+  }
+
+  // ---------- Price change computation ----------
+
+  private computeTokenPriceChanges(
+    pools: PonderPool[],
+    tokenMap: Map<string, PonderToken>,
+    prices: Map<string, number>,
+    btcPriceData: BtcPriceData,
+    poolActivities: PonderPoolActivity[],
+    chainId: number,
+  ): { pctChange1h: Map<string, number>; pctChange24h: Map<string, number> } {
+    const pctChange1h = new Map<string, number>();
+    const pctChange24h = new Map<string, number>();
+
+    const now = Math.floor(Date.now() / 1000);
+    const target1h = now - 3600;
+    const target24h = now - 24 * 3600;
+
+    // Assign BTC-pegged and stablecoin tokens directly
+    for (const [addr] of prices) {
+      const category = this.priceService.getTokenCategory(chainId, addr);
+      if (category === "BTC") {
+        pctChange1h.set(addr, btcPriceData.change1h);
+        pctChange24h.set(addr, btcPriceData.change24h);
+      } else if (category === "STABLECOIN") {
+        pctChange1h.set(addr, 0);
+        pctChange24h.set(addr, 0);
+      }
+    }
+
+    // For pool-derived tokens, compute from historical poolActivity data
+    // Group activities by pool address
+    const activitiesByPool = new Map<string, PonderPoolActivity[]>();
+    for (const activity of poolActivities) {
+      const poolAddr = activity.poolAddress.toLowerCase();
+      let list = activitiesByPool.get(poolAddr);
+      if (!list) {
+        list = [];
+        activitiesByPool.set(poolAddr, list);
+      }
+      list.push(activity);
+    }
+
+    // For each unpriced-change token, find its reference pool and compute historical price
+    for (const [addr, currentPrice] of prices) {
+      if (currentPrice <= 0) continue;
+      if (pctChange1h.has(addr)) continue; // Already handled (BTC/stable)
+
+      // Find a reference pool for this token (same logic as deriveUnknownPrices)
+      let refPool: PonderPool | undefined;
+      let unknownIsToken0 = false;
+      let knownPriceAddr = "";
+
+      for (const pool of pools) {
+        const t0 = pool.token0.toLowerCase();
+        const t1 = pool.token1.toLowerCase();
+        if (t0 === addr && (prices.get(t1) || 0) > 0) {
+          refPool = pool;
+          unknownIsToken0 = true;
+          knownPriceAddr = t1;
+          break;
+        } else if (t1 === addr && (prices.get(t0) || 0) > 0) {
+          refPool = pool;
+          unknownIsToken0 = false;
+          knownPriceAddr = t0;
+          break;
+        }
+      }
+
+      if (!refPool) continue;
+
+      const poolAddr = refPool.address.toLowerCase();
+      const activities = activitiesByPool.get(poolAddr);
+
+      const knownCategory = this.priceService.getTokenCategory(
+        chainId,
+        knownPriceAddr,
+      );
+
+      // Fallback: if no pool activity, the pool ratio hasn't changed, so the
+      // token's USD price change equals the counterpart's USD price change.
+      if (!activities || activities.length === 0) {
+        if (knownCategory === "STABLECOIN") {
+          // Paired with stablecoin, no trades → price is constant → 0%
+          pctChange1h.set(addr, 0);
+          pctChange24h.set(addr, 0);
+        } else if (knownCategory === "BTC") {
+          // Paired with BTC, no trades → ratio unchanged → tracks BTC
+          pctChange1h.set(addr, btcPriceData.change1h);
+          pctChange24h.set(addr, btcPriceData.change24h);
+        }
+        continue;
+      }
+
+      const token0Info = tokenMap.get(refPool.token0.toLowerCase());
+      const token1Info = tokenMap.get(refPool.token1.toLowerCase());
+      if (!token0Info || !token1Info) continue;
+
+      // Derive historical BTC prices from CoinGecko % change data
+      const btcPrice1hAgo =
+        btcPriceData.change1h !== 0
+          ? btcPriceData.price / (1 + btcPriceData.change1h / 100)
+          : btcPriceData.price;
+      const btcPrice24hAgo =
+        btcPriceData.change24h !== 0
+          ? btcPriceData.price / (1 + btcPriceData.change24h / 100)
+          : btcPriceData.price;
+
+      // Helper: compute a historical price from a poolActivity record
+      const computeHistoricalPrice = (
+        activity: PonderPoolActivity,
+        historicalBtcPrice: number,
+      ): number | null => {
+        const sqrtPrice = parseFloat(activity.sqrtPriceX96);
+        if (!sqrtPrice || sqrtPrice <= 0) return null;
+
+        const Q96 = 2 ** 96;
+        const priceRatio =
+          (sqrtPrice / Q96) ** 2 *
+          10 ** (token0Info.decimals - token1Info.decimals);
+
+        // Determine historical counterpart price
+        let historicalCounterpartPrice: number;
+        if (knownCategory === "STABLECOIN") {
+          historicalCounterpartPrice = 1.0;
+        } else if (knownCategory === "BTC") {
+          historicalCounterpartPrice = historicalBtcPrice;
+        } else {
+          // Counterpart is also pool-derived — use current price as approximation
+          historicalCounterpartPrice = prices.get(knownPriceAddr) || 0;
+        }
+
+        if (historicalCounterpartPrice <= 0) return null;
+
+        if (unknownIsToken0) {
+          return priceRatio * historicalCounterpartPrice;
+        } else {
+          return priceRatio > 0
+            ? historicalCounterpartPrice / priceRatio
+            : null;
+        }
+      };
+
+      // Find the activity closest to 1h ago and 24h ago
+      const closest1h = this.findClosestActivity(activities, target1h, 1800); // ±30 min tolerance
+      const closest24h = this.findClosestActivity(activities, target24h, 3600); // ±60 min tolerance
+
+      if (closest1h) {
+        const historicalPrice = computeHistoricalPrice(closest1h, btcPrice1hAgo);
+        if (historicalPrice && historicalPrice > 0) {
+          const pctChange =
+            ((currentPrice - historicalPrice) / historicalPrice) * 100;
+          if (isFinite(pctChange)) {
+            pctChange1h.set(addr, pctChange);
+          }
+        }
+      }
+
+      if (closest24h) {
+        const historicalPrice = computeHistoricalPrice(closest24h, btcPrice24hAgo);
+        if (historicalPrice && historicalPrice > 0) {
+          const pctChange =
+            ((currentPrice - historicalPrice) / historicalPrice) * 100;
+          if (isFinite(pctChange)) {
+            pctChange24h.set(addr, pctChange);
+          }
+        }
+      }
+
+      // Fallback for partially missing data: if we computed one but not the other
+      // from pool activity, infer from counterpart category for the missing one
+      if (!pctChange1h.has(addr) || !pctChange24h.has(addr)) {
+        if (knownCategory === "STABLECOIN") {
+          if (!pctChange1h.has(addr)) pctChange1h.set(addr, 0);
+          if (!pctChange24h.has(addr)) pctChange24h.set(addr, 0);
+        } else if (knownCategory === "BTC") {
+          if (!pctChange1h.has(addr))
+            pctChange1h.set(addr, btcPriceData.change1h);
+          if (!pctChange24h.has(addr))
+            pctChange24h.set(addr, btcPriceData.change24h);
+        }
+      }
+    }
+
+    return { pctChange1h, pctChange24h };
+  }
+
+  /**
+   * Find the poolActivity record closest to the target timestamp,
+   * within the given tolerance (in seconds).
+   */
+  private findClosestActivity(
+    activities: PonderPoolActivity[],
+    targetTimestamp: number,
+    toleranceSec: number,
+  ): PonderPoolActivity | null {
+    let best: PonderPoolActivity | null = null;
+    let bestDiff = Infinity;
+
+    for (const a of activities) {
+      const ts = parseInt(a.blockTimestamp);
+      const diff = Math.abs(ts - targetTimestamp);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = a;
+      }
+    }
+
+    return best && bestDiff <= toleranceSec ? best : null;
+  }
+
+  // ---------- FDV computation ----------
+
+  private async computeTokenFdv(
+    chainId: number,
+    tokens: PonderToken[],
+    prices: Map<string, number>,
+  ): Promise<Map<string, number>> {
+    const fdvMap = new Map<string, number>();
+    const provider = this.providers.get(chainId as ChainId);
+    if (!provider || tokens.length === 0) return fdvMap;
+
+    // Only compute FDV for tokens with known prices
+    const pricedTokens = tokens.filter(
+      (t) => (prices.get(t.address.toLowerCase()) || 0) > 0,
+    );
+    if (pricedTokens.length === 0) return fdvMap;
+
+    try {
+      const multicallProvider = new UniswapMulticallProvider(
+        chainId as ChainId,
+        provider,
+        375000,
+      );
+      const totalSupplyInterface = new ethers.utils.Interface(
+        ERC20_TOTAL_SUPPLY_ABI,
+      );
+
+      const addresses = pricedTokens.map((t) =>
+        ethers.utils.getAddress(t.address),
+      );
+
+      const { results } =
+        await multicallProvider.callSameFunctionOnMultipleContracts({
+          addresses,
+          contractInterface: totalSupplyInterface,
+          functionName: "totalSupply",
+        });
+
+      for (let i = 0; i < pricedTokens.length; i++) {
+        const token = pricedTokens[i];
+        const result = results[i];
+        if (!result?.success) continue;
+
+        const totalSupply = parseFloat(
+          ethers.utils.formatUnits(result.result[0], token.decimals),
+        );
+        const priceUsd = prices.get(token.address.toLowerCase()) || 0;
+
+        if (totalSupply > 0 && priceUsd > 0) {
+          const fdv = totalSupply * priceUsd;
+          if (isFinite(fdv)) {
+            fdvMap.set(token.address.toLowerCase(), fdv);
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.warn({ error }, "Failed to compute token FDV via multicall");
+    }
+
+    return fdvMap;
   }
 }
