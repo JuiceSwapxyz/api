@@ -14,8 +14,17 @@ export interface BtcPriceData {
   change24h: number; // percent, e.g. 1.45 means +1.45%
 }
 
+export interface BtcPriceHistory {
+  prices: Array<{ timestamp: number; price: number }>; // ~24 entries, hourly
+}
+
 interface BtcPriceDataCache {
   data: BtcPriceData;
+  timestamp: number;
+}
+
+interface BtcPriceHistoryCache {
+  data: BtcPriceHistory;
   timestamp: number;
 }
 
@@ -37,6 +46,8 @@ export class PriceService {
   private btcPriceInflight: Promise<number> | null = null;
   private btcPriceDataCache: BtcPriceDataCache | null = null;
   private btcPriceDataInflight: Promise<BtcPriceData> | null = null;
+  private btcPriceHistoryCache: BtcPriceHistoryCache | null = null;
+  private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null = null;
   private readonly CACHE_TTL = 60_000; // 60 seconds
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
@@ -138,6 +149,78 @@ export class PriceService {
       return await this.btcPriceDataInflight;
     } finally {
       this.btcPriceDataInflight = null;
+    }
+  }
+
+  /**
+   * Get BTC price history (24h, hourly) from CoinGecko market_chart endpoint.
+   * Returns null on failure — sparklines are non-critical.
+   */
+  async getBtcPriceHistory(): Promise<BtcPriceHistory | null> {
+    const now = Date.now();
+    if (
+      this.btcPriceHistoryCache &&
+      now - this.btcPriceHistoryCache.timestamp < this.CACHE_TTL
+    ) {
+      return this.btcPriceHistoryCache.data;
+    }
+
+    if (this.btcPriceHistoryInflight) {
+      return this.btcPriceHistoryInflight;
+    }
+
+    this.btcPriceHistoryInflight = this.fetchBtcPriceHistory();
+    try {
+      return await this.btcPriceHistoryInflight;
+    } finally {
+      this.btcPriceHistoryInflight = null;
+    }
+  }
+
+  private async fetchBtcPriceHistory(): Promise<BtcPriceHistory | null> {
+    try {
+      const response = await axios.get(
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+        {
+          params: { vs_currency: "usd", days: 1 },
+          timeout: 5000,
+        },
+      );
+      const rawPrices = response.data?.prices;
+      if (!Array.isArray(rawPrices) || rawPrices.length === 0) {
+        this.logger.warn("Invalid CoinGecko market_chart response");
+        return null;
+      }
+
+      const prices = rawPrices
+        .filter(
+          (entry: unknown) =>
+            Array.isArray(entry) &&
+            typeof entry[0] === "number" &&
+            typeof entry[1] === "number" &&
+            entry[1] > 0,
+        )
+        .map(([msTimestamp, price]: [number, number]) => ({
+          timestamp: Math.floor(msTimestamp / 1000),
+          price,
+        }));
+
+      const data: BtcPriceHistory = { prices };
+      this.btcPriceHistoryCache = { data, timestamp: Date.now() };
+      this.logger.debug(
+        { count: prices.length },
+        "Fetched BTC price history from CoinGecko",
+      );
+      return data;
+    } catch (error) {
+      this.logger.warn(
+        { error },
+        "Failed to fetch BTC price history from CoinGecko",
+      );
+      if (this.btcPriceHistoryCache) {
+        return this.btcPriceHistoryCache.data;
+      }
+      return null;
     }
   }
 

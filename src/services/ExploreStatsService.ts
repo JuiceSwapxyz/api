@@ -2,7 +2,7 @@ import Logger from "bunyan";
 import { ChainId } from "@juiceswapxyz/sdk-core";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ethers } from "ethers";
-import { PriceService, BtcPriceData } from "./PriceService";
+import { PriceService, BtcPriceData, BtcPriceHistory } from "./PriceService";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
 
@@ -103,6 +103,13 @@ interface PonderSwap {
 
 // ---------- Response types (protobuf-compatible JSON) ----------
 
+interface PriceHistoryResponse {
+  start: number;
+  end: number;
+  step: number;
+  values: number[];
+}
+
 interface Amount {
   currency?: string;
   value: number;
@@ -127,6 +134,7 @@ interface TokenStatsResponse {
   volume1Week?: Amount;
   volume1Month?: Amount;
   volume1Year?: Amount;
+  priceHistoryDay?: PriceHistoryResponse;
   project?: TokenProject;
 }
 
@@ -225,6 +233,7 @@ export class ExploreStatsService {
       recentSwaps,
       poolActivities,
       btcPriceData,
+      btcPriceHistory,
     ] = await Promise.all([
       this.fetchTokens(ponderClient, chainId),
       this.fetchV3Pools(ponderClient, chainId),
@@ -241,6 +250,10 @@ export class ExploreStatsService {
       this.priceService.getBtcPriceData().catch((err) => {
         this.logger.warn({ error: err }, "Failed to fetch BTC price data");
         return { price: 0, change1h: 0, change24h: 0 } as BtcPriceData;
+      }),
+      this.priceService.getBtcPriceHistory().catch((err) => {
+        this.logger.warn({ error: err }, "Failed to fetch BTC price history");
+        return null;
       }),
     ]);
 
@@ -316,6 +329,15 @@ export class ExploreStatsService {
       tokenMap,
       prices,
       btcPriceData,
+      poolActivities,
+      chainId,
+    );
+    const priceHistories = this.buildTokenPriceHistories(
+      tokens,
+      v3Pools,
+      tokenMap,
+      prices,
+      btcPriceHistory,
       poolActivities,
       chainId,
     );
@@ -477,6 +499,7 @@ export class ExploreStatsService {
         volume1Week: { currency: "USD", value: tokenVol1w.get(addr) ?? 0 },
         volume1Month: { currency: "USD", value: tokenVol1m.get(addr) ?? 0 },
         volume1Year: { currency: "USD", value: tokenVol1y.get(addr) ?? 0 },
+        priceHistoryDay: priceHistories.get(addr),
         project: { name: t.name },
       };
     });
@@ -1627,6 +1650,272 @@ export class ExploreStatsService {
     }
 
     return best && bestDiff <= toleranceSec ? best : null;
+  }
+
+  // ---------- Price history (sparkline) computation ----------
+
+  /**
+   * Build 24-point hourly price histories for sparkline charts.
+   * Strategy per token category:
+   *   - Stablecoins: flat $1 line
+   *   - BTC-pegged: map CoinGecko BTC hourly prices
+   *   - Pool-derived: reconstruct from poolActivity sqrtPriceX96 + counterpart price
+   */
+  private buildTokenPriceHistories(
+    tokens: PonderToken[],
+    pools: PonderPool[],
+    tokenMap: Map<string, PonderToken>,
+    prices: Map<string, number>,
+    btcPriceHistory: BtcPriceHistory | null,
+    poolActivities: PonderPoolActivity[],
+    chainId: number,
+  ): Map<string, PriceHistoryResponse> {
+    const result = new Map<string, PriceHistoryResponse>();
+    const now = Math.floor(Date.now() / 1000);
+    const bucketCount = 24;
+    const step = 3600; // 1 hour
+    const start = now - bucketCount * step;
+    const end = now;
+
+    // Group activities by pool address
+    const activitiesByPool = new Map<string, PonderPoolActivity[]>();
+    for (const activity of poolActivities) {
+      const poolAddr = activity.poolAddress.toLowerCase();
+      let list = activitiesByPool.get(poolAddr);
+      if (!list) {
+        list = [];
+        activitiesByPool.set(poolAddr, list);
+      }
+      list.push(activity);
+    }
+
+    for (const token of tokens) {
+      const addr = token.address.toLowerCase();
+      const category = this.priceService.getTokenCategory(chainId, addr);
+
+      if (category === "STABLECOIN") {
+        result.set(addr, {
+          start,
+          end,
+          step,
+          values: Array(bucketCount).fill(1.0),
+        });
+        continue;
+      }
+
+      if (category === "BTC") {
+        if (!btcPriceHistory || btcPriceHistory.prices.length < 2) continue;
+
+        const values: number[] = [];
+        for (let i = 0; i < bucketCount; i++) {
+          const targetTs = start + i * step;
+          const interpolated = this.interpolateBtcPrice(
+            btcPriceHistory,
+            targetTs,
+          );
+          values.push(interpolated);
+        }
+        result.set(addr, { start, end, step, values });
+        continue;
+      }
+
+      // Pool-derived token: find reference pool
+      let refPool: PonderPool | undefined;
+      let unknownIsToken0 = false;
+      let knownPriceAddr = "";
+
+      for (const pool of pools) {
+        const t0 = pool.token0.toLowerCase();
+        const t1 = pool.token1.toLowerCase();
+        if (t0 === addr && (prices.get(t1) || 0) > 0) {
+          refPool = pool;
+          unknownIsToken0 = true;
+          knownPriceAddr = t1;
+          break;
+        } else if (t1 === addr && (prices.get(t0) || 0) > 0) {
+          refPool = pool;
+          unknownIsToken0 = false;
+          knownPriceAddr = t0;
+          break;
+        }
+      }
+
+      if (!refPool) continue;
+
+      const currentPrice = prices.get(addr) || 0;
+      const poolAddr = refPool.address.toLowerCase();
+      const activities = activitiesByPool.get(poolAddr);
+
+      const token0Info = tokenMap.get(refPool.token0.toLowerCase());
+      const token1Info = tokenMap.get(refPool.token1.toLowerCase());
+
+      const knownCategory = this.priceService.getTokenCategory(
+        chainId,
+        knownPriceAddr,
+      );
+
+      // Try activity-based sparkline first (requires token decimals for sqrtPriceX96 conversion)
+      let validCount = 0;
+      const values: (number | null)[] = [];
+
+      if (activities && activities.length > 0 && token0Info && token1Info) {
+        for (let i = 0; i < bucketCount; i++) {
+          const targetTs = start + i * step;
+          const closest = this.findClosestActivity(activities, targetTs, 1800); // ±30min
+          if (!closest) {
+            values.push(null);
+            continue;
+          }
+
+          const sqrtPrice = parseFloat(closest.sqrtPriceX96);
+          if (!sqrtPrice || sqrtPrice <= 0) {
+            values.push(null);
+            continue;
+          }
+
+          const Q96 = 2 ** 96;
+          const priceRatio =
+            (sqrtPrice / Q96) ** 2 *
+            10 ** (token0Info.decimals - token1Info.decimals);
+
+          // Determine counterpart price at this time
+          let counterpartPrice: number;
+          if (knownCategory === "STABLECOIN") {
+            counterpartPrice = 1.0;
+          } else if (knownCategory === "BTC" && btcPriceHistory) {
+            counterpartPrice = this.interpolateBtcPrice(
+              btcPriceHistory,
+              targetTs,
+            );
+          } else {
+            counterpartPrice = prices.get(knownPriceAddr) || 0;
+          }
+
+          if (counterpartPrice <= 0) {
+            values.push(null);
+            continue;
+          }
+
+          let tokenPrice: number;
+          if (unknownIsToken0) {
+            tokenPrice = priceRatio * counterpartPrice;
+          } else {
+            tokenPrice = priceRatio > 0 ? counterpartPrice / priceRatio : 0;
+          }
+
+          if (tokenPrice > 0 && isFinite(tokenPrice)) {
+            values.push(tokenPrice);
+            validCount++;
+          } else {
+            values.push(null);
+          }
+        }
+      }
+
+      if (validCount >= 2) {
+        // Fill gaps: LOCF (last observation carried forward), backfill leading gaps
+        const filled = this.fillGaps(values);
+        result.set(addr, { start, end, step, values: filled });
+        continue;
+      }
+
+      // Fallback: no/insufficient pool activity — ratio hasn't changed,
+      // so derive sparkline from counterpart's price history
+      if (currentPrice <= 0) continue;
+
+      if (knownCategory === "STABLECOIN") {
+        // Paired with stablecoin, no trades → price is constant
+        result.set(addr, {
+          start,
+          end,
+          step,
+          values: Array(bucketCount).fill(currentPrice),
+        });
+      } else if (
+        knownCategory === "BTC" &&
+        btcPriceHistory &&
+        btcPriceHistory.prices.length >= 2
+      ) {
+        // Paired with BTC, no trades → ratio unchanged → scale BTC curve
+        const latestBtcPrice =
+          btcPriceHistory.prices[btcPriceHistory.prices.length - 1].price;
+        if (latestBtcPrice > 0) {
+          const scale = currentPrice / latestBtcPrice;
+          const btcValues: number[] = [];
+          for (let i = 0; i < bucketCount; i++) {
+            const targetTs = start + i * step;
+            btcValues.push(
+              this.interpolateBtcPrice(btcPriceHistory, targetTs) * scale,
+            );
+          }
+          result.set(addr, { start, end, step, values: btcValues });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Interpolate BTC price at a target timestamp from CoinGecko hourly data.
+   * Uses linear interpolation between the two surrounding data points.
+   */
+  private interpolateBtcPrice(
+    btcPriceHistory: BtcPriceHistory,
+    targetTimestamp: number,
+  ): number {
+    const pts = btcPriceHistory.prices;
+    if (pts.length === 0) return 0;
+
+    // Clamp to range
+    if (targetTimestamp <= pts[0].timestamp) return pts[0].price;
+    if (targetTimestamp >= pts[pts.length - 1].timestamp)
+      return pts[pts.length - 1].price;
+
+    // Binary search for surrounding points
+    let lo = 0;
+    let hi = pts.length - 1;
+    while (lo < hi - 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (pts[mid].timestamp <= targetTimestamp) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+
+    const p0 = pts[lo];
+    const p1 = pts[hi];
+    const t = (targetTimestamp - p0.timestamp) / (p1.timestamp - p0.timestamp);
+    return p0.price + t * (p1.price - p0.price);
+  }
+
+  /**
+   * Fill null gaps in a values array using LOCF (last observation carried forward).
+   * Leading nulls are backfilled with the first known value.
+   */
+  private fillGaps(values: (number | null)[]): number[] {
+    const filled: number[] = new Array(values.length);
+
+    // Forward pass: LOCF
+    let lastKnown: number | null = null;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] !== null) {
+        lastKnown = values[i];
+      }
+      filled[i] = lastKnown ?? 0;
+    }
+
+    // Backfill leading zeros if we have a first known value
+    const firstKnownIdx = values.findIndex((v) => v !== null);
+    if (firstKnownIdx > 0) {
+      const firstVal = values[firstKnownIdx]!;
+      for (let i = 0; i < firstKnownIdx; i++) {
+        filled[i] = firstVal;
+      }
+    }
+
+    return filled;
   }
 
   // ---------- FDV computation ----------
