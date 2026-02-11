@@ -74,6 +74,10 @@ import {
   PoolDetailsRequestSchema,
   PositionsOwnerRequestSchema,
   ProtocolStatsRequestSchema,
+  CreateBridgeSwapSchema,
+  BulkCreateBridgeSwapSchema,
+  GetBridgeSwapsByUserQuerySchema,
+  AuthVerifyRequestSchema,
 } from "./validation/schemas";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
@@ -84,6 +88,18 @@ import { createPositionsOwnerHandler } from "./endpoints/positionsOwner";
 import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 import { createProtocolStatsHandler } from "./endpoints/protocolStats";
 import { createExploreStatsHandler } from "./endpoints/exploreStats";
+import {
+  createBridgeSwapHandler,
+  createBulkBridgeSwapHandler,
+  createGetBridgeSwapByIdHandler,
+  createGetBridgeSwapsByUserHandler,
+} from "./endpoints/bridgeSwap";
+import {
+  createNonceHandler,
+  createVerifyHandler,
+  createMeHandler,
+} from "./endpoints/auth";
+import { requireAuth } from "./middleware/auth";
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -295,6 +311,26 @@ async function bootstrap() {
     svJusdPriceService,
     logger,
   );
+  const handleCreateBridgeSwap = createBridgeSwapHandler(logger);
+  const handleBulkCreateBridgeSwap = createBulkBridgeSwapHandler(logger);
+  const handleGetBridgeSwapById = createGetBridgeSwapByIdHandler(logger);
+  const handleGetBridgeSwapsByUser = createGetBridgeSwapsByUserHandler(logger);
+
+  // Auth endpoint handlers
+  const handleNonce = createNonceHandler(logger);
+  const handleVerify = createVerifyHandler(logger);
+
+  // Auth routes (public)
+  // To protect a route, add `requireAuth` to the chain:
+  //   app.post("/v1/protected", generalLimiter, requireAuth, validateBody(...), handler);
+  app.get("/v1/auth/nonce", generalLimiter, handleNonce);
+  app.post(
+    "/v1/auth/verify",
+    generalLimiter,
+    validateBody(AuthVerifyRequestSchema, logger),
+    handleVerify,
+  );
+  app.get("/v1/auth/me", generalLimiter, requireAuth, createMeHandler());
 
   // API Routes with validation
   app.post(
@@ -499,6 +535,38 @@ async function bootstrap() {
     "/v1/campaigns/first-squeezer/nft/signature",
     generalLimiter,
     handleNFTSignature,
+  );
+
+  // Bridge Swap endpoints
+  app.post(
+    "/v1/bridge-swap",
+    generalLimiter,
+    requireAuth,
+    validateBody(CreateBridgeSwapSchema, logger),
+    handleCreateBridgeSwap,
+  );
+
+  app.post(
+    "/v1/bridge-swap/bulk",
+    generalLimiter,
+    requireAuth,
+    validateBody(BulkCreateBridgeSwapSchema, logger),
+    handleBulkCreateBridgeSwap,
+  );
+
+  app.get(
+    "/v1/bridge-swap/user",
+    generalLimiter,
+    requireAuth,
+    validateQuery(GetBridgeSwapsByUserQuerySchema, logger),
+    handleGetBridgeSwapsByUser,
+  );
+
+  app.get(
+    "/v1/bridge-swap/:id",
+    generalLimiter,
+    requireAuth,
+    handleGetBridgeSwapById,
   );
 
   // GraphQL endpoint

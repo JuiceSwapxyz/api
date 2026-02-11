@@ -471,3 +471,83 @@ export const PositionsOwnerRequestSchema = z.object({
 });
 
 export type PositionsOwnerRequest = z.infer<typeof PositionsOwnerRequestSchema>;
+
+// Bridge Swap creation schema (matches example.json structure, userId is mandatory)
+const numericString = z
+  .union([z.string().regex(/^\d+$/), z.number()])
+  .transform(String);
+
+export const CreateBridgeSwapSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  type: z.enum(["submarine", "reverse", "chain"]),
+  version: z.number().int(),
+  status: z.string(),
+  assetSend: z.string(),
+  assetReceive: z.string(),
+  sendAmount: numericString,
+  receiveAmount: numericString,
+  date: numericString,
+  preimage: z.string(),
+  preimageHash: z.string(),
+  preimageSeed: z.string(),
+  keyIndex: z.number().int(),
+  claimPrivateKeyIndex: z.number().int().optional(),
+  refundPrivateKeyIndex: z.number().int().optional(),
+  claimAddress: z.string(),
+  address: z.string().optional(),
+  refundAddress: z.string().optional(),
+  lockupAddress: z.string().optional(),
+  claimTx: z.string().optional(),
+  refundTx: z.string().optional(),
+  lockupTx: z.string().optional(),
+  invoice: z.string().optional(),
+  acceptZeroConf: z.boolean().optional(),
+  expectedAmount: numericString.optional(),
+  onchainAmount: numericString.optional(),
+  timeoutBlockHeight: z.number().int().optional(),
+  claimDetails: z.any().optional(),
+  lockupDetails: z.any().optional(),
+  referralId: z.string().optional(),
+  chainId: z.number().int().optional(),
+});
+
+export type CreateBridgeSwapRequest = z.infer<typeof CreateBridgeSwapSchema>;
+
+// Bulk Bridge Swap creation schema
+export const BulkCreateBridgeSwapSchema = z.object({
+  swaps: z
+    .array(CreateBridgeSwapSchema)
+    .min(1, "At least one swap is required"),
+});
+
+export type BulkCreateBridgeSwapRequest = z.infer<
+  typeof BulkCreateBridgeSwapSchema
+>;
+
+// Bridge Swap query schemas
+export const GetBridgeSwapsByUserQuerySchema = z.object({
+  limit: z
+    .string()
+    .optional()
+    .default("50")
+    .transform((val) => Math.min(parseInt(val, 10), 100)),
+  offset: z
+    .string()
+    .optional()
+    .default("0")
+    .transform((val) => parseInt(val, 10)),
+  status: z.string().optional(),
+});
+
+export type GetBridgeSwapsByUserQuery = z.infer<
+  typeof GetBridgeSwapsByUserQuerySchema
+>;
+
+// Auth schemas
+export const AuthVerifyRequestSchema = z.object({
+  address: z.string().refine((val) => ethers.utils.isAddress(val), {
+    message: "Invalid Ethereum address",
+  }),
+  signature: z.string().regex(/^0x[a-fA-F0-9]+$/, "Invalid hex signature"),
+});
