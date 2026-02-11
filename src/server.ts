@@ -540,7 +540,7 @@ async function bootstrap() {
     validateBody(CreateBridgeSwapSchema, logger),
     handleCreateBridgeSwap,
   );
-  
+
   app.post(
     "/v1/bridge-swap/bulk",
     generalLimiter,
