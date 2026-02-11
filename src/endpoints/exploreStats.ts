@@ -39,6 +39,8 @@ import { ExploreStatsService } from "../services/ExploreStatsService";
  *                       type: array
  *                     transactionStats:
  *                       type: array
+ *       400:
+ *         description: Invalid request parameters
  *       500:
  *         description: Internal server error
  */

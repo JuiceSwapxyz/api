@@ -344,7 +344,7 @@ export class ExploreStatsService {
     // 4c. Derive unknown token prices from V3 pool slot0()
     await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
 
-    // 4d. Group pool activities by pool address (shared by price changes + sparklines)
+    // Group pool activities by pool address (shared by price changes + sparklines)
     const activitiesByPool = new Map<string, PonderPoolActivity[]>();
     for (const activity of poolActivities) {
       const poolAddr = activity.poolAddress.toLowerCase();
@@ -356,7 +356,7 @@ export class ExploreStatsService {
       list.push(activity);
     }
 
-    // 4e. Compute token price changes (1h, 24h) and FDV
+    // 4d. Compute token price changes (1h, 24h) and FDV
     const { pctChange1h, pctChange24h } = this.computeTokenPriceChanges(
       v3Pools,
       tokenMap,
@@ -374,6 +374,7 @@ export class ExploreStatsService {
       activitiesByPool,
       chainId,
     );
+
     // Create a single multicall provider for all on-chain reads
     const provider = this.providers.get(chainId as ChainId);
     const multicallProvider = provider
