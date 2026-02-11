@@ -7,7 +7,7 @@ import { SwapType } from "../generated/prisma";
 function toSwapData(data: any) {
   return {
     id: data.id,
-    userId: data.userId,
+    userId: data.userId.toLowerCase(),
     type: data.type as SwapType,
     version: data.version,
     status: data.status,
@@ -224,7 +224,7 @@ export function createGetBridgeSwapsByUserHandler(logger: Logger) {
     req: Request,
     res: Response,
   ): Promise<void> {
-    const userId = req.user!.address;
+    const userId = req.user!.address.toLowerCase();
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const offset = parseInt(req.query.offset as string) || 0;
     const status = req.query.status as string | undefined;
