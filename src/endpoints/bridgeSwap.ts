@@ -89,12 +89,10 @@ export function createBridgeSwapHandler(logger: Logger) {
       res.status(201).json(serializeSwap(bridgeSwap));
     } catch (error: any) {
       if (error.code === "P2002") {
-        res
-          .status(409)
-          .json({
-            error: "Conflict",
-            detail: "A swap with this ID already exists",
-          });
+        res.status(409).json({
+          error: "Conflict",
+          detail: "A swap with this ID already exists",
+        });
         return;
       }
 
@@ -107,12 +105,10 @@ export function createBridgeSwapHandler(logger: Logger) {
         },
         "Failed to create bridge swap",
       );
-      res
-        .status(500)
-        .json({
-          error: "Internal server error",
-          detail: error instanceof Error ? error.message : "Unknown error",
-        });
+      res.status(500).json({
+        error: "Internal server error",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 }
@@ -170,12 +166,10 @@ export function createBulkBridgeSwapHandler(logger: Logger) {
         },
         "Failed to create bulk bridge swaps",
       );
-      res
-        .status(500)
-        .json({
-          error: "Internal server error",
-          detail: error instanceof Error ? error.message : "Unknown error",
-        });
+      res.status(500).json({
+        error: "Internal server error",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 }
@@ -209,12 +203,10 @@ export function createGetBridgeSwapByIdHandler(logger: Logger) {
         },
         "Failed to get bridge swap",
       );
-      res
-        .status(500)
-        .json({
-          error: "Internal server error",
-          detail: error instanceof Error ? error.message : "Unknown error",
-        });
+      res.status(500).json({
+        error: "Internal server error",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 }
@@ -259,12 +251,10 @@ export function createGetBridgeSwapsByUserHandler(logger: Logger) {
         },
         "Failed to get bridge swaps by user",
       );
-      res
-        .status(500)
-        .json({
-          error: "Internal server error",
-          detail: error instanceof Error ? error.message : "Unknown error",
-        });
+      res.status(500).json({
+        error: "Internal server error",
+        detail: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 }
