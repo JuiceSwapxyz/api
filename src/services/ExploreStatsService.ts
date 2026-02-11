@@ -236,9 +236,24 @@ export class ExploreStatsService {
     // Add known tokens from contracts config as fallback for V2 pools
     const contracts = getChainContracts(chainId);
     if (contracts) {
-      const knownTokenFallbacks: Array<{ addr: string; symbol: string; name: string; decimals: number }> = [
-        { addr: contracts.JUSD, symbol: "JUSD", name: "JuiceDollar", decimals: 18 },
-        { addr: contracts.JUICE, symbol: "JUICE", name: "Juice Protocol", decimals: 18 },
+      const knownTokenFallbacks: Array<{
+        addr: string;
+        symbol: string;
+        name: string;
+        decimals: number;
+      }> = [
+        {
+          addr: contracts.JUSD,
+          symbol: "JUSD",
+          name: "JuiceDollar",
+          decimals: 18,
+        },
+        {
+          addr: contracts.JUICE,
+          symbol: "JUICE",
+          name: "Juice Protocol",
+          decimals: 18,
+        },
       ];
       for (const kt of knownTokenFallbacks) {
         if (kt.addr && !tokenMap.has(kt.addr.toLowerCase())) {
@@ -276,12 +291,7 @@ export class ExploreStatsService {
     await this.fetchJuicePrice(chainId, prices);
 
     // 4c. Derive unknown token prices from V3 pool slot0()
-    await this.deriveUnknownPrices(
-      chainId,
-      v3Pools,
-      tokenMap,
-      prices,
-    );
+    await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
 
     // 5. Compute V3 pool TVL via multicall
     const v3PoolTvl = await this.computeV3PoolTvl(
@@ -321,7 +331,10 @@ export class ExploreStatsService {
     );
 
     // 7b. Compute 7-day pool volumes (filter 30d data to last 7 days)
-    const sevenDayCutoff = (Math.floor(Date.now() / 1000) - 7 * 24 * 3600).toString();
+    const sevenDayCutoff = (
+      Math.floor(Date.now() / 1000) -
+      7 * 24 * 3600
+    ).toString();
     const v3Vol7d = this.aggregatePoolVolumes(
       v3PoolStats30d.filter((ps) => ps.timestamp >= sevenDayCutoff),
       v3Pools,
@@ -336,8 +349,18 @@ export class ExploreStatsService {
     );
 
     // 7c. Compute 365-day pool volumes
-    const v3Vol365d = this.aggregatePoolVolumes(v3PoolStats365d, v3Pools, tokenMap, prices);
-    const v2Vol365d = this.aggregateV2PoolVolumes(v2PoolStats365d, v2Pools, tokenMap, chainId);
+    const v3Vol365d = this.aggregatePoolVolumes(
+      v3PoolStats365d,
+      v3Pools,
+      tokenMap,
+      prices,
+    );
+    const v2Vol365d = this.aggregateV2PoolVolumes(
+      v2PoolStats365d,
+      v2Pools,
+      tokenMap,
+      chainId,
+    );
 
     // 8. Compute token 1-day volumes (V3 tokenStat)
     const tokenVol1d = this.aggregateTokenVolumes(
@@ -379,9 +402,24 @@ export class ExploreStatsService {
     );
 
     // 10. Derive token volumes for longer timeframes from pool volumes
-    const tokenVol1w = this.deriveTokenVolumesFromPoolVolumes(v3Vol7d, v2Vol7d, v3Pools, v2Pools);
-    const tokenVol1m = this.deriveTokenVolumesFromPoolVolumes(v3Vol30d, v2Vol30d, v3Pools, v2Pools);
-    const tokenVol1y = this.deriveTokenVolumesFromPoolVolumes(v3Vol365d, v2Vol365d, v3Pools, v2Pools);
+    const tokenVol1w = this.deriveTokenVolumesFromPoolVolumes(
+      v3Vol7d,
+      v2Vol7d,
+      v3Pools,
+      v2Pools,
+    );
+    const tokenVol1m = this.deriveTokenVolumesFromPoolVolumes(
+      v3Vol30d,
+      v2Vol30d,
+      v3Pools,
+      v2Pools,
+    );
+    const tokenVol1y = this.deriveTokenVolumesFromPoolVolumes(
+      v3Vol365d,
+      v2Vol365d,
+      v3Pools,
+      v2Pools,
+    );
 
     // 11. Build response
 
@@ -395,10 +433,7 @@ export class ExploreStatsService {
         name: t.name,
         symbol: t.symbol,
         decimals: t.decimals,
-        price:
-          priceUsd > 0
-            ? { currency: "USD", value: priceUsd }
-            : undefined,
+        price: priceUsd > 0 ? { currency: "USD", value: priceUsd } : undefined,
         volume1Day: { currency: "USD", value: tokenVol1d.get(addr) ?? 0 },
         volume1Hour: { currency: "USD", value: tokenVol1h.get(addr) ?? 0 },
         volume1Week: { currency: "USD", value: tokenVol1w.get(addr) ?? 0 },
@@ -437,9 +472,13 @@ export class ExploreStatsService {
               name: t0.name,
               symbol: t0.symbol,
               decimals: t0.decimals,
-              price: (prices.get(t0.address.toLowerCase()) || 0) > 0
-                ? { currency: "USD", value: prices.get(t0.address.toLowerCase())! }
-                : undefined,
+              price:
+                (prices.get(t0.address.toLowerCase()) || 0) > 0
+                  ? {
+                      currency: "USD",
+                      value: prices.get(t0.address.toLowerCase())!,
+                    }
+                  : undefined,
               project: { name: t0.name },
             }
           : undefined,
@@ -450,9 +489,13 @@ export class ExploreStatsService {
               name: t1.name,
               symbol: t1.symbol,
               decimals: t1.decimals,
-              price: (prices.get(t1.address.toLowerCase()) || 0) > 0
-                ? { currency: "USD", value: prices.get(t1.address.toLowerCase())! }
-                : undefined,
+              price:
+                (prices.get(t1.address.toLowerCase()) || 0) > 0
+                  ? {
+                      currency: "USD",
+                      value: prices.get(t1.address.toLowerCase())!,
+                    }
+                  : undefined,
               project: { name: t1.name },
             }
           : undefined,
@@ -488,9 +531,13 @@ export class ExploreStatsService {
               name: t0.name,
               symbol: t0.symbol,
               decimals: t0.decimals,
-              price: (prices.get(t0.address.toLowerCase()) || 0) > 0
-                ? { currency: "USD", value: prices.get(t0.address.toLowerCase())! }
-                : undefined,
+              price:
+                (prices.get(t0.address.toLowerCase()) || 0) > 0
+                  ? {
+                      currency: "USD",
+                      value: prices.get(t0.address.toLowerCase())!,
+                    }
+                  : undefined,
               project: { name: t0.name },
             }
           : undefined,
@@ -501,9 +548,13 @@ export class ExploreStatsService {
               name: t1.name,
               symbol: t1.symbol,
               decimals: t1.decimals,
-              price: (prices.get(t1.address.toLowerCase()) || 0) > 0
-                ? { currency: "USD", value: prices.get(t1.address.toLowerCase())! }
-                : undefined,
+              price:
+                (prices.get(t1.address.toLowerCase()) || 0) > 0
+                  ? {
+                      currency: "USD",
+                      value: prices.get(t1.address.toLowerCase())!,
+                    }
+                  : undefined,
               project: { name: t1.name },
             }
           : undefined,
@@ -567,9 +618,7 @@ export class ExploreStatsService {
           timestamp: parseInt(swap.blockTimestamp),
           account: swap.swapperAddress,
           usdValue:
-            usdValue > 0
-              ? { currency: "USD", value: usdValue }
-              : undefined,
+            usdValue > 0 ? { currency: "USD", value: usdValue } : undefined,
           token0: tIn
             ? {
                 chain: chainName,
@@ -825,10 +874,16 @@ export class ExploreStatsService {
 
       if (priceUsd > 0 && isFinite(priceUsd)) {
         prices.set(juiceAddr, priceUsd);
-        this.logger.debug({ priceUsd }, "Fetched JUICE price from Equity contract");
+        this.logger.debug(
+          { priceUsd },
+          "Fetched JUICE price from Equity contract",
+        );
       }
     } catch (error) {
-      this.logger.warn({ error }, "Failed to fetch JUICE price from Equity contract");
+      this.logger.warn(
+        { error },
+        "Failed to fetch JUICE price from Equity contract",
+      );
     }
   }
 
@@ -1106,9 +1161,7 @@ export class ExploreStatsService {
 
     for (const ps of poolStats) {
       const poolAddr = ps.poolAddress?.toLowerCase();
-      const pool = pools.find(
-        (p) => p.address.toLowerCase() === poolAddr,
-      );
+      const pool = pools.find((p) => p.address.toLowerCase() === poolAddr);
       if (!pool) continue;
 
       const t0 = tokenMap.get(pool.token0.toLowerCase());
@@ -1118,13 +1171,13 @@ export class ExploreStatsService {
 
       let vol = 0;
       if (price0 > 0 && t0) {
-        vol = parseFloat(
-          ethers.utils.formatUnits(ps.volume0 || "0", t0.decimals),
-        ) * price0;
+        vol =
+          parseFloat(ethers.utils.formatUnits(ps.volume0 || "0", t0.decimals)) *
+          price0;
       } else if (price1 > 0 && t1) {
-        vol = parseFloat(
-          ethers.utils.formatUnits(ps.volume1 || "0", t1.decimals),
-        ) * price1;
+        vol =
+          parseFloat(ethers.utils.formatUnits(ps.volume1 || "0", t1.decimals)) *
+          price1;
       }
 
       if (vol > 0) {
@@ -1198,9 +1251,8 @@ export class ExploreStatsService {
       if (!token || price === 0) continue;
 
       const vol =
-        parseFloat(
-          ethers.utils.formatUnits(ts.volume || "0", token.decimals),
-        ) * price;
+        parseFloat(ethers.utils.formatUnits(ts.volume || "0", token.decimals)) *
+        price;
 
       if (vol > 0) {
         volMap.set(addr, (volMap.get(addr) || 0) + vol);
