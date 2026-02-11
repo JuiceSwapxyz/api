@@ -74,3 +74,76 @@ model DiscordOAuthSession {
   @@index([state])
   @@index([expiresAt])
 }
+
+// Bridge swap tracking for submarine, reverse, and chain swaps
+model BridgeSwap {
+  id                    String   @id
+  userId                String   @map("user_id")
+  type                  SwapType
+  version               Int
+  status                String
+
+  // Assets and amounts
+  assetSend             String   @map("asset_send")
+  assetReceive          String   @map("asset_receive")
+  sendAmount            BigInt   @map("send_amount")
+  receiveAmount         BigInt   @map("receive_amount")
+  date                  BigInt
+
+  // Cryptographic identifiers
+  preimage              String
+  preimageHash          String   @map("preimage_hash")
+  preimageSeed          String   @map("preimage_seed")
+
+  // Key derivation
+  keyIndex              Int      @map("key_index")
+  claimPrivateKeyIndex  Int?     @map("claim_private_key_index")
+  refundPrivateKeyIndex Int?     @map("refund_private_key_index")
+
+  // Addresses
+  claimAddress          String   @map("claim_address")
+  address               String?
+  refundAddress         String?  @map("refund_address")
+  lockupAddress         String?  @map("lockup_address")
+
+  // Transaction hashes
+  claimTx               String?  @map("claim_tx")
+  refundTx              String?  @map("refund_tx")
+  lockupTx              String?  @map("lockup_tx")
+
+  // Lightning / submarine specific
+  invoice               String?  @db.Text
+  acceptZeroConf        Boolean? @map("accept_zero_conf")
+  expectedAmount        BigInt?  @map("expected_amount")
+
+  // Reverse swap specific
+  onchainAmount         BigInt?  @map("onchain_amount")
+  timeoutBlockHeight    Int?     @map("timeout_block_height")
+
+  // Chain swap specific (JSON details)
+  claimDetails          Json?    @map("claim_details")
+  lockupDetails         Json?    @map("lockup_details")
+
+  // Additional metadata
+  referralId            String?  @map("referral_id")
+  chainId               Int?     @map("chain_id")
+
+  // Timestamps
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, date(sort: Desc)])
+  @@index([status])
+  @@index([type])
+  @@index([preimageHash])
+  @@index([date(sort: Desc)])
+  @@map("bridge_swaps")
+}
+
+enum SwapType {
+  submarine
+  reverse
+  chain
+}
