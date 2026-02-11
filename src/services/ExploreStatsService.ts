@@ -197,6 +197,8 @@ export class ExploreStatsService {
   private priceService: PriceService;
   private providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>;
   private cache: Map<number, StatsCache> = new Map();
+  private inflightRequests: Map<number, Promise<ExploreStatsResponseData>> =
+    new Map();
   private readonly CACHE_TTL = 60_000; // 60 seconds
 
   constructor(
@@ -215,6 +217,25 @@ export class ExploreStatsService {
       return cached.response;
     }
 
+    // Deduplicate concurrent requests: piggyback on inflight promise
+    const inflight = this.inflightRequests.get(chainId);
+    if (inflight) {
+      return inflight;
+    }
+
+    const promise = this.fetchExploreStats(chainId);
+    this.inflightRequests.set(chainId, promise);
+    try {
+      return await promise;
+    } finally {
+      this.inflightRequests.delete(chainId);
+    }
+  }
+
+  private async fetchExploreStats(
+    chainId: number,
+  ): Promise<ExploreStatsResponseData> {
+    const now = Date.now();
     const chainName = CHAIN_NAMES[chainId] || `CHAIN_${chainId}`;
     const ponderClient = getPonderClient(this.logger);
 
@@ -323,13 +344,25 @@ export class ExploreStatsService {
     // 4c. Derive unknown token prices from V3 pool slot0()
     await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
 
-    // 4d. Compute token price changes (1h, 24h) and FDV
+    // 4d. Group pool activities by pool address (shared by price changes + sparklines)
+    const activitiesByPool = new Map<string, PonderPoolActivity[]>();
+    for (const activity of poolActivities) {
+      const poolAddr = activity.poolAddress.toLowerCase();
+      let list = activitiesByPool.get(poolAddr);
+      if (!list) {
+        list = [];
+        activitiesByPool.set(poolAddr, list);
+      }
+      list.push(activity);
+    }
+
+    // 4e. Compute token price changes (1h, 24h) and FDV
     const { pctChange1h, pctChange24h } = this.computeTokenPriceChanges(
       v3Pools,
       tokenMap,
       prices,
       btcPriceData,
-      poolActivities,
+      activitiesByPool,
       chainId,
     );
     const priceHistories = this.buildTokenPriceHistories(
@@ -338,21 +371,37 @@ export class ExploreStatsService {
       tokenMap,
       prices,
       btcPriceHistory,
-      poolActivities,
+      activitiesByPool,
       chainId,
     );
-    const fdvMap = await this.computeTokenFdv(chainId, tokens, prices);
+    // Create a single multicall provider for all on-chain reads
+    const provider = this.providers.get(chainId as ChainId);
+    const multicallProvider = provider
+      ? new UniswapMulticallProvider(chainId as ChainId, provider, 375000)
+      : null;
+
+    const fdvMap = await this.computeTokenFdv(
+      tokens,
+      prices,
+      multicallProvider,
+    );
 
     // 5. Compute V3 pool TVL via multicall
     const v3PoolTvl = await this.computeV3PoolTvl(
-      chainId,
       v3Pools,
       tokenMap,
       prices,
+      multicallProvider,
     );
 
     // 6. Compute V2 pool TVL via multicall
-    const v2PoolTvl = await this.computeV2PoolTvl(chainId, v2Pools, tokenMap);
+    const v2PoolTvl = await this.computeV2PoolTvl(
+      chainId,
+      v2Pools,
+      tokenMap,
+      prices,
+      multicallProvider,
+    );
 
     // 7. Compute pool volumes
     const v3Vol1d = this.aggregatePoolVolumes(
@@ -1071,22 +1120,16 @@ export class ExploreStatsService {
   // ---------- TVL computation ----------
 
   private async computeV3PoolTvl(
-    chainId: number,
     pools: PonderPool[],
     tokenMap: Map<string, PonderToken>,
     prices: Map<string, number>,
+    multicallProvider: UniswapMulticallProvider | null,
   ): Promise<Map<string, number>> {
     const tvlMap = new Map<string, number>();
-    const provider = this.providers.get(chainId as ChainId);
 
-    if (!provider || pools.length === 0) return tvlMap;
+    if (!multicallProvider || pools.length === 0) return tvlMap;
 
     try {
-      const multicallProvider = new UniswapMulticallProvider(
-        chainId as ChainId,
-        provider,
-        375000,
-      );
       const erc20Interface = new ethers.utils.Interface(ERC20_BALANCE_ABI);
 
       const poolBalanceResults = await Promise.all(
@@ -1149,19 +1192,15 @@ export class ExploreStatsService {
     chainId: number,
     pools: PonderV2Pool[],
     tokenMap: Map<string, PonderToken>,
+    prices: Map<string, number>,
+    multicallProvider: UniswapMulticallProvider | null,
   ): Promise<Map<string, number>> {
     const tvlMap = new Map<string, number>();
-    const provider = this.providers.get(chainId as ChainId);
     const contracts = getChainContracts(chainId);
 
-    if (!provider || !contracts || pools.length === 0) return tvlMap;
+    if (!multicallProvider || !contracts || pools.length === 0) return tvlMap;
 
     try {
-      const multicallProvider = new UniswapMulticallProvider(
-        chainId as ChainId,
-        provider,
-        375000,
-      );
       const v2PairInterface = new ethers.utils.Interface(V2_PAIR_ABI);
       const pairAddresses = pools.map((p) =>
         ethers.utils.getAddress(p.pairAddress),
@@ -1200,7 +1239,12 @@ export class ExploreStatsService {
           const jusdReserveFormatted = parseFloat(
             ethers.utils.formatUnits(jusdReserve, jusdDecimals),
           );
-          tvlMap.set(pool.pairAddress.toLowerCase(), 2 * jusdReserveFormatted);
+          const jusdPrice =
+            (jusdAddress ? prices.get(jusdAddress) : undefined) ?? 1.0;
+          tvlMap.set(
+            pool.pairAddress.toLowerCase(),
+            2 * jusdReserveFormatted * jusdPrice,
+          );
         }
       }
     } catch (error) {
@@ -1219,10 +1263,13 @@ export class ExploreStatsService {
     prices: Map<string, number>,
   ): Map<string, number> {
     const volMap = new Map<string, number>();
+    const poolMap = new Map<string, PonderPool>(
+      pools.map((p) => [p.address.toLowerCase(), p]),
+    );
 
     for (const ps of poolStats) {
       const poolAddr = ps.poolAddress?.toLowerCase();
-      const pool = pools.find((p) => p.address.toLowerCase() === poolAddr);
+      const pool = poolMap.get(poolAddr);
       if (!pool) continue;
 
       const t0 = tokenMap.get(pool.token0.toLowerCase());
@@ -1446,7 +1493,7 @@ export class ExploreStatsService {
     tokenMap: Map<string, PonderToken>,
     prices: Map<string, number>,
     btcPriceData: BtcPriceData,
-    poolActivities: PonderPoolActivity[],
+    activitiesByPool: Map<string, PonderPoolActivity[]>,
     chainId: number,
   ): { pctChange1h: Map<string, number>; pctChange24h: Map<string, number> } {
     const pctChange1h = new Map<string, number>();
@@ -1466,19 +1513,6 @@ export class ExploreStatsService {
         pctChange1h.set(addr, 0);
         pctChange24h.set(addr, 0);
       }
-    }
-
-    // For pool-derived tokens, compute from historical poolActivity data
-    // Group activities by pool address
-    const activitiesByPool = new Map<string, PonderPoolActivity[]>();
-    for (const activity of poolActivities) {
-      const poolAddr = activity.poolAddress.toLowerCase();
-      let list = activitiesByPool.get(poolAddr);
-      if (!list) {
-        list = [];
-        activitiesByPool.set(poolAddr, list);
-      }
-      list.push(activity);
     }
 
     // For each unpriced-change token, find its reference pool and compute historical price
@@ -1634,25 +1668,45 @@ export class ExploreStatsService {
   /**
    * Find the poolActivity record closest to the target timestamp,
    * within the given tolerance (in seconds).
+   * Uses binary search since activities are sorted by blockTimestamp asc.
    */
   private findClosestActivity(
     activities: PonderPoolActivity[],
     targetTimestamp: number,
     toleranceSec: number,
   ): PonderPoolActivity | null {
-    let best: PonderPoolActivity | null = null;
-    let bestDiff = Infinity;
+    if (activities.length === 0) return null;
 
-    for (const a of activities) {
-      const ts = parseInt(a.blockTimestamp);
-      const diff = Math.abs(ts - targetTimestamp);
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        best = a;
+    let lo = 0;
+    let hi = activities.length - 1;
+
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (parseInt(activities[mid].blockTimestamp, 10) < targetTimestamp) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
       }
     }
 
-    return best && bestDiff <= toleranceSec ? best : null;
+    // lo is the first index >= targetTimestamp; check lo and lo-1 for closest
+    let best = activities[lo];
+    let bestDiff = Math.abs(
+      parseInt(best.blockTimestamp, 10) - targetTimestamp,
+    );
+
+    if (lo > 0) {
+      const prev = activities[lo - 1];
+      const prevDiff = Math.abs(
+        parseInt(prev.blockTimestamp, 10) - targetTimestamp,
+      );
+      if (prevDiff < bestDiff) {
+        best = prev;
+        bestDiff = prevDiff;
+      }
+    }
+
+    return bestDiff <= toleranceSec ? best : null;
   }
 
   // ---------- Price history (sparkline) computation ----------
@@ -1670,7 +1724,7 @@ export class ExploreStatsService {
     tokenMap: Map<string, PonderToken>,
     prices: Map<string, number>,
     btcPriceHistory: BtcPriceHistory | null,
-    poolActivities: PonderPoolActivity[],
+    activitiesByPool: Map<string, PonderPoolActivity[]>,
     chainId: number,
   ): Map<string, PriceHistoryResponse> {
     const result = new Map<string, PriceHistoryResponse>();
@@ -1679,18 +1733,6 @@ export class ExploreStatsService {
     const step = 3600; // 1 hour
     const start = now - bucketCount * step;
     const end = now;
-
-    // Group activities by pool address
-    const activitiesByPool = new Map<string, PonderPoolActivity[]>();
-    for (const activity of poolActivities) {
-      const poolAddr = activity.poolAddress.toLowerCase();
-      let list = activitiesByPool.get(poolAddr);
-      if (!list) {
-        list = [];
-        activitiesByPool.set(poolAddr, list);
-      }
-      list.push(activity);
-    }
 
     for (const token of tokens) {
       const addr = token.address.toLowerCase();
@@ -1924,13 +1966,12 @@ export class ExploreStatsService {
   // ---------- FDV computation ----------
 
   private async computeTokenFdv(
-    chainId: number,
     tokens: PonderToken[],
     prices: Map<string, number>,
+    multicallProvider: UniswapMulticallProvider | null,
   ): Promise<Map<string, number>> {
     const fdvMap = new Map<string, number>();
-    const provider = this.providers.get(chainId as ChainId);
-    if (!provider || tokens.length === 0) return fdvMap;
+    if (!multicallProvider || tokens.length === 0) return fdvMap;
 
     // Only compute FDV for tokens with known prices
     const pricedTokens = tokens.filter(
@@ -1939,11 +1980,6 @@ export class ExploreStatsService {
     if (pricedTokens.length === 0) return fdvMap;
 
     try {
-      const multicallProvider = new UniswapMulticallProvider(
-        chainId as ChainId,
-        provider,
-        375000,
-      );
       const totalSupplyInterface = new ethers.utils.Interface(
         ERC20_TOTAL_SUPPLY_ABI,
       );

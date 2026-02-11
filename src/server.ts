@@ -400,7 +400,7 @@ async function bootstrap() {
   );
 
   // Explore stats endpoint (enriched with USD prices, TVL, volumes)
-  app.get("/v1/explore/stats", generalLimiter, handleExploreStats);
+  app.get("/v1/explore/stats", quoteLimiter, handleExploreStats);
 
   // LP endpoints
   app.post(

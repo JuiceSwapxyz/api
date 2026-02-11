@@ -60,8 +60,15 @@ export function createExploreStatsHandler(
 
     try {
       const chainId = req.query.chainId
-        ? parseInt(req.query.chainId as string)
+        ? parseInt(req.query.chainId as string, 10)
         : ChainId.CITREA_MAINNET;
+
+      if (isNaN(chainId)) {
+        res.status(400).json({
+          error: "Invalid chainId: must be a number",
+        });
+        return;
+      }
 
       log.debug({ chainId }, "Explore stats request received");
 
