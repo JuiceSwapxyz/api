@@ -72,8 +72,13 @@ export function createBridgeSwapHandler(logger: Logger) {
         return;
       }
 
-      const bridgeSwap = await prisma.bridgeSwap.create({
-        data: toSwapData(req.body),
+      const data = toSwapData(req.body);
+      const { id, ...updateData } = data;
+
+      const bridgeSwap = await prisma.bridgeSwap.upsert({
+        where: { id },
+        create: data,
+        update: updateData,
       });
 
       logger.info(
@@ -83,19 +88,11 @@ export function createBridgeSwapHandler(logger: Logger) {
           type: bridgeSwap.type,
           responseTime: Date.now() - startTime,
         },
-        "Bridge swap created",
+        "Bridge swap upserted",
       );
 
-      res.status(201).json(serializeSwap(bridgeSwap));
+      res.status(200).json(serializeSwap(bridgeSwap));
     } catch (error: any) {
-      if (error.code === "P2002") {
-        res.status(409).json({
-          error: "Conflict",
-          detail: "A swap with this ID already exists",
-        });
-        return;
-      }
-
       logger.error(
         {
           error:
