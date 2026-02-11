@@ -206,9 +206,11 @@ export class ExploreStatsService {
       v3Pools,
       v3PoolStats24h,
       v3PoolStats30d,
+      v3PoolStats365d,
       v2Pools,
       v2PoolStats24h,
       v2PoolStats30d,
+      v2PoolStats365d,
       tokenStats1h,
       recentSwaps,
     ] = await Promise.all([
@@ -216,9 +218,11 @@ export class ExploreStatsService {
       this.fetchV3Pools(ponderClient, chainId),
       this.fetchPoolStats(ponderClient, chainId, "1h", 24),
       this.fetchPoolStats(ponderClient, chainId, "24h", 30 * 24),
+      this.fetchPoolStats(ponderClient, chainId, "24h", 365 * 24),
       this.fetchV2Pools(ponderClient, chainId),
       this.fetchV2PoolStats(ponderClient, chainId, "1h", 24),
       this.fetchV2PoolStats(ponderClient, chainId, "24h", 30 * 24),
+      this.fetchV2PoolStats(ponderClient, chainId, "24h", 365 * 24),
       this.fetchTokenStats(ponderClient, chainId, "1h", 24),
       this.fetchRecentSwaps(ponderClient, chainId),
     ]);
@@ -316,6 +320,25 @@ export class ExploreStatsService {
       chainId,
     );
 
+    // 7b. Compute 7-day pool volumes (filter 30d data to last 7 days)
+    const sevenDayCutoff = (Math.floor(Date.now() / 1000) - 7 * 24 * 3600).toString();
+    const v3Vol7d = this.aggregatePoolVolumes(
+      v3PoolStats30d.filter((ps) => ps.timestamp >= sevenDayCutoff),
+      v3Pools,
+      tokenMap,
+      prices,
+    );
+    const v2Vol7d = this.aggregateV2PoolVolumes(
+      v2PoolStats30d.filter((ps) => ps.timestamp >= sevenDayCutoff),
+      v2Pools,
+      tokenMap,
+      chainId,
+    );
+
+    // 7c. Compute 365-day pool volumes
+    const v3Vol365d = this.aggregatePoolVolumes(v3PoolStats365d, v3Pools, tokenMap, prices);
+    const v2Vol365d = this.aggregateV2PoolVolumes(v2PoolStats365d, v2Pools, tokenMap, chainId);
+
     // 8. Compute token 1-day volumes (V3 tokenStat)
     const tokenVol1d = this.aggregateTokenVolumes(
       tokenStats1h,
@@ -355,7 +378,12 @@ export class ExploreStatsService {
       tokenVol1h,
     );
 
-    // 10. Build response
+    // 10. Derive token volumes for longer timeframes from pool volumes
+    const tokenVol1w = this.deriveTokenVolumesFromPoolVolumes(v3Vol7d, v2Vol7d, v3Pools, v2Pools);
+    const tokenVol1m = this.deriveTokenVolumesFromPoolVolumes(v3Vol30d, v2Vol30d, v3Pools, v2Pools);
+    const tokenVol1y = this.deriveTokenVolumesFromPoolVolumes(v3Vol365d, v2Vol365d, v3Pools, v2Pools);
+
+    // 11. Build response
 
     // Token stats
     const tokenStatsResponse: TokenStatsResponse[] = tokens.map((t) => {
@@ -371,14 +399,11 @@ export class ExploreStatsService {
           priceUsd > 0
             ? { currency: "USD", value: priceUsd }
             : undefined,
-        volume1Day:
-          (tokenVol1d.get(addr) ?? 0) > 0
-            ? { currency: "USD", value: tokenVol1d.get(addr)! }
-            : undefined,
-        volume1Hour:
-          (tokenVol1h.get(addr) ?? 0) > 0
-            ? { currency: "USD", value: tokenVol1h.get(addr)! }
-            : undefined,
+        volume1Day: { currency: "USD", value: tokenVol1d.get(addr) ?? 0 },
+        volume1Hour: { currency: "USD", value: tokenVol1h.get(addr) ?? 0 },
+        volume1Week: { currency: "USD", value: tokenVol1w.get(addr) ?? 0 },
+        volume1Month: { currency: "USD", value: tokenVol1m.get(addr) ?? 0 },
+        volume1Year: { currency: "USD", value: tokenVol1y.get(addr) ?? 0 },
         project: { name: t.name },
       };
     });
@@ -400,13 +425,10 @@ export class ExploreStatsService {
       return {
         id: pool.address,
         chain: chainName,
-        totalLiquidity:
-          tvl > 0 ? { currency: "USD", value: tvl } : undefined,
+        totalLiquidity: { currency: "USD", value: tvl },
         txCount: txCount || undefined,
-        volume1Day:
-          vol1d > 0 ? { currency: "USD", value: vol1d } : undefined,
-        volume30Day:
-          vol30d > 0 ? { currency: "USD", value: vol30d } : undefined,
+        volume1Day: { currency: "USD", value: vol1d },
+        volume30Day: { currency: "USD", value: vol30d },
         feeTier: pool.fee,
         token0: t0
           ? {
@@ -454,13 +476,10 @@ export class ExploreStatsService {
       return {
         id: pool.pairAddress,
         chain: chainName,
-        totalLiquidity:
-          tvl > 0 ? { currency: "USD", value: tvl } : undefined,
+        totalLiquidity: { currency: "USD", value: tvl },
         txCount: txCount || undefined,
-        volume1Day:
-          vol1d > 0 ? { currency: "USD", value: vol1d } : undefined,
-        volume30Day:
-          vol30d > 0 ? { currency: "USD", value: vol30d } : undefined,
+        volume1Day: { currency: "USD", value: vol1d },
+        volume30Day: { currency: "USD", value: vol30d },
         feeTier: 3000, // V2 default fee tier (0.3%)
         token0: t0
           ? {
@@ -1247,5 +1266,38 @@ export class ExploreStatsService {
         );
       }
     }
+  }
+
+  /**
+   * Derive per-token USD volumes by attributing each pool's USD volume
+   * to both of its constituent tokens and summing per token.
+   */
+  private deriveTokenVolumesFromPoolVolumes(
+    v3PoolVolumes: Map<string, number>,
+    v2PoolVolumes: Map<string, number>,
+    v3Pools: PonderPool[],
+    v2Pools: PonderV2Pool[],
+  ): Map<string, number> {
+    const tokenVolMap = new Map<string, number>();
+
+    for (const pool of v3Pools) {
+      const vol = v3PoolVolumes.get(pool.address.toLowerCase());
+      if (!vol || vol <= 0) continue;
+      const t0 = pool.token0.toLowerCase();
+      const t1 = pool.token1.toLowerCase();
+      tokenVolMap.set(t0, (tokenVolMap.get(t0) || 0) + vol);
+      tokenVolMap.set(t1, (tokenVolMap.get(t1) || 0) + vol);
+    }
+
+    for (const pool of v2Pools) {
+      const vol = v2PoolVolumes.get(pool.pairAddress.toLowerCase());
+      if (!vol || vol <= 0) continue;
+      const t0 = pool.token0.toLowerCase();
+      const t1 = pool.token1.toLowerCase();
+      tokenVolMap.set(t0, (tokenVolMap.get(t0) || 0) + vol);
+      tokenVolMap.set(t1, (tokenVolMap.get(t1) || 0) + vol);
+    }
+
+    return tokenVolMap;
   }
 }
