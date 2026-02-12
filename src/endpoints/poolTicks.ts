@@ -86,12 +86,32 @@ export function createPoolTicksHandler(
           ? tickSpacingValue
           : ethers.BigNumber.from(tickSpacingValue).toNumber();
 
-      // Calculate bitmap word range: 20 words in each direction from current tick
+      // Calculate bitmap word range covering all possible initialized ticks.
+      // Full-range positions can have ticks at ±MAX_TICK, so we compute the
+      // actual word bounds based on tick spacing, capped to limit RPC calls.
+      const MAX_TICK = 887272;
+      const MAX_TOTAL_WORDS = 120;
+      const halfMax = Math.floor(MAX_TOTAL_WORDS / 2);
+
       const compressedTick = Math.floor(currentTick / tickSpacing);
       // Arithmetic right shift for negative support
       const currentWordIndex = compressedTick >> 8;
-      const minWord = currentWordIndex - 20;
-      const maxWord = currentWordIndex + 20;
+
+      // Word bounds for the full usable tick range at this tick spacing
+      const maxUsableTick =
+        Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
+      const fullRangeMaxWord = Math.floor(maxUsableTick / tickSpacing) >> 8;
+      const fullRangeMinWord = Math.floor(-maxUsableTick / tickSpacing) >> 8;
+
+      // Use the tighter of: ±halfMax words from current, or the full range
+      const minWord = Math.max(
+        currentWordIndex - halfMax,
+        fullRangeMinWord,
+      );
+      const maxWord = Math.min(
+        currentWordIndex + halfMax,
+        fullRangeMaxWord,
+      );
 
       const tickLensContract = new ethers.Contract(
         tickLensAddress,
@@ -105,7 +125,10 @@ export function createPoolTicksHandler(
         wordPromises.push(
           tickLensContract
             .getPopulatedTicksInWord(poolAddress, wordIndex)
-            .catch(() => []),
+            .catch((err: Error) => {
+              log.warn({ wordIndex, error: err.message }, "TickLens word fetch failed");
+              return [];
+            }),
         );
       }
 
@@ -135,6 +158,10 @@ export function createPoolTicksHandler(
       }
 
       allTicks.sort((a, b) => a.tick - b.tick);
+
+      if (allTicks.length === 0 && poolLiquidity !== "0") {
+        log.warn({ poolAddress, currentTick, poolLiquidity }, "No ticks found for pool with non-zero liquidity");
+      }
 
       res.json({
         ticks: allTicks,
