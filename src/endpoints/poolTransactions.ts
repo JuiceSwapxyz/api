@@ -23,8 +23,45 @@ export function createPoolTransactionsHandler(
       const cursor = req.query.cursor as string | undefined;
       const chainName = getChainName(chainId);
 
-      // Get token prices and info from ExploreStatsService
-      const exploreData = await exploreStatsService.getExploreStats(chainId);
+      // Build Ponder query params (independent of ExploreStatsService)
+      const ponderClient = getPonderClient(logger);
+      const whereClause: Record<string, unknown> = {
+        poolAddress: poolAddress,
+      };
+      if (cursor) {
+        whereClause.blockTimestamp_lt = cursor;
+      }
+
+      // Run ExploreStatsService and Ponder query in parallel
+      const [exploreData, result] = await Promise.all([
+        exploreStatsService.getExploreStats(chainId),
+        ponderClient.query(
+          `
+          query GetPoolTransactions($where: poolActivityFilter = {}, $limit: Int = 25) {
+            poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
+              items {
+                id
+                poolAddress
+                blockTimestamp
+                txHash
+                sender
+                recipient
+                amount0
+                amount1
+                sqrtPriceX96
+                liquidity
+                tick
+              }
+            }
+          }
+          `,
+          {
+            where: whereClause,
+            limit: first,
+          },
+        ),
+      ]);
+
       const enrichedPool = exploreData.stats?.poolStatsV3?.find(
         (p) => p.id.toLowerCase() === poolAddress.toLowerCase(),
       );
@@ -35,41 +72,6 @@ export function createPoolTransactionsHandler(
       const token1Price = token1Info?.price?.value ?? 0;
       const token0Decimals = token0Info?.decimals ?? 18;
       const token1Decimals = token1Info?.decimals ?? 18;
-
-      // Query poolActivity from Ponder
-      const ponderClient = getPonderClient(logger);
-      const whereClause: Record<string, unknown> = {
-        poolAddress: poolAddress,
-      };
-      if (cursor) {
-        whereClause.blockTimestamp_lt = cursor;
-      }
-
-      const result = await ponderClient.query(
-        `
-        query GetPoolTransactions($where: poolActivityFilter = {}, $limit: Int = 25) {
-          poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "desc", limit: $limit) {
-            items {
-              id
-              poolAddress
-              blockTimestamp
-              txHash
-              sender
-              recipient
-              amount0
-              amount1
-              sqrtPriceX96
-              liquidity
-              tick
-            }
-          }
-        }
-        `,
-        {
-          where: whereClause,
-          limit: first,
-        },
-      );
 
       const activities = result.poolActivitys?.items || [];
 

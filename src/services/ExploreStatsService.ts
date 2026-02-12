@@ -195,6 +195,8 @@ export class ExploreStatsService {
   private inflightRequests: Map<number, Promise<ExploreStatsResponseData>> =
     new Map();
   private readonly CACHE_TTL = 60_000; // 60 seconds
+  private readonly REFRESH_INTERVAL = this.CACHE_TTL - 5_000; // refresh 5s before TTL
+  private backgroundRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
@@ -203,6 +205,35 @@ export class ExploreStatsService {
     this.logger = logger.child({ service: "ExploreStatsService" });
     this.priceService = new PriceService(logger);
     this.providers = providers;
+  }
+
+  /**
+   * Pre-warm the cache for the given chain IDs and keep it warm
+   * by refreshing just before the TTL expires.
+   * Safe to call only once; subsequent calls are ignored.
+   */
+  startBackgroundRefresh(chainIds: number[]): void {
+    if (this.backgroundRefreshTimer) {
+      return;
+    }
+
+    const refresh = () => {
+      for (const chainId of chainIds) {
+        this.getExploreStats(chainId).catch((err) => {
+          this.logger.warn(
+            { chainId, error: err },
+            "Background cache refresh failed",
+          );
+        });
+      }
+    };
+
+    // Immediately pre-warm
+    refresh();
+    this.logger.info({ chainIds }, "ExploreStatsService background refresh started");
+
+    // Refresh just before TTL expires to keep cache perpetually warm
+    this.backgroundRefreshTimer = setInterval(refresh, this.REFRESH_INTERVAL);
   }
 
   async getExploreStats(chainId: number): Promise<ExploreStatsResponseData> {

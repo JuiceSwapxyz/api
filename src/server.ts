@@ -97,6 +97,7 @@ import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 import { createProtocolStatsHandler } from "./endpoints/protocolStats";
 import { createExploreStatsHandler } from "./endpoints/exploreStats";
 import { ExploreStatsService } from "./services/ExploreStatsService";
+import { ChainId } from "@juiceswapxyz/sdk-core";
 import { createPoolVolumeHistoryHandler } from "./endpoints/poolVolumeHistory";
 import { createPoolPriceHistoryHandler } from "./endpoints/poolPriceHistory";
 import { createPoolTransactionsHandler } from "./endpoints/poolTransactions";
@@ -743,6 +744,12 @@ async function bootstrap() {
     logger.info(
       `Supported chains: ${routerService.getSupportedChains().join(", ")}`,
     );
+
+    // Pre-warm ExploreStatsService cache so no user request hits a cold cache
+    exploreStatsService.startBackgroundRefresh([
+      ChainId.CITREA_MAINNET,
+      ChainId.CITREA_TESTNET,
+    ]);
   });
 
   // Graceful shutdown
