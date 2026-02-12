@@ -77,7 +77,11 @@ export function createProtocolStatsHandler(
   logger: Logger,
   exploreStatsService: ExploreStatsService,
 ) {
-  const protocolStatsService = new ProtocolStatsService(providers, logger, exploreStatsService);
+  const protocolStatsService = new ProtocolStatsService(
+    providers,
+    logger,
+    exploreStatsService,
+  );
 
   return async function handleProtocolStats(
     req: Request,

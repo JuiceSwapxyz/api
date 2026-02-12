@@ -307,8 +307,15 @@ async function bootstrap() {
   );
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
   const exploreStatsService = new ExploreStatsService(providers, logger);
-  const handleProtocolStats = createProtocolStatsHandler(providers, logger, exploreStatsService);
-  const handleExploreStats = createExploreStatsHandler(exploreStatsService, logger);
+  const handleProtocolStats = createProtocolStatsHandler(
+    providers,
+    logger,
+    exploreStatsService,
+  );
+  const handleExploreStats = createExploreStatsHandler(
+    exploreStatsService,
+    logger,
+  );
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
     logger,

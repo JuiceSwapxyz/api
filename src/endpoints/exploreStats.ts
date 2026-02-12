@@ -47,7 +47,6 @@ export function createExploreStatsHandler(
   exploreStatsService: ExploreStatsService,
   logger: Logger,
 ) {
-
   return async function handleExploreStats(
     req: Request,
     res: Response,

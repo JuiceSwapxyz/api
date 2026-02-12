@@ -105,7 +105,8 @@ export class ProtocolStatsService {
 
   private async getV3Stats(chainId: number): Promise<ProtocolStats> {
     try {
-      const exploreData = await this.exploreStatsService.getExploreStats(chainId);
+      const exploreData =
+        await this.exploreStatsService.getExploreStats(chainId);
       const poolStatsV3 = exploreData.stats?.poolStatsV3 || [];
 
       let totalTvlUsd = 0;
@@ -130,7 +131,8 @@ export class ProtocolStatsService {
 
   private async getV2Stats(chainId: number): Promise<ProtocolStats> {
     try {
-      const exploreData = await this.exploreStatsService.getExploreStats(chainId);
+      const exploreData =
+        await this.exploreStatsService.getExploreStats(chainId);
       const poolStatsV2 = exploreData.stats?.poolStatsV2 || [];
 
       let totalTvlUsd = 0;
