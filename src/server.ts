@@ -88,6 +88,7 @@ import { createPositionsOwnerHandler } from "./endpoints/positionsOwner";
 import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 import { createProtocolStatsHandler } from "./endpoints/protocolStats";
 import { createExploreStatsHandler } from "./endpoints/exploreStats";
+import { ExploreStatsService } from "./services/ExploreStatsService";
 import {
   createBridgeSwapHandler,
   createBulkBridgeSwapHandler,
@@ -305,8 +306,16 @@ async function bootstrap() {
     logger,
   );
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
-  const handleProtocolStats = createProtocolStatsHandler(providers, logger);
-  const handleExploreStats = createExploreStatsHandler(providers, logger);
+  const exploreStatsService = new ExploreStatsService(providers, logger);
+  const handleProtocolStats = createProtocolStatsHandler(
+    providers,
+    logger,
+    exploreStatsService,
+  );
+  const handleExploreStats = createExploreStatsHandler(
+    exploreStatsService,
+    logger,
+  );
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
     logger,
