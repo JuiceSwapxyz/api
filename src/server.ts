@@ -87,6 +87,7 @@ import { createPositionInfoHandler } from "./endpoints/positionInfo";
 import { createPositionsOwnerHandler } from "./endpoints/positionsOwner";
 import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 import { createProtocolStatsHandler } from "./endpoints/protocolStats";
+import { createExploreStatsHandler } from "./endpoints/exploreStats";
 import {
   createBridgeSwapHandler,
   createBulkBridgeSwapHandler,
@@ -305,6 +306,7 @@ async function bootstrap() {
   );
   const handlePoolDetails = createPoolDetailsHandler(providers, logger);
   const handleProtocolStats = createProtocolStatsHandler(providers, logger);
+  const handleExploreStats = createExploreStatsHandler(providers, logger);
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
     logger,
@@ -396,6 +398,9 @@ async function bootstrap() {
     validateBody(ProtocolStatsRequestSchema, logger),
     handleProtocolStats,
   );
+
+  // Explore stats endpoint (enriched with USD prices, TVL, volumes)
+  app.get("/v1/explore/stats", quoteLimiter, handleExploreStats);
 
   // LP endpoints
   app.post(
