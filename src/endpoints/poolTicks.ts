@@ -103,15 +103,20 @@ export function createPoolTicksHandler(
       const fullRangeMaxWord = Math.floor(maxUsableTick / tickSpacing) >> 8;
       const fullRangeMinWord = Math.floor(-maxUsableTick / tickSpacing) >> 8;
 
-      // Use the tighter of: ±halfMax words from current, or the full range
-      const minWord = Math.max(
-        currentWordIndex - halfMax,
-        fullRangeMinWord,
-      );
-      const maxWord = Math.min(
-        currentWordIndex + halfMax,
-        fullRangeMaxWord,
-      );
+      const fullRangeWidth = fullRangeMaxWord - fullRangeMinWord + 1;
+      let minWord: number;
+      let maxWord: number;
+
+      if (fullRangeWidth <= MAX_TOTAL_WORDS) {
+        // Full tick range fits within budget — scan everything to capture
+        // full-range position boundaries at ±MAX_TICK
+        minWord = fullRangeMinWord;
+        maxWord = fullRangeMaxWord;
+      } else {
+        // Full range too large (small tick spacing), center on current tick
+        minWord = Math.max(currentWordIndex - halfMax, fullRangeMinWord);
+        maxWord = Math.min(currentWordIndex + halfMax, fullRangeMaxWord);
+      }
 
       const tickLensContract = new ethers.Contract(
         tickLensAddress,
