@@ -6,6 +6,7 @@ import {
   ProtocolStatsService,
   ProtocolStatsResponse,
 } from "../services/ProtocolStatsService";
+import { ExploreStatsService } from "../services/ExploreStatsService";
 
 export interface ProtocolStatsRequestBody {
   chainId: number;
@@ -74,8 +75,9 @@ export interface ProtocolStatsRequestBody {
 export function createProtocolStatsHandler(
   providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
   logger: Logger,
+  exploreStatsService: ExploreStatsService,
 ) {
-  const protocolStatsService = new ProtocolStatsService(providers, logger);
+  const protocolStatsService = new ProtocolStatsService(providers, logger, exploreStatsService);
 
   return async function handleProtocolStats(
     req: Request,

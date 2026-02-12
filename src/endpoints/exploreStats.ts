@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import Logger from "bunyan";
 import { ChainId } from "@juiceswapxyz/sdk-core";
-import { ethers } from "ethers";
 import { ExploreStatsService } from "../services/ExploreStatsService";
 
 /**
@@ -45,10 +44,9 @@ import { ExploreStatsService } from "../services/ExploreStatsService";
  *         description: Internal server error
  */
 export function createExploreStatsHandler(
-  providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
+  exploreStatsService: ExploreStatsService,
   logger: Logger,
 ) {
-  const exploreStatsService = new ExploreStatsService(providers, logger);
 
   return async function handleExploreStats(
     req: Request,
