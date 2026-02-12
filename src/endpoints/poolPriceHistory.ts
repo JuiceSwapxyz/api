@@ -64,11 +64,6 @@ export function createPoolPriceHistoryHandler(
       const token0Decimals = enrichedPool?.token0?.decimals ?? 18;
       const token1Decimals = enrichedPool?.token1?.decimals ?? 18;
 
-      // We need the counterpart USD price to convert pool ratios to USD prices
-      // For now, use current prices as a base
-      const token0PriceUsd = enrichedPool?.token0?.price?.value ?? 0;
-      const token1PriceUsd = enrichedPool?.token1?.price?.value ?? 0;
-
       // Query poolActivity for swap history (sqrtPriceX96 snapshots)
       const ponderClient = getPonderClient(logger);
       const result = await ponderClient.query(
@@ -105,8 +100,8 @@ export function createPoolPriceHistoryHandler(
         return;
       }
 
-      // Convert each sqrtPriceX96 to token0/token1 price ratio
-      // price = (sqrtPriceX96 / 2^96)^2 * 10^(decimals0 - decimals1)
+      // Convert each sqrtPriceX96 to token-pair price ratios (Uniswap subgraph convention)
+      // token0Price = token0 per token1, token1Price = token1 per token0
       const Q96 = 2 ** 96;
       const decimalAdjust = 10 ** (token0Decimals - token1Decimals);
 
@@ -120,32 +115,13 @@ export function createPoolPriceHistoryHandler(
         const sqrtPrice = parseFloat(activity.sqrtPriceX96);
         if (!sqrtPrice || sqrtPrice <= 0) continue;
 
+        // priceRatio = token1 per token0 (price of token0 denominated in token1)
         const priceRatio = (sqrtPrice / Q96) ** 2 * decimalAdjust;
-        // priceRatio = token0_price_in_token1_terms
-        // token0Price in USD = priceRatio * token1PriceUsd
-        // token1Price in USD = (1/priceRatio) * token0PriceUsd
-
-        let t0Price = 0;
-        let t1Price = 0;
-
-        if (token1PriceUsd > 0) {
-          t0Price = priceRatio * token1PriceUsd;
-        }
-        if (token0PriceUsd > 0 && priceRatio > 0) {
-          t1Price = token0PriceUsd / priceRatio;
-        }
-
-        // Fallback: if we only have one side, derive the other from ratio
-        if (t0Price > 0 && t1Price === 0 && priceRatio > 0) {
-          t1Price = t0Price / priceRatio;
-        } else if (t1Price > 0 && t0Price === 0) {
-          t0Price = t1Price * priceRatio;
-        }
 
         rawPoints.push({
           timestamp: parseInt(activity.blockTimestamp),
-          token0Price: t0Price,
-          token1Price: t1Price,
+          token0Price: priceRatio > 0 ? 1 / priceRatio : 0,
+          token1Price: priceRatio,
         });
       }
 
