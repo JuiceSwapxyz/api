@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { PriceService, BtcPriceData, BtcPriceHistory } from "./PriceService";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
+import { getChainName } from "../config/chains";
 
 // Minimal ERC20 ABI — balanceOf for TVL, totalSupply for FDV
 const ERC20_BALANCE_ABI = [
@@ -27,12 +28,6 @@ const EQUITY_PRICE_ABI = ["function price() view returns (uint256)"];
 const V3_POOL_SLOT0_ABI = [
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)",
 ];
-
-// Chain name mapping for the frontend protobuf format
-const CHAIN_NAMES: Record<number, string> = {
-  [ChainId.CITREA_MAINNET]: "CITREA_MAINNET",
-  [ChainId.CITREA_TESTNET]: "CITREA_TESTNET",
-};
 
 // ---------- Ponder raw data types ----------
 
@@ -236,7 +231,7 @@ export class ExploreStatsService {
     chainId: number,
   ): Promise<ExploreStatsResponseData> {
     const now = Date.now();
-    const chainName = CHAIN_NAMES[chainId] || `CHAIN_${chainId}`;
+    const chainName = getChainName(chainId);
     const ponderClient = getPonderClient(this.logger);
 
     // 1. Fetch all raw data from Ponder in parallel

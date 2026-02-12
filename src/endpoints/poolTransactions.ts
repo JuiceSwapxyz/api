@@ -4,14 +4,7 @@ import { getAddress } from "viem";
 import { ethers } from "ethers";
 import { getPonderClient } from "../services/PonderClient";
 import { ExploreStatsService } from "../services/ExploreStatsService";
-
-const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
-  1: "ETHEREUM",
-  11155111: "ETHEREUM_SEPOLIA",
-  137: "POLYGON",
-  5115: "CITREA_TESTNET",
-  4114: "CITREA_MAINNET",
-};
+import { getChainName } from "../config/chains";
 
 export function createPoolTransactionsHandler(
   exploreStatsService: ExploreStatsService,
@@ -25,10 +18,10 @@ export function createPoolTransactionsHandler(
 
     try {
       const poolAddress = getAddress(req.params.address);
-      const chainId = parseInt(req.query.chainId as string) || 4114;
-      const first = Math.min(parseInt(req.query.first as string) || 25, 100);
+      const chainId = req.query.chainId as unknown as number;
+      const first = req.query.first as unknown as number;
       const cursor = req.query.cursor as string | undefined;
-      const chainName = CHAIN_ID_TO_CHAIN_NAME[chainId] || `CHAIN_${chainId}`;
+      const chainName = getChainName(chainId);
 
       // Get token prices and info from ExploreStatsService
       const exploreData = await exploreStatsService.getExploreStats(chainId);
@@ -80,6 +73,17 @@ export function createPoolTransactionsHandler(
 
       const activities = result.poolActivitys?.items || [];
 
+      if (!enrichedPool && activities.length === 0) {
+        res.status(404).json({ error: "Pool not found" });
+        return;
+      }
+      if (!enrichedPool && activities.length > 0) {
+        log.warn(
+          { poolAddress },
+          "Pool exists in Ponder but not in ExploreStatsService cache",
+        );
+      }
+
       // Map each activity to a transaction
       const transactions = activities.map(
         (activity: {
@@ -97,13 +101,13 @@ export function createPoolTransactionsHandler(
 
           const amount0Formatted = parseFloat(
             ethers.utils.formatUnits(
-              amount0Raw < 0n ? -amount0Raw : amount0Raw,
+              (amount0Raw < 0n ? -amount0Raw : amount0Raw).toString(),
               token0Decimals,
             ),
           );
           const amount1Formatted = parseFloat(
             ethers.utils.formatUnits(
-              amount1Raw < 0n ? -amount1Raw : amount1Raw,
+              (amount1Raw < 0n ? -amount1Raw : amount1Raw).toString(),
               token1Decimals,
             ),
           );
@@ -119,11 +123,11 @@ export function createPoolTransactionsHandler(
           // Determine quantities with sign:
           // In a swap, one amount is positive (received by pool) and the other is negative (sent out)
           // Frontend expects: positive = amount flowing in that direction
-          const token0Quantity = parseFloat(
-            ethers.utils.formatUnits(activity.amount0, token0Decimals),
+          const token0Quantity = (
+            (amount0Raw < 0n ? -1 : 1) * amount0Formatted
           ).toString();
-          const token1Quantity = parseFloat(
-            ethers.utils.formatUnits(activity.amount1, token1Decimals),
+          const token1Quantity = (
+            (amount1Raw < 0n ? -1 : 1) * amount1Formatted
           ).toString();
 
           return {
@@ -157,6 +161,8 @@ export function createPoolTransactionsHandler(
             },
             token1Quantity,
             usdValue: { value: usdValue },
+            // Ponder poolActivity table only captures Swap events.
+            // Supporting ADD/REMOVE requires Ponder schema changes (Mint/Burn events).
             type: "SWAP",
           };
         },

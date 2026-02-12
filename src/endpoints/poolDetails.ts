@@ -6,6 +6,7 @@ import { ChainId } from "@juiceswapxyz/sdk-core";
 import { providers, utils, ethers } from "ethers";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ExploreStatsService } from "../services/ExploreStatsService";
+import { getChainName } from "../config/chains";
 
 export interface PoolDetailsRequestBody {
   address: string;
@@ -73,14 +74,6 @@ export interface PoolDetailsResponse {
     };
   };
 }
-
-const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
-  1: "ETHEREUM",
-  11155111: "ETHEREUM_SEPOLIA",
-  137: "POLYGON",
-  5115: "CITREA_TESTNET",
-  4114: "CITREA_MAINNET",
-};
 
 /**
  * @swagger
@@ -256,12 +249,12 @@ export function createPoolDetailsHandler(
       // This is used by calc24HVolChange() on the frontend
       let historicalVolume: Array<{ value: number; timestamp: number }> = [];
       try {
-        const ponderClient2 = getPonderClient(logger);
+        const ponderClient = getPonderClient(logger);
         const cutoff48h = (
           Math.floor(Date.now() / 1000) -
           48 * 3600
         ).toString();
-        const poolStatsResult = await ponderClient2.query(
+        const poolStatsResult = await ponderClient.query(
           `
           query GetPoolStats1h($where: poolStatFilter = {}) {
             poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: 100) {
@@ -320,7 +313,7 @@ export function createPoolDetailsHandler(
             token0: {
               id: tokenInfo.token0.id,
               address: tokenInfo.token0.address,
-              chain: CHAIN_ID_TO_CHAIN_NAME[body.chainId],
+              chain: getChainName(body.chainId),
               decimals: tokenInfo.token0.decimals,
               name: tokenInfo.token0.name,
               standard: "ERC20",
@@ -352,7 +345,7 @@ export function createPoolDetailsHandler(
             token1: {
               id: tokenInfo.token1.id,
               address: tokenInfo.token1.address,
-              chain: CHAIN_ID_TO_CHAIN_NAME[body.chainId],
+              chain: getChainName(body.chainId),
               decimals: tokenInfo.token1.decimals,
               name: tokenInfo.token1.name,
               standard: "ERC20",

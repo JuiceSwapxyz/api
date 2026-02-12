@@ -46,10 +46,8 @@ export function createPoolPriceHistoryHandler(
 
     try {
       const poolAddress = getAddress(req.params.address);
-      const chainId = parseInt(req.query.chainId as string) || 4114;
-      const duration = (
-        (req.query.duration as string) || "DAY"
-      ).toUpperCase() as Duration;
+      const chainId = req.query.chainId as unknown as number;
+      const duration = req.query.duration as unknown as Duration;
 
       const { hoursBack, resampleSec } = getDurationParams(duration);
       const cutoff = (
@@ -90,6 +88,17 @@ export function createPoolPriceHistoryHandler(
       );
 
       const activities = result.poolActivitys?.items || [];
+
+      if (!enrichedPool && activities.length === 0) {
+        res.status(404).json({ error: "Pool not found" });
+        return;
+      }
+      if (!enrichedPool && activities.length > 0) {
+        log.warn(
+          { poolAddress },
+          "Pool exists in Ponder but not in ExploreStatsService cache",
+        );
+      }
 
       if (activities.length === 0) {
         res.json([]);

@@ -2,11 +2,7 @@ import { Request, Response } from "express";
 import Logger from "bunyan";
 import { getAddress } from "viem";
 import { ethers } from "ethers";
-
-const TICK_LENS_ADDRESSES: Record<number, string> = {
-  4114: "0xD9d430f27F922A3316d22Cd9d58558f45Dad8012",
-  5115: "0x00Ba410Bd715d0D9F9eFAbC65c7df8F0C5D4E7Eb",
-};
+import { getTickLensAddress } from "../config/contracts";
 
 const TICK_LENS_ABI = [
   {
@@ -49,7 +45,7 @@ export function createPoolTicksHandler(
 
     try {
       const poolAddress = getAddress(req.params.address);
-      const chainId = parseInt(req.query.chainId as string) || 4114;
+      const chainId = req.query.chainId as unknown as number;
 
       const provider = providers.get(chainId);
       if (!provider) {
@@ -57,7 +53,7 @@ export function createPoolTicksHandler(
         return;
       }
 
-      const tickLensAddress = TICK_LENS_ADDRESSES[chainId];
+      const tickLensAddress = getTickLensAddress(chainId);
       if (!tickLensAddress) {
         res
           .status(400)

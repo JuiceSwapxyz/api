@@ -45,7 +45,11 @@ import {
   createNFTSignatureHandler,
 } from "./endpoints/firstSqueezerCampaign";
 import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
-import { validateBody, validateQuery } from "./middleware/validation";
+import {
+  validateBody,
+  validateQuery,
+  validateParams,
+} from "./middleware/validation";
 import { getApolloMiddleware } from "./adapters/handleGraphQL";
 import { initializeResolvers } from "./adapters/handleGraphQL/resolvers";
 import { quoteCache } from "./cache/quoteCache";
@@ -78,6 +82,10 @@ import {
   BulkCreateBridgeSwapSchema,
   GetBridgeSwapsByUserQuerySchema,
   AuthVerifyRequestSchema,
+  PoolAddressParamsSchema,
+  PoolHistoryQuerySchema,
+  PoolTransactionsQuerySchema,
+  PoolTicksQuerySchema,
 } from "./validation/schemas";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
@@ -436,19 +444,31 @@ async function bootstrap() {
   app.get(
     "/v1/pools/:address/volume-history",
     generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolHistoryQuerySchema, logger),
     handlePoolVolumeHistory,
   );
   app.get(
     "/v1/pools/:address/price-history",
     generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolHistoryQuerySchema, logger),
     handlePoolPriceHistory,
   );
   app.get(
     "/v1/pools/:address/transactions",
     generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolTransactionsQuerySchema, logger),
     handlePoolTransactions,
   );
-  app.get("/v1/pools/:address/ticks", generalLimiter, handlePoolTicks);
+  app.get(
+    "/v1/pools/:address/ticks",
+    generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolTicksQuerySchema, logger),
+    handlePoolTicks,
+  );
 
   // LP endpoints
   app.post(

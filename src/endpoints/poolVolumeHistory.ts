@@ -50,10 +50,8 @@ export function createPoolVolumeHistoryHandler(
 
     try {
       const poolAddress = getAddress(req.params.address);
-      const chainId = parseInt(req.query.chainId as string) || 4114;
-      const duration = (
-        (req.query.duration as string) || "DAY"
-      ).toUpperCase() as Duration;
+      const chainId = req.query.chainId as unknown as number;
+      const duration = req.query.duration as unknown as Duration;
 
       const { bucketType, hoursBack } = getQueryParams(duration);
       const cutoff = (
@@ -92,6 +90,17 @@ export function createPoolVolumeHistoryHandler(
       );
 
       const buckets = result.poolStats?.items || [];
+
+      if (!enrichedPool && buckets.length === 0) {
+        res.status(404).json({ error: "Pool not found" });
+        return;
+      }
+      if (!enrichedPool && buckets.length > 0) {
+        log.warn(
+          { poolAddress },
+          "Pool exists in Ponder but not in ExploreStatsService cache",
+        );
+      }
 
       const entries: VolumeHistoryEntry[] = buckets.map(
         (bucket: { volume0: string; volume1: string; timestamp: string }) => {
