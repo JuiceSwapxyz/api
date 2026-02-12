@@ -197,6 +197,11 @@ export class ExploreStatsService {
   private readonly CACHE_TTL = 60_000; // 60 seconds
   private readonly REFRESH_INTERVAL = this.CACHE_TTL - 5_000; // refresh 5s before TTL
   private backgroundRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private yearlyVolumeCache: Map<
+    number,
+    { v3Stats: PonderPoolStat[]; v2Stats: PonderV2PoolStat[]; timestamp: number }
+  > = new Map();
+  private readonly YEARLY_CACHE_TTL = 15 * 60_000; // 15 minutes
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
@@ -266,31 +271,29 @@ export class ExploreStatsService {
     const ponderClient = getPonderClient(this.logger);
 
     // 1. Fetch all raw data from Ponder in parallel
+    //    365d volume stats use a 15-min tiered cache (heaviest queries, rarely change)
     const [
       tokens,
       v3Pools,
       v3PoolStats24h,
       v3PoolStats30d,
-      v3PoolStats365d,
       v2Pools,
       v2PoolStats24h,
       v2PoolStats30d,
-      v2PoolStats365d,
       tokenStats1h,
       recentSwaps,
       poolActivities,
       btcPriceData,
       btcPriceHistory,
+      yearlyStats,
     ] = await Promise.all([
       this.fetchTokens(ponderClient, chainId),
       this.fetchV3Pools(ponderClient, chainId),
       this.fetchPoolStats(ponderClient, chainId, "1h", 24),
       this.fetchPoolStats(ponderClient, chainId, "24h", 30 * 24),
-      this.fetchPoolStats(ponderClient, chainId, "24h", 365 * 24),
       this.fetchV2Pools(ponderClient, chainId),
       this.fetchV2PoolStats(ponderClient, chainId, "1h", 24),
       this.fetchV2PoolStats(ponderClient, chainId, "24h", 30 * 24),
-      this.fetchV2PoolStats(ponderClient, chainId, "24h", 365 * 24),
       this.fetchTokenStats(ponderClient, chainId, "1h", 24),
       this.fetchRecentSwaps(ponderClient, chainId),
       this.fetchPoolActivities(ponderClient, chainId),
@@ -302,7 +305,10 @@ export class ExploreStatsService {
         this.logger.warn({ error: err }, "Failed to fetch BTC price history");
         return null;
       }),
+      this.getYearlyVolumeStats(ponderClient, chainId),
     ]);
+    const v3PoolStats365d = yearlyStats.v3;
+    const v2PoolStats365d = yearlyStats.v2;
 
     // 2. Build token map (from Ponder + known contract tokens as fallback)
     const tokenMap = new Map<string, PonderToken>();
@@ -358,29 +364,16 @@ export class ExploreStatsService {
       allTokenAddrs.add(p.token1.toLowerCase());
     }
 
-    // 4. Get token prices (BTC, stablecoins, then derive unknown from pools)
-    const prices = await this.priceService.getTokenPrices(
+    // 4. Get token prices (BTC, stablecoins, JUICE on-chain, then derive unknown from pools)
+    const prices = await this.resolveAllTokenPrices(
       chainId,
-      Array.from(allTokenAddrs),
+      allTokenAddrs,
+      v3Pools,
+      tokenMap,
     );
 
-    // 4b. Fetch JUICE price from on-chain Equity.price()
-    await this.fetchJuicePrice(chainId, prices);
-
-    // 4c. Derive unknown token prices from V3 pool slot0()
-    await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
-
     // Group pool activities by pool address (shared by price changes + sparklines)
-    const activitiesByPool = new Map<string, PonderPoolActivity[]>();
-    for (const activity of poolActivities) {
-      const poolAddr = activity.poolAddress.toLowerCase();
-      let list = activitiesByPool.get(poolAddr);
-      if (!list) {
-        list = [];
-        activitiesByPool.set(poolAddr, list);
-      }
-      list.push(activity);
-    }
+    const activitiesByPool = this.groupActivitiesByPool(poolActivities);
 
     // 4d. Compute token price changes (1h, 24h) and FDV
     const { pctChange1h, pctChange24h } = this.computeTokenPriceChanges(
@@ -407,51 +400,38 @@ export class ExploreStatsService {
       ? new UniswapMulticallProvider(chainId as ChainId, provider, 375000)
       : null;
 
-    const fdvMap = await this.computeTokenFdv(
-      tokens,
-      prices,
-      multicallProvider,
-    );
-
-    // 5. Compute V3 pool TVL via multicall
-    const v3PoolTvl = await this.computeV3PoolTvl(
-      v3Pools,
-      tokenMap,
-      prices,
-      multicallProvider,
-    );
-
-    // 6. Compute V2 pool TVL via multicall
-    const v2PoolTvl = await this.computeV2PoolTvl(
-      chainId,
-      v2Pools,
-      tokenMap,
-      prices,
-      multicallProvider,
-    );
+    // 5. Compute FDV + TVL via parallel multicalls (all read-only against `prices`)
+    const [fdvMap, v3PoolTvl, v2PoolTvl] = await Promise.all([
+      this.computeTokenFdv(tokens, prices, multicallProvider),
+      this.computeV3PoolTvl(v3Pools, tokenMap, prices, multicallProvider),
+      this.computeV2PoolTvl(chainId, v2Pools, tokenMap, prices, multicallProvider),
+    ]);
 
     // 7. Compute pool volumes
+    const v3PoolMap = new Map(v3Pools.map((p) => [p.address.toLowerCase(), p]));
+    const v2PoolMap = new Map(v2Pools.map((p) => [p.pairAddress.toLowerCase(), p]));
+
     const v3Vol1d = this.aggregatePoolVolumes(
       v3PoolStats24h,
-      v3Pools,
+      v3PoolMap,
       tokenMap,
       prices,
     );
     const v3Vol30d = this.aggregatePoolVolumes(
       v3PoolStats30d,
-      v3Pools,
+      v3PoolMap,
       tokenMap,
       prices,
     );
     const v2Vol1d = this.aggregateV2PoolVolumes(
       v2PoolStats24h,
-      v2Pools,
+      v2PoolMap,
       tokenMap,
       chainId,
     );
     const v2Vol30d = this.aggregateV2PoolVolumes(
       v2PoolStats30d,
-      v2Pools,
+      v2PoolMap,
       tokenMap,
       chainId,
     );
@@ -463,13 +443,13 @@ export class ExploreStatsService {
     ).toString();
     const v3Vol7d = this.aggregatePoolVolumes(
       v3PoolStats30d.filter((ps) => ps.timestamp >= sevenDayCutoff),
-      v3Pools,
+      v3PoolMap,
       tokenMap,
       prices,
     );
     const v2Vol7d = this.aggregateV2PoolVolumes(
       v2PoolStats30d.filter((ps) => ps.timestamp >= sevenDayCutoff),
-      v2Pools,
+      v2PoolMap,
       tokenMap,
       chainId,
     );
@@ -477,13 +457,13 @@ export class ExploreStatsService {
     // 7c. Compute 365-day pool volumes
     const v3Vol365d = this.aggregatePoolVolumes(
       v3PoolStats365d,
-      v3Pools,
+      v3PoolMap,
       tokenMap,
       prices,
     );
     const v2Vol365d = this.aggregateV2PoolVolumes(
       v2PoolStats365d,
-      v2Pools,
+      v2PoolMap,
       tokenMap,
       chainId,
     );
@@ -508,7 +488,7 @@ export class ExploreStatsService {
     // 9b. Attribute V2 pool volumes to their non-JUSD tokens
     this.attributeV2TokenVolumes(
       v2PoolStats24h,
-      v2Pools,
+      v2PoolMap,
       tokenMap,
       chainId,
       tokenVol1d,
@@ -521,7 +501,7 @@ export class ExploreStatsService {
     });
     this.attributeV2TokenVolumes(
       v2PoolStats1h,
-      v2Pools,
+      v2PoolMap,
       tokenMap,
       chainId,
       tokenVol1h,
@@ -932,6 +912,31 @@ export class ExploreStatsService {
     }
   }
 
+  /**
+   * Get yearly (365d) volume stats with a 15-minute cache.
+   * These are the heaviest Ponder queries (~7000 records each) but the data
+   * barely changes minute-to-minute, so we avoid re-fetching every 55s.
+   */
+  private async getYearlyVolumeStats(
+    ponderClient: ReturnType<typeof getPonderClient>,
+    chainId: number,
+  ): Promise<{ v3: PonderPoolStat[]; v2: PonderV2PoolStat[] }> {
+    const cached = this.yearlyVolumeCache.get(chainId);
+    if (cached && Date.now() - cached.timestamp < this.YEARLY_CACHE_TTL) {
+      return { v3: cached.v3Stats, v2: cached.v2Stats };
+    }
+    const [v3Stats, v2Stats] = await Promise.all([
+      this.fetchPoolStats(ponderClient, chainId, "24h", 365 * 24),
+      this.fetchV2PoolStats(ponderClient, chainId, "24h", 365 * 24),
+    ]);
+    this.yearlyVolumeCache.set(chainId, {
+      v3Stats,
+      v2Stats,
+      timestamp: Date.now(),
+    });
+    return { v3: v3Stats, v2: v2Stats };
+  }
+
   private async fetchTokenStats(
     ponderClient: ReturnType<typeof getPonderClient>,
     chainId: number,
@@ -983,6 +988,30 @@ export class ExploreStatsService {
   }
 
   // ---------- Price derivation ----------
+
+  /**
+   * Resolve all token prices in the correct sequential order:
+   * 1. getTokenPrices — BTC-pegged + stablecoins from PriceService
+   * 2. fetchJuicePrice — on-chain Equity.price() for JUICE
+   * 3. deriveUnknownPrices — derive remaining tokens from V3 pool slot0()
+   *
+   * This chain MUST remain sequential: deriveUnknownPrices needs JUICE priced
+   * first, since tokens paired with JUICE in V3 pools would fail to derive otherwise.
+   */
+  private async resolveAllTokenPrices(
+    chainId: number,
+    allTokenAddrs: Set<string>,
+    v3Pools: PonderPool[],
+    tokenMap: Map<string, PonderToken>,
+  ): Promise<Map<string, number>> {
+    const prices = await this.priceService.getTokenPrices(
+      chainId,
+      Array.from(allTokenAddrs),
+    );
+    await this.fetchJuicePrice(chainId, prices);
+    await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
+    return prices;
+  }
 
   /**
    * Fetch JUICE price from the on-chain Equity.price() method.
@@ -1285,14 +1314,11 @@ export class ExploreStatsService {
 
   private aggregatePoolVolumes(
     poolStats: PonderPoolStat[],
-    pools: PonderPool[],
+    poolMap: Map<string, PonderPool>,
     tokenMap: Map<string, PonderToken>,
     prices: Map<string, number>,
   ): Map<string, number> {
     const volMap = new Map<string, number>();
-    const poolMap = new Map<string, PonderPool>(
-      pools.map((p) => [p.address.toLowerCase(), p]),
-    );
 
     for (const ps of poolStats) {
       const poolAddr = ps.poolAddress?.toLowerCase();
@@ -1325,7 +1351,7 @@ export class ExploreStatsService {
 
   private aggregateV2PoolVolumes(
     poolStats: PonderV2PoolStat[],
-    pools: PonderV2Pool[],
+    v2PoolMap: Map<string, PonderV2Pool>,
     tokenMap: Map<string, PonderToken>,
     chainId: number,
   ): Map<string, number> {
@@ -1334,10 +1360,6 @@ export class ExploreStatsService {
     if (!contracts) return volMap;
 
     const jusdAddress = contracts.JUSD?.toLowerCase();
-    const v2PoolMap = new Map<string, PonderV2Pool>();
-    for (const pool of pools) {
-      v2PoolMap.set(pool.pairAddress.toLowerCase(), pool);
-    }
 
     for (const stats of poolStats) {
       const pool = v2PoolMap.get(stats.poolAddress.toLowerCase());
@@ -1404,7 +1426,7 @@ export class ExploreStatsService {
    */
   private attributeV2TokenVolumes(
     v2PoolStats: PonderV2PoolStat[],
-    v2Pools: PonderV2Pool[],
+    v2PoolMap: Map<string, PonderV2Pool>,
     tokenMap: Map<string, PonderToken>,
     chainId: number,
     tokenVolMap: Map<string, number>,
@@ -1414,11 +1436,6 @@ export class ExploreStatsService {
 
     const jusdAddress = contracts.JUSD?.toLowerCase();
     if (!jusdAddress) return;
-
-    const v2PoolMap = new Map<string, PonderV2Pool>();
-    for (const pool of v2Pools) {
-      v2PoolMap.set(pool.pairAddress.toLowerCase(), pool);
-    }
 
     for (const stats of v2PoolStats) {
       const pool = v2PoolMap.get(stats.poolAddress.toLowerCase());
@@ -1488,7 +1505,23 @@ export class ExploreStatsService {
     return tokenVolMap;
   }
 
-  // ---------- Pool activity fetching for price change computation ----------
+  // ---------- Pool activity helpers ----------
+
+  private groupActivitiesByPool(
+    activities: PonderPoolActivity[],
+  ): Map<string, PonderPoolActivity[]> {
+    const map = new Map<string, PonderPoolActivity[]>();
+    for (const activity of activities) {
+      const key = activity.poolAddress.toLowerCase();
+      let list = map.get(key);
+      if (!list) {
+        list = [];
+        map.set(key, list);
+      }
+      list.push(activity);
+    }
+    return map;
+  }
 
   private async fetchPoolActivities(
     ponderClient: ReturnType<typeof getPonderClient>,
