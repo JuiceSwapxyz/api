@@ -3,8 +3,9 @@ import Logger from "bunyan";
 import { getPonderClient } from "../services/PonderClient";
 import { erc20Abi, formatUnits, getAddress } from "viem";
 import { ChainId } from "@juiceswapxyz/sdk-core";
-import { providers, utils } from "ethers";
+import { providers, utils, ethers } from "ethers";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
+import { ExploreStatsService } from "../services/ExploreStatsService";
 
 export interface PoolDetailsRequestBody {
   address: string;
@@ -111,6 +112,7 @@ const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
 export function createPoolDetailsHandler(
   providers: Map<ChainId, providers.StaticJsonRpcProvider>,
   logger: Logger,
+  exploreStatsService: ExploreStatsService,
 ) {
   return async function handlePoolDetails(
     req: Request,
@@ -222,11 +224,91 @@ export function createPoolDetailsHandler(
         return 0;
       });
 
-      const todaysTimestamp = Math.floor(Date.now() / 1000 / 86400) * 86400;
-      const volumen24h =
-        todaysTimestamp < poolGeneralInfo.poolStats.items?.[0]?.timestamp
-          ? poolGeneralInfo.poolStats.items?.[0]?.volume0
-          : 0;
+      // Look up enriched pool data from ExploreStatsService (cached, 60s TTL)
+      const address = getAddress(body.address);
+      let enrichedPool:
+        | {
+            totalLiquidity?: { value: number };
+            volume1Day?: { value: number };
+            token0?: { price?: { value: number } };
+            token1?: { price?: { value: number } };
+          }
+        | undefined;
+
+      try {
+        const exploreData = await exploreStatsService.getExploreStats(chainId);
+        enrichedPool = exploreData.stats?.poolStatsV3?.find(
+          (p) => p.id.toLowerCase() === address.toLowerCase(),
+        );
+      } catch (err) {
+        log.warn(
+          { error: err },
+          "Failed to fetch explore stats for pool enrichment",
+        );
+      }
+
+      const token0Price = enrichedPool?.token0?.price?.value ?? 0;
+      const token1Price = enrichedPool?.token1?.price?.value ?? 0;
+      const tvl = enrichedPool?.totalLiquidity?.value ?? 0;
+      const volume24h = enrichedPool?.volume1Day?.value ?? 0;
+
+      // Build historicalVolume from Ponder poolStat 1h buckets (last 48h)
+      // This is used by calc24HVolChange() on the frontend
+      let historicalVolume: Array<{ value: number; timestamp: number }> = [];
+      try {
+        const ponderClient2 = getPonderClient(logger);
+        const cutoff48h = (
+          Math.floor(Date.now() / 1000) -
+          48 * 3600
+        ).toString();
+        const poolStatsResult = await ponderClient2.query(
+          `
+          query GetPoolStats1h($where: poolStatFilter = {}) {
+            poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: 100) {
+              items { poolAddress, volume0, volume1, timestamp, type }
+            }
+          }
+          `,
+          {
+            where: {
+              type: "1h",
+              poolAddress: address,
+              timestamp_gte: cutoff48h,
+            },
+          },
+        );
+
+        const buckets = poolStatsResult.poolStats?.items || [];
+        historicalVolume = buckets.map(
+          (bucket: { volume0: string; volume1: string; timestamp: string }) => {
+            // Convert raw volume to USD using token prices from ExploreStatsService
+            let vol = 0;
+            if (token0Price > 0) {
+              vol =
+                parseFloat(
+                  ethers.utils.formatUnits(
+                    bucket.volume0 || "0",
+                    tokenInfo.token0.decimals,
+                  ),
+                ) * token0Price;
+            } else if (token1Price > 0) {
+              vol =
+                parseFloat(
+                  ethers.utils.formatUnits(
+                    bucket.volume1 || "0",
+                    tokenInfo.token1.decimals,
+                  ),
+                ) * token1Price;
+            }
+            return {
+              value: vol,
+              timestamp: parseInt(bucket.timestamp),
+            };
+          },
+        );
+      } catch (err) {
+        log.warn({ error: err }, "Failed to fetch historical volume for pool");
+      }
 
       const response: PoolDetailsResponse = {
         data: {
@@ -260,7 +342,7 @@ export function createPoolDetailsHandler(
                 id: tokenInfo.token0.id,
                 price: {
                   id: tokenInfo.token0.id,
-                  value: 0,
+                  value: token0Price,
                 },
               },
             },
@@ -292,7 +374,7 @@ export function createPoolDetailsHandler(
                 id: tokenInfo.token1.id,
                 price: {
                   id: tokenInfo.token1.id,
-                  value: 0,
+                  value: token1Price,
                 },
               },
             },
@@ -301,11 +383,11 @@ export function createPoolDetailsHandler(
             ),
             txCount: poolGeneralInfo.poolStat?.txCount || 0,
             volume24h: {
-              value: volumen24h || 0,
+              value: volume24h,
             },
-            historicalVolume: [],
+            historicalVolume,
             totalLiquidity: {
-              value: 0,
+              value: tvl,
             },
             totalLiquidityPercentChange24h: {
               value: 0,

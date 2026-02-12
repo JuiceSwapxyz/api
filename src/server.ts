@@ -89,6 +89,10 @@ import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 import { createProtocolStatsHandler } from "./endpoints/protocolStats";
 import { createExploreStatsHandler } from "./endpoints/exploreStats";
 import { ExploreStatsService } from "./services/ExploreStatsService";
+import { createPoolVolumeHistoryHandler } from "./endpoints/poolVolumeHistory";
+import { createPoolPriceHistoryHandler } from "./endpoints/poolPriceHistory";
+import { createPoolTransactionsHandler } from "./endpoints/poolTransactions";
+import { createPoolTicksHandler } from "./endpoints/poolTicks";
 import {
   createBridgeSwapHandler,
   createBulkBridgeSwapHandler,
@@ -305,8 +309,12 @@ async function bootstrap() {
     routerService,
     logger,
   );
-  const handlePoolDetails = createPoolDetailsHandler(providers, logger);
   const exploreStatsService = new ExploreStatsService(providers, logger);
+  const handlePoolDetails = createPoolDetailsHandler(
+    providers,
+    logger,
+    exploreStatsService,
+  );
   const handleProtocolStats = createProtocolStatsHandler(
     providers,
     logger,
@@ -316,6 +324,19 @@ async function bootstrap() {
     exploreStatsService,
     logger,
   );
+  const handlePoolVolumeHistory = createPoolVolumeHistoryHandler(
+    exploreStatsService,
+    logger,
+  );
+  const handlePoolPriceHistory = createPoolPriceHistoryHandler(
+    exploreStatsService,
+    logger,
+  );
+  const handlePoolTransactions = createPoolTransactionsHandler(
+    exploreStatsService,
+    logger,
+  );
+  const handlePoolTicks = createPoolTicksHandler(providers, logger);
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
     logger,
@@ -410,6 +431,24 @@ async function bootstrap() {
 
   // Explore stats endpoint (enriched with USD prices, TVL, volumes)
   app.get("/v1/explore/stats", quoteLimiter, handleExploreStats);
+
+  // Pool detail data endpoints (volume chart, price chart, transactions)
+  app.get(
+    "/v1/pools/:address/volume-history",
+    generalLimiter,
+    handlePoolVolumeHistory,
+  );
+  app.get(
+    "/v1/pools/:address/price-history",
+    generalLimiter,
+    handlePoolPriceHistory,
+  );
+  app.get(
+    "/v1/pools/:address/transactions",
+    generalLimiter,
+    handlePoolTransactions,
+  );
+  app.get("/v1/pools/:address/ticks", generalLimiter, handlePoolTicks);
 
   // LP endpoints
   app.post(
