@@ -90,13 +90,14 @@ export function createPoolPriceHistoryHandler(
       const MAX_PAGES = 10; // Safety cap: 10k records max
       const activities: any[] = [];
       let lastTimestamp = cutoff;
+      let lastId: string | undefined;
 
       for (let page = 0; page < MAX_PAGES; page++) {
         const result = await ponderClient.query(
           `
           query GetPoolActivities($where: poolActivityFilter = {}) {
             poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: ${PAGE_LIMIT}) {
-              items { poolAddress, sqrtPriceX96, blockTimestamp }
+              items { id, poolAddress, sqrtPriceX96, blockTimestamp }
             }
           }
           `,
@@ -108,19 +109,32 @@ export function createPoolPriceHistoryHandler(
           },
         );
 
-        const items = result.poolActivitys?.items || [];
-        if (items.length === 0) break;
+        const rawItems = result.poolActivitys?.items || [];
+        if (rawItems.length === 0) break;
 
-        activities.push(...items);
+        // Deduplicate: when re-fetching from the same timestamp, skip already-seen records
+        let items = rawItems;
+        if (lastId) {
+          const idx = items.findIndex((a: { id: string }) => a.id === lastId);
+          if (idx >= 0) {
+            items = items.slice(idx + 1);
+          }
+        }
+
+        if (items.length > 0) {
+          activities.push(...items);
+        }
 
         // Stop if this page wasn't full (no more data)
-        if (items.length < PAGE_LIMIT) break;
+        if (rawItems.length < PAGE_LIMIT) break;
 
-        // Advance cursor past the last timestamp to avoid re-fetching the boundary record.
-        // poolActivity records within the same second are rare (same-block swaps);
-        // incrementing by 1 may skip them but the resampling smooths over gaps.
+        // No new items means all records at this timestamp were already seen
+        if (items.length === 0) break;
+
+        // Advance cursor using compound timestamp + id to avoid skipping same-block records
         const lastItem = items[items.length - 1];
-        lastTimestamp = (parseInt(lastItem.blockTimestamp) + 1).toString();
+        lastTimestamp = lastItem.blockTimestamp;
+        lastId = lastItem.id;
       }
 
       if (!enrichedPool && activities.length === 0) {
@@ -207,11 +221,7 @@ export function createPoolPriceHistoryHandler(
       res.json(entries);
     } catch (error) {
       log.error({ error }, "Failed to get pool price history");
-      res.status(500).json({
-        error: "Internal server error",
-        detail:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
+      res.status(500).json({ error: "Internal server error" });
     }
   };
 }

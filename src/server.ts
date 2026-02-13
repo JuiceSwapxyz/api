@@ -102,6 +102,7 @@ import { createPoolVolumeHistoryHandler } from "./endpoints/poolVolumeHistory";
 import { createPoolPriceHistoryHandler } from "./endpoints/poolPriceHistory";
 import { createPoolTransactionsHandler } from "./endpoints/poolTransactions";
 import { createPoolTicksHandler } from "./endpoints/poolTicks";
+import { ResponseCache } from "./cache/responseCache";
 import {
   createBridgeSwapHandler,
   createBulkBridgeSwapHandler,
@@ -757,6 +758,7 @@ async function bootstrap() {
     logger.info(`Received ${signal}, starting graceful shutdown...`);
 
     exploreStatsService.stopBackgroundRefresh();
+    ResponseCache.destroyAll();
 
     server.close(() => {
       logger.info("HTTP server closed");

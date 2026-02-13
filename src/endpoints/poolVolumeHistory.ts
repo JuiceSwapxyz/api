@@ -96,13 +96,14 @@ export function createPoolVolumeHistoryHandler(
       const MAX_PAGES = 10; // Safety cap: 10k records max
       const buckets: any[] = [];
       let lastTimestamp = cutoff;
+      let lastId: string | undefined;
 
       for (let page = 0; page < MAX_PAGES; page++) {
         const result = await ponderClient.query(
           `
           query GetPoolStatsForChart($where: poolStatFilter = {}) {
             poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: ${PAGE_LIMIT}) {
-              items { poolAddress, volume0, volume1, timestamp, type }
+              items { id, poolAddress, volume0, volume1, timestamp, type }
             }
           }
           `,
@@ -115,18 +116,32 @@ export function createPoolVolumeHistoryHandler(
           },
         );
 
-        const items = result.poolStats?.items || [];
-        if (items.length === 0) break;
+        const rawItems = result.poolStats?.items || [];
+        if (rawItems.length === 0) break;
 
-        buckets.push(...items);
+        // Deduplicate: when re-fetching from the same timestamp, skip already-seen records
+        let items = rawItems;
+        if (lastId) {
+          const idx = items.findIndex((a: { id: string }) => a.id === lastId);
+          if (idx >= 0) {
+            items = items.slice(idx + 1);
+          }
+        }
+
+        if (items.length > 0) {
+          buckets.push(...items);
+        }
 
         // Stop if this page wasn't full (no more data)
-        if (items.length < PAGE_LIMIT) break;
+        if (rawItems.length < PAGE_LIMIT) break;
 
-        // Advance cursor past the last timestamp to avoid re-fetching the boundary record.
-        // poolStat buckets have unique timestamps per (pool, type), so +1 is safe.
+        // No new items means all records at this timestamp were already seen
+        if (items.length === 0) break;
+
+        // Advance cursor using compound timestamp + id to avoid skipping same-block records
         const lastItem = items[items.length - 1];
-        lastTimestamp = (parseInt(lastItem.timestamp) + 1).toString();
+        lastTimestamp = lastItem.timestamp;
+        lastId = lastItem.id;
       }
 
       if (!enrichedPool && buckets.length === 0) {
@@ -168,11 +183,7 @@ export function createPoolVolumeHistoryHandler(
       res.json(entries);
     } catch (error) {
       log.error({ error }, "Failed to get pool volume history");
-      res.status(500).json({
-        error: "Internal server error",
-        detail:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
+      res.status(500).json({ error: "Internal server error" });
     }
   };
 }

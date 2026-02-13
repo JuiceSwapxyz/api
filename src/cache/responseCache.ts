@@ -6,11 +6,14 @@ interface CachedEntry {
 }
 
 export class ResponseCache {
+  private static instances: Set<ResponseCache> = new Set();
+
   private cache: Map<string, CachedEntry> = new Map();
   private readonly ttl: number;
   private readonly maxSize: number;
   private readonly name: string;
   private logger?: Logger;
+  private cleanupTimer: NodeJS.Timeout;
 
   private readonly CLEANUP_INTERVAL = 60_000;
 
@@ -29,7 +32,26 @@ export class ResponseCache {
     this.maxSize = maxSize;
     this.name = name;
     this.logger = logger;
-    setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
+    this.cleanupTimer = setInterval(
+      () => this.cleanup(),
+      this.CLEANUP_INTERVAL,
+    );
+    this.cleanupTimer.unref();
+    ResponseCache.instances.add(this);
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupTimer);
+    this.cache.clear();
+    ResponseCache.instances.delete(this);
+  }
+
+  static destroyAll(): void {
+    for (const instance of ResponseCache.instances) {
+      clearInterval(instance.cleanupTimer);
+      instance.cache.clear();
+    }
+    ResponseCache.instances.clear();
   }
 
   get(key: string): any | null {

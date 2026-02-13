@@ -212,11 +212,7 @@ export function createPoolTicksHandler(
       res.json(responseData);
     } catch (error) {
       log.error({ error }, "Failed to get pool ticks");
-      res.status(500).json({
-        error: "Internal server error",
-        detail:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
+      res.status(500).json({ error: "Internal server error" });
     }
   };
 }
