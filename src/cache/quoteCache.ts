@@ -10,7 +10,7 @@
  * - Prevents rate limiting and RPC node overload
  */
 
-import Logger from 'bunyan';
+import Logger from "bunyan";
 
 interface CachedQuote {
   data: any;
@@ -48,7 +48,9 @@ export class QuoteCache {
     // Start periodic cleanup
     setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
     if (this.logger) {
-      this.logger.debug('[QuoteCache] Initialized with TTL: 30s default, 60s for Citrea');
+      this.logger.debug(
+        "[QuoteCache] Initialized with TTL: 30s default, 60s for Citrea",
+      );
     }
   }
 
@@ -76,11 +78,11 @@ export class QuoteCache {
     } = params;
 
     // Normalize token addresses
-    const inToken = (tokenIn || tokenInAddress || '').toLowerCase();
-    const outToken = (tokenOut || tokenOutAddress || '').toLowerCase();
+    const inToken = (tokenIn || tokenInAddress || "").toLowerCase();
+    const outToken = (tokenOut || tokenOutAddress || "").toLowerCase();
 
     // Create deterministic key
-    return `${tokenInChainId}_${inToken}_${tokenOutChainId}_${outToken}_${amount}_${type || 'EXACT_INPUT'}`;
+    return `${tokenInChainId}_${inToken}_${tokenOutChainId}_${outToken}_${amount}_${type || "EXACT_INPUT"}`;
   }
 
   /**
@@ -88,8 +90,10 @@ export class QuoteCache {
    */
   private isCitreaQuote(params: any): boolean {
     const CITREA_CHAIN_IDS = [5003, 5115]; // Citrea testnet chain IDs
-    return CITREA_CHAIN_IDS.includes(params.tokenInChainId) ||
-           CITREA_CHAIN_IDS.includes(params.tokenOutChainId);
+    return (
+      CITREA_CHAIN_IDS.includes(params.tokenInChainId) ||
+      CITREA_CHAIN_IDS.includes(params.tokenOutChainId)
+    );
   }
 
   /**
@@ -123,7 +127,9 @@ export class QuoteCache {
       this.cache.delete(key);
       this.stats.misses++;
       this.updateHitRate();
-      this.logger?.debug(`[QuoteCache] EXPIRED - Key: ${key.substring(0, 50)}... (age: ${age}ms)`);
+      this.logger?.debug(
+        `[QuoteCache] EXPIRED - Key: ${key.substring(0, 50)}... (age: ${age}ms)`,
+      );
       return null;
     }
 
@@ -132,7 +138,9 @@ export class QuoteCache {
     this.stats.hits++;
     this.updateHitRate();
 
-    this.logger?.debug(`[QuoteCache] HIT - Key: ${key.substring(0, 50)}... (age: ${age}ms, hits: ${cached.hitCount})`);
+    this.logger?.debug(
+      `[QuoteCache] HIT - Key: ${key.substring(0, 50)}... (age: ${age}ms, hits: ${cached.hitCount})`,
+    );
 
     return cached.data;
   }
@@ -156,7 +164,9 @@ export class QuoteCache {
 
     this.stats.cacheSize = this.cache.size;
 
-    this.logger?.debug(`[QuoteCache] STORED - Key: ${key.substring(0, 50)}... (size: ${this.cache.size})`);
+    this.logger?.debug(
+      `[QuoteCache] STORED - Key: ${key.substring(0, 50)}... (size: ${this.cache.size})`,
+    );
   }
 
   /**
@@ -175,7 +185,9 @@ export class QuoteCache {
     }
 
     if (removed > 0) {
-      this.logger?.debug(`[QuoteCache] Cleanup removed ${removed} expired entries`);
+      this.logger?.debug(
+        `[QuoteCache] Cleanup removed ${removed} expired entries`,
+      );
     }
 
     this.stats.cacheSize = this.cache.size;
@@ -197,7 +209,9 @@ export class QuoteCache {
 
     if (oldestKey) {
       this.cache.delete(oldestKey);
-      this.logger?.debug(`[QuoteCache] Evicted oldest entry: ${oldestKey.substring(0, 50)}...`);
+      this.logger?.debug(
+        `[QuoteCache] Evicted oldest entry: ${oldestKey.substring(0, 50)}...`,
+      );
     }
   }
 
@@ -206,7 +220,8 @@ export class QuoteCache {
    */
   private updateHitRate(): void {
     if (this.stats.totalRequests > 0) {
-      this.stats.avgHitRate = (this.stats.hits / this.stats.totalRequests) * 100;
+      this.stats.avgHitRate =
+        (this.stats.hits / this.stats.totalRequests) * 100;
     }
   }
 
@@ -223,7 +238,7 @@ export class QuoteCache {
   clear(): void {
     this.cache.clear();
     this.stats.cacheSize = 0;
-    this.logger?.debug('[QuoteCache] Cache cleared');
+    this.logger?.debug("[QuoteCache] Cache cleared");
   }
 
   /**
@@ -232,7 +247,7 @@ export class QuoteCache {
    */
   shouldCache(params: any, response: any): boolean {
     // Don't cache failed quotes
-    if (!response || response.error || response.state === 'NOT_FOUND') {
+    if (!response || response.error || response.state === "NOT_FOUND") {
       return false;
     }
 
@@ -242,7 +257,7 @@ export class QuoteCache {
     }
 
     // Don't cache very large trades (> 100 ETH equivalent)
-    const amount = parseFloat(params.amount || '0');
+    const amount = parseFloat(params.amount || "0");
     const isLargeTrade = amount > 100e18; // Rough estimate
     if (isLargeTrade) {
       return false;
