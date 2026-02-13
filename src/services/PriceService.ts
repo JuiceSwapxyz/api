@@ -8,6 +8,26 @@ interface PriceCache {
   timestamp: number;
 }
 
+export interface BtcPriceData {
+  price: number;
+  change1h: number; // percent, e.g. -0.12 means -0.12%
+  change24h: number; // percent, e.g. 1.45 means +1.45%
+}
+
+export interface BtcPriceHistory {
+  prices: Array<{ timestamp: number; price: number }>; // ~24 entries, hourly
+}
+
+interface BtcPriceDataCache {
+  data: BtcPriceData;
+  timestamp: number;
+}
+
+interface BtcPriceHistoryCache {
+  data: BtcPriceHistory;
+  timestamp: number;
+}
+
 /**
  * Known token categories for price resolution
  */
@@ -24,6 +44,11 @@ export class PriceService {
   private logger: Logger;
   private btcPriceCache: PriceCache | null = null;
   private btcPriceInflight: Promise<number> | null = null;
+  private btcPriceDataCache: BtcPriceDataCache | null = null;
+  private btcPriceDataInflight: Promise<BtcPriceData> | null = null;
+  private btcPriceHistoryCache: BtcPriceHistoryCache | null = null;
+  private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null =
+    null;
   private readonly CACHE_TTL = 60_000; // 60 seconds
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
@@ -71,7 +96,9 @@ export class PriceService {
   }
 
   /**
-   * Get BTC price in USD from CoinGecko (primary) or Binance (fallback)
+   * Get BTC price in USD from CoinGecko (primary) or Binance (fallback).
+   * Prefers the richer getBtcPriceData() cache when available to avoid
+   * redundant CoinGecko requests.
    */
   async getBtcPriceUsd(): Promise<number> {
     const now = Date.now();
@@ -80,6 +107,13 @@ export class PriceService {
       now - this.btcPriceCache.timestamp < this.CACHE_TTL
     ) {
       return this.btcPriceCache.price;
+    }
+
+    // If a getBtcPriceData() fetch is already inflight, piggyback on it
+    // instead of making a separate /simple/price request
+    if (this.btcPriceDataInflight) {
+      const data = await this.btcPriceDataInflight;
+      return data.price;
     }
 
     // Deduplicate concurrent requests: if a fetch is already in progress, await the same promise
@@ -93,6 +127,167 @@ export class PriceService {
     } finally {
       this.btcPriceInflight = null;
     }
+  }
+
+  /**
+   * Get BTC price data including 1h/24h percent changes from CoinGecko
+   */
+  async getBtcPriceData(): Promise<BtcPriceData> {
+    const now = Date.now();
+    if (
+      this.btcPriceDataCache &&
+      now - this.btcPriceDataCache.timestamp < this.CACHE_TTL
+    ) {
+      return this.btcPriceDataCache.data;
+    }
+
+    if (this.btcPriceDataInflight) {
+      return this.btcPriceDataInflight;
+    }
+
+    this.btcPriceDataInflight = this.fetchBtcPriceDataWithFallback();
+    try {
+      return await this.btcPriceDataInflight;
+    } finally {
+      this.btcPriceDataInflight = null;
+    }
+  }
+
+  /**
+   * Get BTC price history (24h, hourly) from CoinGecko market_chart endpoint.
+   * Returns null on failure — sparklines are non-critical.
+   */
+  async getBtcPriceHistory(): Promise<BtcPriceHistory | null> {
+    const now = Date.now();
+    if (
+      this.btcPriceHistoryCache &&
+      now - this.btcPriceHistoryCache.timestamp < this.CACHE_TTL
+    ) {
+      return this.btcPriceHistoryCache.data;
+    }
+
+    if (this.btcPriceHistoryInflight) {
+      return this.btcPriceHistoryInflight;
+    }
+
+    this.btcPriceHistoryInflight = this.fetchBtcPriceHistory();
+    try {
+      return await this.btcPriceHistoryInflight;
+    } finally {
+      this.btcPriceHistoryInflight = null;
+    }
+  }
+
+  private async fetchBtcPriceHistory(): Promise<BtcPriceHistory | null> {
+    try {
+      const response = await axios.get(
+        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+        {
+          params: { vs_currency: "usd", days: 1 },
+          timeout: 5000,
+        },
+      );
+      const rawPrices = response.data?.prices;
+      if (!Array.isArray(rawPrices) || rawPrices.length === 0) {
+        this.logger.warn("Invalid CoinGecko market_chart response");
+        return null;
+      }
+
+      const prices = rawPrices
+        .filter(
+          (entry: unknown) =>
+            Array.isArray(entry) &&
+            typeof entry[0] === "number" &&
+            typeof entry[1] === "number" &&
+            entry[1] > 0,
+        )
+        .map(([msTimestamp, price]: [number, number]) => ({
+          timestamp: Math.floor(msTimestamp / 1000),
+          price,
+        }));
+
+      const data: BtcPriceHistory = { prices };
+      this.btcPriceHistoryCache = { data, timestamp: Date.now() };
+      this.logger.debug(
+        { count: prices.length },
+        "Fetched BTC price history from CoinGecko",
+      );
+      return data;
+    } catch (error) {
+      this.logger.warn(
+        { error },
+        "Failed to fetch BTC price history from CoinGecko",
+      );
+      if (this.btcPriceHistoryCache) {
+        return this.btcPriceHistoryCache.data;
+      }
+      return null;
+    }
+  }
+
+  private async fetchBtcPriceDataWithFallback(): Promise<BtcPriceData> {
+    const now = Date.now();
+    try {
+      const data = await this.fetchBtcPriceDataCoinGecko();
+      this.btcPriceDataCache = { data, timestamp: now };
+      // Also update the simple price cache
+      this.btcPriceCache = { price: data.price, timestamp: now };
+      return data;
+    } catch (error) {
+      this.logger.warn(
+        { error },
+        "CoinGecko BTC price data fetch failed, falling back to Binance (no % changes)",
+      );
+      try {
+        const price = await this.fetchBtcPriceBinance();
+        const data: BtcPriceData = { price, change1h: 0, change24h: 0 };
+        this.btcPriceDataCache = { data, timestamp: now };
+        this.btcPriceCache = { price, timestamp: now };
+        return data;
+      } catch (fallbackError) {
+        this.logger.error(
+          { error: fallbackError },
+          "Both BTC price data sources failed",
+        );
+        if (this.btcPriceDataCache) {
+          return this.btcPriceDataCache.data;
+        }
+        throw new Error("Unable to fetch BTC price data");
+      }
+    }
+  }
+
+  private async fetchBtcPriceDataCoinGecko(): Promise<BtcPriceData> {
+    const response = await axios.get(
+      "https://api.coingecko.com/api/v3/coins/bitcoin",
+      {
+        params: {
+          localization: false,
+          tickers: false,
+          market_data: true,
+          community_data: false,
+          developer_data: false,
+          sparkline: false,
+        },
+        timeout: 5000,
+      },
+    );
+    const marketData = response.data?.market_data;
+    const price = marketData?.current_price?.usd;
+    if (typeof price !== "number" || price <= 0) {
+      throw new Error("Invalid CoinGecko /coins/bitcoin response");
+    }
+
+    const change1h =
+      marketData?.price_change_percentage_1h_in_currency?.usd ?? 0;
+    const change24h =
+      marketData?.price_change_percentage_24h_in_currency?.usd ?? 0;
+
+    this.logger.debug(
+      { price, change1h, change24h },
+      "Fetched BTC price data from CoinGecko /coins/bitcoin",
+    );
+    return { price, change1h, change24h };
   }
 
   private async fetchBtcPriceWithFallback(): Promise<number> {
