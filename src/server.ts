@@ -756,6 +756,8 @@ async function bootstrap() {
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, starting graceful shutdown...`);
 
+    exploreStatsService.stopBackgroundRefresh();
+
     server.close(() => {
       logger.info("HTTP server closed");
       process.exit(0);

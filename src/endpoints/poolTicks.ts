@@ -123,23 +123,31 @@ export function createPoolTicksHandler(
         provider,
       );
 
-      // Fetch populated ticks for each word
-      const wordPromises: Promise<any>[] = [];
+      // Fetch populated ticks for each word in batches to avoid RPC rate limits
+      const BATCH_SIZE = 20;
+      const wordIndices: number[] = [];
       for (let wordIndex = minWord; wordIndex <= maxWord; wordIndex++) {
-        wordPromises.push(
-          tickLensContract
-            .getPopulatedTicksInWord(poolAddress, wordIndex)
-            .catch((err: Error) => {
-              log.warn(
-                { wordIndex, error: err.message },
-                "TickLens word fetch failed",
-              );
-              return [];
-            }),
-        );
+        wordIndices.push(wordIndex);
       }
 
-      const wordResults = await Promise.all(wordPromises);
+      const wordResults: any[] = [];
+      for (let i = 0; i < wordIndices.length; i += BATCH_SIZE) {
+        const batch = wordIndices.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map((wordIndex) =>
+            tickLensContract
+              .getPopulatedTicksInWord(poolAddress, wordIndex)
+              .catch((err: Error) => {
+                log.warn(
+                  { wordIndex, error: err.message },
+                  "TickLens word fetch failed",
+                );
+                return [];
+              }),
+          ),
+        );
+        wordResults.push(...batchResults);
+      }
 
       // Flatten and sort ticks
       const allTicks: Array<{

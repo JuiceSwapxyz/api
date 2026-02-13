@@ -248,6 +248,18 @@ export class ExploreStatsService {
     this.backgroundRefreshTimer = setInterval(refresh, this.REFRESH_INTERVAL);
   }
 
+  /**
+   * Stop the background refresh timer. Call during graceful shutdown
+   * to allow the process to exit cleanly without waiting for the timer.
+   */
+  stopBackgroundRefresh(): void {
+    if (this.backgroundRefreshTimer) {
+      clearInterval(this.backgroundRefreshTimer);
+      this.backgroundRefreshTimer = null;
+      this.logger.info("ExploreStatsService background refresh stopped");
+    }
+  }
+
   async getExploreStats(chainId: number): Promise<ExploreStatsResponseData> {
     const cached = this.cache.get(chainId);
     const now = Date.now();

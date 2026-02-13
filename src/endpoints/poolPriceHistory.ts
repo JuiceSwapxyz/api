@@ -65,24 +65,44 @@ export function createPoolPriceHistoryHandler(
       const token1Decimals = enrichedPool?.token1?.decimals ?? 18;
 
       // Query poolActivity for swap history (sqrtPriceX96 snapshots)
+      // Use pagination for large time ranges (YEAR can exceed 1000 records)
       const ponderClient = getPonderClient(logger);
-      const result = await ponderClient.query(
-        `
-        query GetPoolActivities($where: poolActivityFilter = {}) {
-          poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: 1000) {
-            items { poolAddress, sqrtPriceX96, blockTimestamp }
-          }
-        }
-        `,
-        {
-          where: {
-            poolAddress: poolAddress,
-            blockTimestamp_gte: cutoff,
-          },
-        },
-      );
+      const PAGE_LIMIT = 1000;
+      const MAX_PAGES = 10; // Safety cap: 10k records max
+      const activities: any[] = [];
+      let lastTimestamp = cutoff;
 
-      const activities = result.poolActivitys?.items || [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const result = await ponderClient.query(
+          `
+          query GetPoolActivities($where: poolActivityFilter = {}) {
+            poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: ${PAGE_LIMIT}) {
+              items { poolAddress, sqrtPriceX96, blockTimestamp }
+            }
+          }
+          `,
+          {
+            where: {
+              poolAddress: poolAddress,
+              blockTimestamp_gte: lastTimestamp,
+            },
+          },
+        );
+
+        const items = result.poolActivitys?.items || [];
+        if (items.length === 0) break;
+
+        activities.push(...items);
+
+        // Stop if this page wasn't full (no more data)
+        if (items.length < PAGE_LIMIT) break;
+
+        // Advance cursor past the last timestamp to avoid re-fetching the boundary record.
+        // poolActivity records within the same second are rare (same-block swaps);
+        // incrementing by 1 may skip them but the resampling smooths over gaps.
+        const lastItem = items[items.length - 1];
+        lastTimestamp = (parseInt(lastItem.blockTimestamp) + 1).toString();
+      }
 
       if (!enrichedPool && activities.length === 0) {
         res.status(404).json({ error: "Pool not found" });

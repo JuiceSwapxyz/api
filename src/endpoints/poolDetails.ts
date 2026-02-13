@@ -249,7 +249,6 @@ export function createPoolDetailsHandler(
       // This is used by calc24HVolChange() on the frontend
       let historicalVolume: Array<{ value: number; timestamp: number }> = [];
       try {
-        const ponderClient = getPonderClient(logger);
         const cutoff48h = (
           Math.floor(Date.now() / 1000) -
           48 * 3600

@@ -71,25 +71,44 @@ export function createPoolVolumeHistoryHandler(
       const token1Decimals = enrichedPool?.token1?.decimals ?? 18;
 
       // Fetch poolStat buckets from Ponder
+      // Use pagination for large time ranges (YEAR can exceed 1000 records)
       const ponderClient = getPonderClient(logger);
-      const result = await ponderClient.query(
-        `
-        query GetPoolStatsForChart($where: poolStatFilter = {}) {
-          poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: 1000) {
-            items { poolAddress, volume0, volume1, timestamp, type }
-          }
-        }
-        `,
-        {
-          where: {
-            type: bucketType,
-            poolAddress: poolAddress,
-            timestamp_gte: cutoff,
-          },
-        },
-      );
+      const PAGE_LIMIT = 1000;
+      const MAX_PAGES = 10; // Safety cap: 10k records max
+      const buckets: any[] = [];
+      let lastTimestamp = cutoff;
 
-      const buckets = result.poolStats?.items || [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const result = await ponderClient.query(
+          `
+          query GetPoolStatsForChart($where: poolStatFilter = {}) {
+            poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: ${PAGE_LIMIT}) {
+              items { poolAddress, volume0, volume1, timestamp, type }
+            }
+          }
+          `,
+          {
+            where: {
+              type: bucketType,
+              poolAddress: poolAddress,
+              timestamp_gte: lastTimestamp,
+            },
+          },
+        );
+
+        const items = result.poolStats?.items || [];
+        if (items.length === 0) break;
+
+        buckets.push(...items);
+
+        // Stop if this page wasn't full (no more data)
+        if (items.length < PAGE_LIMIT) break;
+
+        // Advance cursor past the last timestamp to avoid re-fetching the boundary record.
+        // poolStat buckets have unique timestamps per (pool, type), so +1 is safe.
+        const lastItem = items[items.length - 1];
+        lastTimestamp = (parseInt(lastItem.timestamp) + 1).toString();
+      }
 
       if (!enrichedPool && buckets.length === 0) {
         res.status(404).json({ error: "Pool not found" });

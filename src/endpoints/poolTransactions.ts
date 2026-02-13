@@ -28,8 +28,19 @@ export function createPoolTransactionsHandler(
       const whereClause: Record<string, unknown> = {
         poolAddress: poolAddress,
       };
+      // Parse compound cursor "timestamp:id" (new) or plain timestamp (legacy).
+      // Compound cursors use blockTimestamp_lte so same-timestamp records aren't
+      // skipped; the cursor id is used to strip already-seen records after fetch.
+      let cursorId: string | undefined;
       if (cursor) {
-        whereClause.blockTimestamp_lt = cursor;
+        const colonIdx = cursor.indexOf(":");
+        if (colonIdx > 0) {
+          const cursorTimestamp = cursor.substring(0, colonIdx);
+          cursorId = cursor.substring(colonIdx + 1);
+          whereClause.blockTimestamp_lte = cursorTimestamp;
+        } else {
+          whereClause.blockTimestamp_lt = cursor;
+        }
       }
 
       // Run ExploreStatsService and Ponder query in parallel
@@ -57,7 +68,8 @@ export function createPoolTransactionsHandler(
           `,
           {
             where: whereClause,
-            limit: first,
+            // Over-fetch slightly when deduplicating so we still return `first` results
+            limit: cursorId ? first + 10 : first,
           },
         ),
       ]);
@@ -73,7 +85,18 @@ export function createPoolTransactionsHandler(
       const token0Decimals = token0Info?.decimals ?? 18;
       const token1Decimals = token1Info?.decimals ?? 18;
 
-      const activities = result.poolActivitys?.items || [];
+      let activities: any[] = result.poolActivitys?.items || [];
+
+      // When using compound cursor, strip the already-seen record(s) and trim to `first`
+      if (cursorId && activities.length > 0) {
+        const cursorIdx = activities.findIndex(
+          (a: { id: string }) => a.id === cursorId,
+        );
+        if (cursorIdx >= 0) {
+          activities = activities.slice(cursorIdx + 1);
+        }
+        activities = activities.slice(0, first);
+      }
 
       if (!enrichedPool && activities.length === 0) {
         res.status(404).json({ error: "Pool not found" });
@@ -170,10 +193,18 @@ export function createPoolTransactionsHandler(
         },
       );
 
+      // Build cursor from the last activity's blockTimestamp + id for deterministic pagination.
+      // Clients should pass this opaque cursor string to get the next page.
+      const lastActivity = activities[activities.length - 1];
+      const nextCursor = lastActivity
+        ? `${lastActivity.blockTimestamp}:${lastActivity.id}`
+        : undefined;
+
       res.json({
         v3Pool: {
           id: poolAddress,
           transactions,
+          cursor: nextCursor,
         },
       });
     } catch (error) {
