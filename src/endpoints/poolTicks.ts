@@ -33,6 +33,14 @@ const POOL_ABI = [
   "function tickSpacing() view returns (int24)",
 ];
 
+interface PoolTicksCache {
+  data: any;
+  timestamp: number;
+}
+
+const POOL_TICKS_CACHE_TTL = 15_000; // 15 seconds
+const poolTicksCache = new Map<string, PoolTicksCache>();
+
 export function createPoolTicksHandler(
   providers: Map<number, ethers.providers.StaticJsonRpcProvider>,
   logger: Logger,
@@ -46,6 +54,15 @@ export function createPoolTicksHandler(
     try {
       const poolAddress = getAddress(req.params.address);
       const chainId = req.query.chainId as unknown as number;
+
+      // Check cache first
+      const cacheKey = `${chainId}:${poolAddress}`;
+      const cached = poolTicksCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < POOL_TICKS_CACHE_TTL) {
+        log.debug({ poolAddress, chainId }, "Serving poolTicks from cache");
+        res.json(cached.data);
+        return;
+      }
 
       const provider = providers.get(chainId);
       if (!provider) {
@@ -181,7 +198,7 @@ export function createPoolTicksHandler(
         );
       }
 
-      res.json({
+      const responseData = {
         ticks: allTicks,
         pool: {
           tick: currentTick,
@@ -189,7 +206,14 @@ export function createPoolTicksHandler(
           liquidity: poolLiquidity,
           tickSpacing,
         },
+      };
+
+      poolTicksCache.set(cacheKey, {
+        data: responseData,
+        timestamp: Date.now(),
       });
+
+      res.json(responseData);
     } catch (error) {
       log.error({ error }, "Failed to get pool ticks");
       res.status(500).json({

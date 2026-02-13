@@ -229,10 +229,7 @@ export function createPoolDetailsHandler(
         | undefined;
 
       try {
-        const exploreData = await exploreStatsService.getExploreStats(chainId);
-        enrichedPool = exploreData.stats?.poolStatsV3?.find(
-          (p) => p.id.toLowerCase() === address.toLowerCase(),
-        );
+        enrichedPool = await exploreStatsService.getPoolStats(chainId, address);
       } catch (err) {
         log.warn(
           { error: err },

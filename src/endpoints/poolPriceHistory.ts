@@ -6,6 +6,14 @@ import { ExploreStatsService } from "../services/ExploreStatsService";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
+interface ResponseCache {
+  data: any;
+  timestamp: number;
+}
+
+const RESPONSE_CACHE_TTL = 30_000; // 30 seconds
+const priceHistoryCache = new Map<string, ResponseCache>();
+
 interface PriceHistoryEntry {
   id: string;
   token0Price: number;
@@ -49,6 +57,15 @@ export function createPoolPriceHistoryHandler(
       const chainId = req.query.chainId as unknown as number;
       const duration = req.query.duration as unknown as Duration;
 
+      // Check cache first
+      const cacheKey = `${chainId}:${poolAddress}:${duration}`;
+      const cached = priceHistoryCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < RESPONSE_CACHE_TTL) {
+        log.debug({ poolAddress, chainId, duration }, "Serving price history from cache");
+        res.json(cached.data);
+        return;
+      }
+
       const { hoursBack, resampleSec } = getDurationParams(duration);
       const cutoff = (
         Math.floor(Date.now() / 1000) -
@@ -56,10 +73,7 @@ export function createPoolPriceHistoryHandler(
       ).toString();
 
       // Get token info and prices from ExploreStatsService
-      const exploreData = await exploreStatsService.getExploreStats(chainId);
-      const enrichedPool = exploreData.stats?.poolStatsV3?.find(
-        (p) => p.id.toLowerCase() === poolAddress.toLowerCase(),
-      );
+      const enrichedPool = await exploreStatsService.getPoolStats(chainId, poolAddress);
 
       const token0Decimals = enrichedPool?.token0?.decimals ?? 18;
       const token1Decimals = enrichedPool?.token1?.decimals ?? 18;
@@ -171,6 +185,7 @@ export function createPoolPriceHistoryHandler(
           timestamp: point.timestamp,
         }));
 
+      priceHistoryCache.set(cacheKey, { data: entries, timestamp: Date.now() });
       res.json(entries);
     } catch (error) {
       log.error({ error }, "Failed to get pool price history");

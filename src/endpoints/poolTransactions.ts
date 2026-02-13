@@ -44,8 +44,8 @@ export function createPoolTransactionsHandler(
       }
 
       // Run ExploreStatsService and Ponder query in parallel
-      const [exploreData, result] = await Promise.all([
-        exploreStatsService.getExploreStats(chainId),
+      const [enrichedPool, result] = await Promise.all([
+        exploreStatsService.getPoolStats(chainId, poolAddress),
         ponderClient.query(
           `
           query GetPoolTransactions($where: poolActivityFilter = {}, $limit: Int = 25) {
@@ -73,10 +73,6 @@ export function createPoolTransactionsHandler(
           },
         ),
       ]);
-
-      const enrichedPool = exploreData.stats?.poolStatsV3?.find(
-        (p) => p.id.toLowerCase() === poolAddress.toLowerCase(),
-      );
 
       const token0Info = enrichedPool?.token0;
       const token1Info = enrichedPool?.token1;

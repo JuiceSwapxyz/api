@@ -260,6 +260,20 @@ export class ExploreStatsService {
     }
   }
 
+  /**
+   * Look up a single V3 pool's stats from the cached explore data.
+   * Returns undefined if the pool is not found.
+   */
+  async getPoolStats(
+    chainId: number,
+    poolAddress: string,
+  ): Promise<PoolStatsResponse | undefined> {
+    const exploreData = await this.getExploreStats(chainId);
+    return exploreData.stats?.poolStatsV3?.find(
+      (p) => p.id.toLowerCase() === poolAddress.toLowerCase(),
+    );
+  }
+
   async getExploreStats(chainId: number): Promise<ExploreStatsResponseData> {
     const cached = this.cache.get(chainId);
     const now = Date.now();

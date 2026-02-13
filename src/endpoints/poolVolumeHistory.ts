@@ -7,6 +7,14 @@ import { ExploreStatsService } from "../services/ExploreStatsService";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
+interface ResponseCache {
+  data: any;
+  timestamp: number;
+}
+
+const RESPONSE_CACHE_TTL = 30_000; // 30 seconds
+const volumeHistoryCache = new Map<string, ResponseCache>();
+
 interface VolumeHistoryEntry {
   id: string;
   value: number;
@@ -53,6 +61,15 @@ export function createPoolVolumeHistoryHandler(
       const chainId = req.query.chainId as unknown as number;
       const duration = req.query.duration as unknown as Duration;
 
+      // Check cache first
+      const cacheKey = `${chainId}:${poolAddress}:${duration}`;
+      const cached = volumeHistoryCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < RESPONSE_CACHE_TTL) {
+        log.debug({ poolAddress, chainId, duration }, "Serving volume history from cache");
+        res.json(cached.data);
+        return;
+      }
+
       const { bucketType, hoursBack } = getQueryParams(duration);
       const cutoff = (
         Math.floor(Date.now() / 1000) -
@@ -60,10 +77,7 @@ export function createPoolVolumeHistoryHandler(
       ).toString();
 
       // Fetch token prices from ExploreStatsService
-      const exploreData = await exploreStatsService.getExploreStats(chainId);
-      const enrichedPool = exploreData.stats?.poolStatsV3?.find(
-        (p) => p.id.toLowerCase() === poolAddress.toLowerCase(),
-      );
+      const enrichedPool = await exploreStatsService.getPoolStats(chainId, poolAddress);
 
       const token0Price = enrichedPool?.token0?.price?.value ?? 0;
       const token1Price = enrichedPool?.token1?.price?.value ?? 0;
@@ -145,6 +159,7 @@ export function createPoolVolumeHistoryHandler(
         },
       );
 
+      volumeHistoryCache.set(cacheKey, { data: entries, timestamp: Date.now() });
       res.json(entries);
     } catch (error) {
       log.error({ error }, "Failed to get pool volume history");
