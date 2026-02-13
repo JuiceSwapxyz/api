@@ -41,6 +41,43 @@ export function validateBody(schema: ZodSchema, logger: Logger) {
 }
 
 /**
+ * Validation middleware factory for route parameters validation
+ * Uses Zod schemas to validate incoming route params (e.g. :address)
+ */
+export function validateParams(schema: ZodSchema, logger: Logger) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      req.params = schema.parse(req.params) as any;
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const errors = error.issues.map((err: any) => ({
+          field: err.path.join("."),
+          message: err.message,
+        }));
+
+        logger.debug(
+          { errors, params: req.params },
+          "Route parameter validation failed",
+        );
+
+        res.status(400).json({
+          error: "Validation failed",
+          detail: "Invalid route parameters",
+          errors,
+        });
+      } else {
+        logger.error({ error }, "Unexpected error during validation");
+        res.status(500).json({
+          error: "Internal server error",
+          detail: "An error occurred during validation",
+        });
+      }
+    }
+  };
+}
+
+/**
  * Validation middleware factory for query parameters validation
  * Uses Zod schemas to validate incoming query parameters
  */

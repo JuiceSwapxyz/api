@@ -5,7 +5,7 @@
  * Balances are cached for 30 seconds as they change less frequently than quotes.
  */
 
-import Logger from 'bunyan';
+import Logger from "bunyan";
 
 interface CachedPortfolio {
   data: any;
@@ -42,7 +42,7 @@ export class PortfolioCache {
     // Start periodic cleanup
     setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
     if (this.logger) {
-      this.logger.debug('[PortfolioCache] Initialized with TTL: 30s');
+      this.logger.debug("[PortfolioCache] Initialized with TTL: 30s");
     }
   }
 
@@ -72,7 +72,9 @@ export class PortfolioCache {
     if (!cached) {
       this.stats.misses++;
       this.updateHitRate();
-      this.logger?.debug(`[PortfolioCache] MISS - Address: ${address.substring(0, 10)}...`);
+      this.logger?.debug(
+        `[PortfolioCache] MISS - Address: ${address.substring(0, 10)}...`,
+      );
       return null;
     }
 
@@ -84,7 +86,7 @@ export class PortfolioCache {
       this.stats.misses++;
       this.updateHitRate();
       this.logger?.debug(
-        `[PortfolioCache] EXPIRED - Address: ${address.substring(0, 10)}... (age: ${age}ms)`
+        `[PortfolioCache] EXPIRED - Address: ${address.substring(0, 10)}... (age: ${age}ms)`,
       );
       return null;
     }
@@ -95,7 +97,7 @@ export class PortfolioCache {
     this.updateHitRate();
 
     this.logger?.debug(
-      `[PortfolioCache] HIT - Address: ${address.substring(0, 10)}... (age: ${age}ms, hits: ${cached.hitCount})`
+      `[PortfolioCache] HIT - Address: ${address.substring(0, 10)}... (age: ${age}ms, hits: ${cached.hitCount})`,
     );
 
     return cached.data;
@@ -121,7 +123,7 @@ export class PortfolioCache {
     this.stats.cacheSize = this.cache.size;
 
     this.logger?.debug(
-      `[PortfolioCache] STORED - Address: ${address.substring(0, 10)}... (size: ${this.cache.size})`
+      `[PortfolioCache] STORED - Address: ${address.substring(0, 10)}... (size: ${this.cache.size})`,
     );
   }
 
@@ -140,7 +142,9 @@ export class PortfolioCache {
     }
 
     if (removed > 0) {
-      this.logger?.debug(`[PortfolioCache] Cleanup removed ${removed} expired entries`);
+      this.logger?.debug(
+        `[PortfolioCache] Cleanup removed ${removed} expired entries`,
+      );
     }
 
     this.stats.cacheSize = this.cache.size;
@@ -162,7 +166,9 @@ export class PortfolioCache {
 
     if (oldestKey) {
       this.cache.delete(oldestKey);
-      this.logger?.debug(`[PortfolioCache] Evicted oldest entry: ${oldestKey.substring(0, 20)}...`);
+      this.logger?.debug(
+        `[PortfolioCache] Evicted oldest entry: ${oldestKey.substring(0, 20)}...`,
+      );
     }
   }
 
@@ -171,7 +177,8 @@ export class PortfolioCache {
    */
   private updateHitRate(): void {
     if (this.stats.totalRequests > 0) {
-      this.stats.avgHitRate = (this.stats.hits / this.stats.totalRequests) * 100;
+      this.stats.avgHitRate =
+        (this.stats.hits / this.stats.totalRequests) * 100;
     }
   }
 
@@ -188,7 +195,7 @@ export class PortfolioCache {
   clear(): void {
     this.cache.clear();
     this.stats.cacheSize = 0;
-    this.logger?.debug('[PortfolioCache] Cache cleared');
+    this.logger?.debug("[PortfolioCache] Cache cleared");
   }
 }
 

@@ -5,6 +5,9 @@ import { erc20Abi, formatUnits, getAddress } from "viem";
 import { ChainId } from "@juiceswapxyz/sdk-core";
 import { providers, utils } from "ethers";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
+import { ExploreStatsService } from "../services/ExploreStatsService";
+import { getChainName } from "../config/chains";
+import { computeVolumeUsd } from "../utils/volumeUsd";
 
 export interface PoolDetailsRequestBody {
   address: string;
@@ -73,14 +76,6 @@ export interface PoolDetailsResponse {
   };
 }
 
-const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
-  1: "ETHEREUM",
-  11155111: "ETHEREUM_SEPOLIA",
-  137: "POLYGON",
-  5115: "CITREA_TESTNET",
-  4114: "CITREA_MAINNET",
-};
-
 /**
  * @swagger
  * /v1/pools/v3/details:
@@ -111,6 +106,7 @@ const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
 export function createPoolDetailsHandler(
   providers: Map<ChainId, providers.StaticJsonRpcProvider>,
   logger: Logger,
+  exploreStatsService: ExploreStatsService,
 ) {
   return async function handlePoolDetails(
     req: Request,
@@ -222,11 +218,77 @@ export function createPoolDetailsHandler(
         return 0;
       });
 
-      const todaysTimestamp = Math.floor(Date.now() / 1000 / 86400) * 86400;
-      const volumen24h =
-        todaysTimestamp < poolGeneralInfo.poolStats.items?.[0]?.timestamp
-          ? poolGeneralInfo.poolStats.items?.[0]?.volume0
-          : 0;
+      // Look up enriched pool data from ExploreStatsService (cached, 60s TTL)
+      const address = getAddress(body.address);
+      let enrichedPool:
+        | {
+            totalLiquidity?: { value: number };
+            volume1Day?: { value: number };
+            token0?: { price?: { value: number } };
+            token1?: { price?: { value: number } };
+          }
+        | undefined;
+
+      try {
+        enrichedPool = await exploreStatsService.getPoolStats(chainId, address);
+      } catch (err) {
+        log.warn(
+          { error: err },
+          "Failed to fetch explore stats for pool enrichment",
+        );
+      }
+
+      const token0Price = enrichedPool?.token0?.price?.value ?? 0;
+      const token1Price = enrichedPool?.token1?.price?.value ?? 0;
+      const tvl = enrichedPool?.totalLiquidity?.value ?? 0;
+      const volume24h = enrichedPool?.volume1Day?.value ?? 0;
+
+      // Build historicalVolume from Ponder poolStat 1h buckets (last 48h)
+      // This is used by calc24HVolChange() on the frontend
+      let historicalVolume: Array<{ value: number; timestamp: number }> = [];
+      try {
+        const cutoff48h = (
+          Math.floor(Date.now() / 1000) -
+          48 * 3600
+        ).toString();
+        const poolStatsResult = await ponderClient.query(
+          `
+          query GetPoolStats1h($where: poolStatFilter = {}) {
+            poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: 100) {
+              items { poolAddress, volume0, volume1, timestamp, type }
+            }
+          }
+          `,
+          {
+            where: {
+              type: "1h",
+              poolAddress: address,
+              timestamp_gte: cutoff48h,
+            },
+          },
+        );
+
+        const buckets = poolStatsResult.poolStats?.items || [];
+        historicalVolume = buckets.map(
+          (bucket: {
+            volume0: string;
+            volume1: string;
+            timestamp: string;
+          }) => ({
+            value: computeVolumeUsd(
+              bucket.volume0,
+              bucket.volume1,
+              tokenInfo.token0.decimals,
+              tokenInfo.token1.decimals,
+              token0Price,
+              token1Price,
+            ),
+            timestamp: parseInt(bucket.timestamp),
+          }),
+        );
+      } catch (err) {
+        log.warn({ error: err }, "Failed to fetch historical volume for pool");
+      }
 
       const response: PoolDetailsResponse = {
         data: {
@@ -238,7 +300,7 @@ export function createPoolDetailsHandler(
             token0: {
               id: tokenInfo.token0.id,
               address: tokenInfo.token0.address,
-              chain: CHAIN_ID_TO_CHAIN_NAME[body.chainId],
+              chain: getChainName(body.chainId),
               decimals: tokenInfo.token0.decimals,
               name: tokenInfo.token0.name,
               standard: "ERC20",
@@ -260,7 +322,7 @@ export function createPoolDetailsHandler(
                 id: tokenInfo.token0.id,
                 price: {
                   id: tokenInfo.token0.id,
-                  value: 0,
+                  value: token0Price,
                 },
               },
             },
@@ -270,7 +332,7 @@ export function createPoolDetailsHandler(
             token1: {
               id: tokenInfo.token1.id,
               address: tokenInfo.token1.address,
-              chain: CHAIN_ID_TO_CHAIN_NAME[body.chainId],
+              chain: getChainName(body.chainId),
               decimals: tokenInfo.token1.decimals,
               name: tokenInfo.token1.name,
               standard: "ERC20",
@@ -292,7 +354,7 @@ export function createPoolDetailsHandler(
                 id: tokenInfo.token1.id,
                 price: {
                   id: tokenInfo.token1.id,
-                  value: 0,
+                  value: token1Price,
                 },
               },
             },
@@ -301,11 +363,11 @@ export function createPoolDetailsHandler(
             ),
             txCount: poolGeneralInfo.poolStat?.txCount || 0,
             volume24h: {
-              value: volumen24h || 0,
+              value: volume24h,
             },
-            historicalVolume: [],
+            historicalVolume,
             totalLiquidity: {
-              value: 0,
+              value: tvl,
             },
             totalLiquidityPercentChange24h: {
               value: 0,
@@ -339,11 +401,7 @@ export function createPoolDetailsHandler(
         "Failed to get pool details",
       );
 
-      res.status(500).json({
-        error: "Internal server error",
-        detail:
-          error instanceof Error ? error.message : "Unknown error occurred",
-      });
+      res.status(500).json({ error: "Internal server error" });
     }
   };
 }

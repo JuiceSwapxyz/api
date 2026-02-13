@@ -544,6 +544,51 @@ export type GetBridgeSwapsByUserQuery = z.infer<
   typeof GetBridgeSwapsByUserQuerySchema
 >;
 
+// Pool detail endpoint schemas (GET routes with :address param)
+export const PoolAddressParamsSchema = z.object({
+  address: AddressSchema,
+});
+
+export const PoolHistoryQuerySchema = z.object({
+  chainId: z
+    .string()
+    .optional()
+    .default("4114")
+    .transform((val) => parseInt(val, 10))
+    .pipe(ChainIdSchema),
+  duration: z
+    .string()
+    .optional()
+    .default("DAY")
+    .transform((val) => val.toUpperCase())
+    .pipe(z.enum(["DAY", "WEEK", "MONTH", "YEAR"])),
+});
+
+export const PoolTransactionsQuerySchema = z.object({
+  chainId: z
+    .string()
+    .optional()
+    .default("4114")
+    .transform((val) => parseInt(val, 10))
+    .pipe(ChainIdSchema),
+  first: z
+    .string()
+    .optional()
+    .default("25")
+    .transform((val) => parseInt(val, 10))
+    .pipe(z.number().int().min(1).max(100)),
+  cursor: z.string().optional(),
+});
+
+export const PoolTicksQuerySchema = z.object({
+  chainId: z
+    .string()
+    .optional()
+    .default("4114")
+    .transform((val) => parseInt(val, 10))
+    .pipe(ChainIdSchema),
+});
+
 // Auth schemas
 export const AuthVerifyRequestSchema = z.object({
   address: z.string().refine((val) => ethers.utils.isAddress(val), {

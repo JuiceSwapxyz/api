@@ -45,7 +45,11 @@ import {
   createNFTSignatureHandler,
 } from "./endpoints/firstSqueezerCampaign";
 import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
-import { validateBody, validateQuery } from "./middleware/validation";
+import {
+  validateBody,
+  validateQuery,
+  validateParams,
+} from "./middleware/validation";
 import { getApolloMiddleware } from "./adapters/handleGraphQL";
 import { initializeResolvers } from "./adapters/handleGraphQL/resolvers";
 import { quoteCache } from "./cache/quoteCache";
@@ -78,6 +82,10 @@ import {
   BulkCreateBridgeSwapSchema,
   GetBridgeSwapsByUserQuerySchema,
   AuthVerifyRequestSchema,
+  PoolAddressParamsSchema,
+  PoolHistoryQuerySchema,
+  PoolTransactionsQuerySchema,
+  PoolTicksQuerySchema,
 } from "./validation/schemas";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
@@ -89,6 +97,12 @@ import { createPoolDetailsHandler } from "./endpoints/poolDetails";
 import { createProtocolStatsHandler } from "./endpoints/protocolStats";
 import { createExploreStatsHandler } from "./endpoints/exploreStats";
 import { ExploreStatsService } from "./services/ExploreStatsService";
+import { ChainId } from "@juiceswapxyz/sdk-core";
+import { createPoolVolumeHistoryHandler } from "./endpoints/poolVolumeHistory";
+import { createPoolPriceHistoryHandler } from "./endpoints/poolPriceHistory";
+import { createPoolTransactionsHandler } from "./endpoints/poolTransactions";
+import { createPoolTicksHandler } from "./endpoints/poolTicks";
+import { ResponseCache } from "./cache/responseCache";
 import {
   createBridgeSwapHandler,
   createBulkBridgeSwapHandler,
@@ -311,8 +325,12 @@ async function bootstrap() {
     routerService,
     logger,
   );
-  const handlePoolDetails = createPoolDetailsHandler(providers, logger);
   const exploreStatsService = new ExploreStatsService(providers, logger);
+  const handlePoolDetails = createPoolDetailsHandler(
+    providers,
+    logger,
+    exploreStatsService,
+  );
   const handleProtocolStats = createProtocolStatsHandler(
     providers,
     logger,
@@ -322,6 +340,19 @@ async function bootstrap() {
     exploreStatsService,
     logger,
   );
+  const handlePoolVolumeHistory = createPoolVolumeHistoryHandler(
+    exploreStatsService,
+    logger,
+  );
+  const handlePoolPriceHistory = createPoolPriceHistoryHandler(
+    exploreStatsService,
+    logger,
+  );
+  const handlePoolTransactions = createPoolTransactionsHandler(
+    exploreStatsService,
+    logger,
+  );
+  const handlePoolTicks = createPoolTicksHandler(providers, logger);
   const handleSvJusdSharePrice = createSvJusdSharePriceHandler(
     svJusdPriceService,
     logger,
@@ -422,6 +453,36 @@ async function bootstrap() {
 
   // Explore stats endpoint (enriched with USD prices, TVL, volumes)
   app.get("/v1/explore/stats", quoteLimiter, handleExploreStats);
+
+  // Pool detail data endpoints (volume chart, price chart, transactions)
+  app.get(
+    "/v1/pools/:address/volume-history",
+    generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolHistoryQuerySchema, logger),
+    handlePoolVolumeHistory,
+  );
+  app.get(
+    "/v1/pools/:address/price-history",
+    generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolHistoryQuerySchema, logger),
+    handlePoolPriceHistory,
+  );
+  app.get(
+    "/v1/pools/:address/transactions",
+    generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolTransactionsQuerySchema, logger),
+    handlePoolTransactions,
+  );
+  app.get(
+    "/v1/pools/:address/ticks",
+    generalLimiter,
+    validateParams(PoolAddressParamsSchema, logger),
+    validateQuery(PoolTicksQuerySchema, logger),
+    handlePoolTicks,
+  );
 
   // LP endpoints
   app.post(
@@ -719,11 +780,20 @@ async function bootstrap() {
     logger.info(
       `Supported chains: ${routerService.getSupportedChains().join(", ")}`,
     );
+
+    // Pre-warm ExploreStatsService cache so no user request hits a cold cache
+    exploreStatsService.startBackgroundRefresh([
+      ChainId.CITREA_MAINNET,
+      ChainId.CITREA_TESTNET,
+    ]);
   });
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, starting graceful shutdown...`);
+
+    exploreStatsService.stopBackgroundRefresh();
+    ResponseCache.destroyAll();
 
     server.close(() => {
       logger.info("HTTP server closed");
