@@ -18,39 +18,43 @@ export function createMyBridgeSwapsSummaryHandler(logger: Logger) {
     try {
       await syncBridgeSwapStatuses(userId, logger);
 
-      const totalPendingSwaps = await prisma.bridgeSwap.count({
-        where: {
-          userId,
-          status: { in: Object.values(swapStatusPending) },
-        },
-      });
-
-      const totalExpiredSwaps = await prisma.bridgeSwap.count({
-        where: {
-          userId,
-          status: LdsSwapStatus.SwapExpired,
-        },
-      });
-
-      const totalSwaps = await prisma.bridgeSwap.count({
-        where: {
-          userId,
-        },
-      });
-
-      const totalSuccessSwaps = await prisma.bridgeSwap.count({
-        where: {
-          userId,
-          status: { in: Object.values(swapStatusSuccess) },
-        },
-      });
-
-      const refundableSwaps = await prisma.bridgeSwap.count({
-        where: {
-          userId,
-          status: LdsSwapStatus.UserRefundable,
-        },
-      });
+      const [
+        totalPendingSwaps,
+        totalExpiredSwaps,
+        totalSwaps,
+        totalSuccessSwaps,
+        refundableSwaps,
+      ] = await Promise.all([
+        prisma.bridgeSwap.count({
+          where: {
+            userId,
+            status: { in: Object.values(swapStatusPending) },
+          },
+        }),
+        prisma.bridgeSwap.count({
+          where: {
+            userId,
+            status: LdsSwapStatus.SwapExpired,
+          },
+        }),
+        prisma.bridgeSwap.count({
+          where: {
+            userId,
+          },
+        }),
+        prisma.bridgeSwap.count({
+          where: {
+            userId,
+            status: { in: Object.values(swapStatusSuccess) },
+          },
+        }),
+        prisma.bridgeSwap.count({
+          where: {
+            userId,
+            status: LdsSwapStatus.UserRefundable,
+          },
+        }),
+      ]);
 
       res.json({
         totalSwaps: totalSwaps,
