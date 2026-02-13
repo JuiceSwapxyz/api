@@ -136,7 +136,7 @@ export class EvmBridgeIndexer {
       }`,
       { address: address.toLowerCase() },
     );
-    
+
     return {
       refundable: data?.data?.refundable?.items ?? [],
       claimable: data?.data?.claimable?.items ?? [],

@@ -1,7 +1,11 @@
 import Logger from "bunyan";
 import { BridgeSwap, SwapType } from "../generated/prisma";
 import { prisma } from "../db/prisma";
-import { LdsSwapStatus, localUserFinalStatuses, swapStatusPending } from "../types/BridgeSwapsStatus";
+import {
+  LdsSwapStatus,
+  localUserFinalStatuses,
+  swapStatusPending,
+} from "../types/BridgeSwapsStatus";
 import { serializeBridgeSwap } from "../utils/bridgeSwapSerialize";
 import { BtcOnchainIndexerService } from "./BtcOnchainIndexerService";
 
@@ -20,7 +24,11 @@ export async function computeRefundableBtcChainSwaps(
       refundTx: null,
       claimTx: null,
       status: {
-        notIn: [LdsSwapStatus.SwapCreated, ...Object.values(swapStatusPending), ...localUserFinalStatuses],
+        notIn: [
+          LdsSwapStatus.SwapCreated,
+          ...Object.values(swapStatusPending),
+          ...localUserFinalStatuses,
+        ],
       },
     },
   });
