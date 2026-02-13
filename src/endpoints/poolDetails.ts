@@ -270,7 +270,11 @@ export function createPoolDetailsHandler(
 
         const buckets = poolStatsResult.poolStats?.items || [];
         historicalVolume = buckets.map(
-          (bucket: { volume0: string; volume1: string; timestamp: string }) => ({
+          (bucket: {
+            volume0: string;
+            volume1: string;
+            timestamp: string;
+          }) => ({
             value: computeVolumeUsd(
               bucket.volume0,
               bucket.volume1,

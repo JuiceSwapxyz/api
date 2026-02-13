@@ -194,7 +194,10 @@ export function createPoolPriceHistoryHandler(
 
       // Forward-fill last price to "now" so low-volume pools don't trigger stale-data warnings
       const nowSeconds = Math.floor(Date.now() / 1000);
-      if (entries.length > 0 && entries[entries.length - 1].timestamp < nowSeconds) {
+      if (
+        entries.length > 0 &&
+        entries[entries.length - 1].timestamp < nowSeconds
+      ) {
         const lastEntry = entries[entries.length - 1];
         entries.push({
           id: `${poolAddress}-${nowSeconds}`,
