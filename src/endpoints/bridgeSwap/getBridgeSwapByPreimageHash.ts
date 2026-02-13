@@ -41,7 +41,11 @@ export function createGetBridgeSwapByPreimageHashHandler(logger: Logger) {
       if (resolvedSwap !== bridgeSwap) {
         await prisma.bridgeSwap.update({
           where: { id: bridgeSwap.id },
-          data: { status: resolvedSwap.status },
+          data: {
+            status: resolvedSwap.status,
+            claimTx: resolvedSwap.claimTx,
+            refundTx: resolvedSwap.refundTx,
+          },
         });
       }
 

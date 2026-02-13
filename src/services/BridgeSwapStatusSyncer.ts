@@ -60,7 +60,11 @@ async function syncPendingSwapStatuses(
       swapsToUpdate.map((swap) =>
         prisma.bridgeSwap.update({
           where: { id: swap.id },
-          data: { status: swap.status },
+          data: {
+            status: swap.status,
+            claimTx: swap.claimTx,
+            refundTx: swap.refundTx,
+          },
         }),
       ),
     );
@@ -100,7 +104,11 @@ async function syncExpiredSwapStatuses(
       swapsToUpdate.map((swap) =>
         prisma.bridgeSwap.update({
           where: { id: swap.id },
-          data: { status: swap.status },
+          data: {
+            status: swap.status,
+            claimTx: swap.claimTx,
+            refundTx: swap.refundTx,
+          },
         }),
       ),
     );
@@ -139,7 +147,11 @@ async function syncFailedSwapStatuses(
       swapsToUpdate.map((swap) =>
         prisma.bridgeSwap.update({
           where: { id: swap.id },
-          data: { status: swap.status },
+          data: {
+            status: swap.status,
+            claimTx: swap.claimTx,
+            refundTx: swap.refundTx,
+          },
         }),
       ),
     );

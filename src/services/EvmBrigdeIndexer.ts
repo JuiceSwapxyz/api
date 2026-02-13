@@ -73,7 +73,7 @@ export class EvmBridgeIndexer {
       }`,
       { preimageHash: prefix0x(preimageHash), chainId },
     );
-    return data?.lockupss?.items ?? [];
+    return data?.data?.lockupss?.items ?? [];
   }
 
   async getEvmBrigeLockups(
@@ -100,8 +100,8 @@ export class EvmBridgeIndexer {
     );
 
     return {
-      originLockup: data?.originLockup,
-      destinationLockup: data?.destinationLockup,
+      originLockup: data?.data?.originLockup,
+      destinationLockup: data?.data?.destinationLockup,
     };
   }
 
