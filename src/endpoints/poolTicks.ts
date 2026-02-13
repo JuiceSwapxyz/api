@@ -3,6 +3,7 @@ import Logger from "bunyan";
 import { getAddress } from "viem";
 import { ethers } from "ethers";
 import { getTickLensAddress } from "../config/contracts";
+import { ResponseCache } from "../cache/responseCache";
 
 const TICK_LENS_ABI = [
   {
@@ -33,13 +34,7 @@ const POOL_ABI = [
   "function tickSpacing() view returns (int24)",
 ];
 
-interface PoolTicksCache {
-  data: any;
-  timestamp: number;
-}
-
-const POOL_TICKS_CACHE_TTL = 15_000; // 15 seconds
-const poolTicksCache = new Map<string, PoolTicksCache>();
+const poolTicksCache = new ResponseCache({ ttl: 15_000, maxSize: 200, name: "PoolTicksCache" });
 
 export function createPoolTicksHandler(
   providers: Map<number, ethers.providers.StaticJsonRpcProvider>,
@@ -58,9 +53,9 @@ export function createPoolTicksHandler(
       // Check cache first
       const cacheKey = `${chainId}:${poolAddress}`;
       const cached = poolTicksCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < POOL_TICKS_CACHE_TTL) {
+      if (cached) {
         log.debug({ poolAddress, chainId }, "Serving poolTicks from cache");
-        res.json(cached.data);
+        res.json(cached);
         return;
       }
 
@@ -208,10 +203,7 @@ export function createPoolTicksHandler(
         },
       };
 
-      poolTicksCache.set(cacheKey, {
-        data: responseData,
-        timestamp: Date.now(),
-      });
+      poolTicksCache.set(cacheKey, responseData);
 
       res.json(responseData);
     } catch (error) {

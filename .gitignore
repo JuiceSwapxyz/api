@@ -8,7 +8,7 @@ yalc.lock
 dist
 .DS_Store
 lib/types
-cache
+/cache
 .idea
 .claude/settings.local.json
 

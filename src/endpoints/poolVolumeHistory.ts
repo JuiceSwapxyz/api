@@ -4,16 +4,11 @@ import { getAddress } from "viem";
 import { ethers } from "ethers";
 import { getPonderClient } from "../services/PonderClient";
 import { ExploreStatsService } from "../services/ExploreStatsService";
+import { ResponseCache } from "../cache/responseCache";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
-interface ResponseCache {
-  data: any;
-  timestamp: number;
-}
-
-const RESPONSE_CACHE_TTL = 30_000; // 30 seconds
-const volumeHistoryCache = new Map<string, ResponseCache>();
+const volumeHistoryCache = new ResponseCache({ ttl: 30_000, maxSize: 500, name: "VolumeHistoryCache" });
 
 interface VolumeHistoryEntry {
   id: string;
@@ -64,9 +59,9 @@ export function createPoolVolumeHistoryHandler(
       // Check cache first
       const cacheKey = `${chainId}:${poolAddress}:${duration}`;
       const cached = volumeHistoryCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < RESPONSE_CACHE_TTL) {
+      if (cached) {
         log.debug({ poolAddress, chainId, duration }, "Serving volume history from cache");
-        res.json(cached.data);
+        res.json(cached);
         return;
       }
 
@@ -159,7 +154,7 @@ export function createPoolVolumeHistoryHandler(
         },
       );
 
-      volumeHistoryCache.set(cacheKey, { data: entries, timestamp: Date.now() });
+      volumeHistoryCache.set(cacheKey, entries);
       res.json(entries);
     } catch (error) {
       log.error({ error }, "Failed to get pool volume history");

@@ -3,16 +3,11 @@ import Logger from "bunyan";
 import { getAddress } from "viem";
 import { getPonderClient } from "../services/PonderClient";
 import { ExploreStatsService } from "../services/ExploreStatsService";
+import { ResponseCache } from "../cache/responseCache";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
-interface ResponseCache {
-  data: any;
-  timestamp: number;
-}
-
-const RESPONSE_CACHE_TTL = 30_000; // 30 seconds
-const priceHistoryCache = new Map<string, ResponseCache>();
+const priceHistoryCache = new ResponseCache({ ttl: 30_000, maxSize: 500, name: "PriceHistoryCache" });
 
 interface PriceHistoryEntry {
   id: string;
@@ -60,9 +55,9 @@ export function createPoolPriceHistoryHandler(
       // Check cache first
       const cacheKey = `${chainId}:${poolAddress}:${duration}`;
       const cached = priceHistoryCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < RESPONSE_CACHE_TTL) {
+      if (cached) {
         log.debug({ poolAddress, chainId, duration }, "Serving price history from cache");
-        res.json(cached.data);
+        res.json(cached);
         return;
       }
 
@@ -136,8 +131,14 @@ export function createPoolPriceHistoryHandler(
 
       // Convert each sqrtPriceX96 to token-pair price ratios (Uniswap subgraph convention)
       // token0Price = token0 per token1, token1Price = token1 per token0
-      const Q96 = 2 ** 96;
-      const decimalAdjust = 10 ** (token0Decimals - token1Decimals);
+      // Uses BigInt to preserve precision for uint160 values beyond Number.MAX_SAFE_INTEGER
+      const Q96 = BigInt(2) ** BigInt(96);
+      const Q96_SQ = Q96 * Q96;
+      const PRECISION = 10n ** 18n;
+
+      const decimalDiff = token0Decimals - token1Decimals;
+      const decimalAdjustNum = decimalDiff >= 0 ? 10n ** BigInt(decimalDiff) : 1n;
+      const decimalAdjustDen = decimalDiff >= 0 ? 1n : 10n ** BigInt(-decimalDiff);
 
       const rawPoints: Array<{
         timestamp: number;
@@ -146,11 +147,16 @@ export function createPoolPriceHistoryHandler(
       }> = [];
 
       for (const activity of activities) {
-        const sqrtPrice = parseFloat(activity.sqrtPriceX96);
-        if (!sqrtPrice || sqrtPrice <= 0) continue;
+        const sqrtPriceRaw = activity.sqrtPriceX96;
+        if (!sqrtPriceRaw || sqrtPriceRaw === "0") continue;
 
-        // priceRatio = token1 per token0 (price of token0 denominated in token1)
-        const priceRatio = (sqrtPrice / Q96) ** 2 * decimalAdjust;
+        const sqrtPrice = BigInt(sqrtPriceRaw);
+        if (sqrtPrice <= 0n) continue;
+
+        // priceRatio = (sqrtPrice^2 * decimalAdjustNum * PRECISION) / (Q96^2 * decimalAdjustDen)
+        const numerator = sqrtPrice * sqrtPrice * decimalAdjustNum * PRECISION;
+        const denominator = Q96_SQ * decimalAdjustDen;
+        const priceRatio = Number(numerator / denominator) / Number(PRECISION);
 
         rawPoints.push({
           timestamp: parseInt(activity.blockTimestamp),
@@ -185,7 +191,7 @@ export function createPoolPriceHistoryHandler(
           timestamp: point.timestamp,
         }));
 
-      priceHistoryCache.set(cacheKey, { data: entries, timestamp: Date.now() });
+      priceHistoryCache.set(cacheKey, entries);
       res.json(entries);
     } catch (error) {
       log.error({ error }, "Failed to get pool price history");
