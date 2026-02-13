@@ -61,7 +61,9 @@ export class ResponseCache {
       }
     }
     if (removed > 0) {
-      this.logger?.debug(`[${this.name}] Cleanup removed ${removed} expired entries`);
+      this.logger?.debug(
+        `[${this.name}] Cleanup removed ${removed} expired entries`,
+      );
     }
   }
 

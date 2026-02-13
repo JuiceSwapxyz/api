@@ -34,7 +34,11 @@ const POOL_ABI = [
   "function tickSpacing() view returns (int24)",
 ];
 
-const poolTicksCache = new ResponseCache({ ttl: 15_000, maxSize: 200, name: "PoolTicksCache" });
+const poolTicksCache = new ResponseCache({
+  ttl: 15_000,
+  maxSize: 200,
+  name: "PoolTicksCache",
+});
 
 export function createPoolTicksHandler(
   providers: Map<number, ethers.providers.StaticJsonRpcProvider>,

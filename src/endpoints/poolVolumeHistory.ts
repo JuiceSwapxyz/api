@@ -8,7 +8,11 @@ import { ResponseCache } from "../cache/responseCache";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
-const volumeHistoryCache = new ResponseCache({ ttl: 30_000, maxSize: 500, name: "VolumeHistoryCache" });
+const volumeHistoryCache = new ResponseCache({
+  ttl: 30_000,
+  maxSize: 500,
+  name: "VolumeHistoryCache",
+});
 
 interface VolumeHistoryEntry {
   id: string;
@@ -60,7 +64,10 @@ export function createPoolVolumeHistoryHandler(
       const cacheKey = `${chainId}:${poolAddress}:${duration}`;
       const cached = volumeHistoryCache.get(cacheKey);
       if (cached) {
-        log.debug({ poolAddress, chainId, duration }, "Serving volume history from cache");
+        log.debug(
+          { poolAddress, chainId, duration },
+          "Serving volume history from cache",
+        );
         res.json(cached);
         return;
       }
@@ -72,7 +79,10 @@ export function createPoolVolumeHistoryHandler(
       ).toString();
 
       // Fetch token prices from ExploreStatsService
-      const enrichedPool = await exploreStatsService.getPoolStats(chainId, poolAddress);
+      const enrichedPool = await exploreStatsService.getPoolStats(
+        chainId,
+        poolAddress,
+      );
 
       const token0Price = enrichedPool?.token0?.price?.value ?? 0;
       const token1Price = enrichedPool?.token1?.price?.value ?? 0;

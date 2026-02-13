@@ -7,7 +7,11 @@ import { ResponseCache } from "../cache/responseCache";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
-const priceHistoryCache = new ResponseCache({ ttl: 30_000, maxSize: 500, name: "PriceHistoryCache" });
+const priceHistoryCache = new ResponseCache({
+  ttl: 30_000,
+  maxSize: 500,
+  name: "PriceHistoryCache",
+});
 
 interface PriceHistoryEntry {
   id: string;
@@ -56,7 +60,10 @@ export function createPoolPriceHistoryHandler(
       const cacheKey = `${chainId}:${poolAddress}:${duration}`;
       const cached = priceHistoryCache.get(cacheKey);
       if (cached) {
-        log.debug({ poolAddress, chainId, duration }, "Serving price history from cache");
+        log.debug(
+          { poolAddress, chainId, duration },
+          "Serving price history from cache",
+        );
         res.json(cached);
         return;
       }
@@ -68,7 +75,10 @@ export function createPoolPriceHistoryHandler(
       ).toString();
 
       // Get token info and prices from ExploreStatsService
-      const enrichedPool = await exploreStatsService.getPoolStats(chainId, poolAddress);
+      const enrichedPool = await exploreStatsService.getPoolStats(
+        chainId,
+        poolAddress,
+      );
 
       const token0Decimals = enrichedPool?.token0?.decimals ?? 18;
       const token1Decimals = enrichedPool?.token1?.decimals ?? 18;
@@ -137,8 +147,10 @@ export function createPoolPriceHistoryHandler(
       const PRECISION = 10n ** 18n;
 
       const decimalDiff = token0Decimals - token1Decimals;
-      const decimalAdjustNum = decimalDiff >= 0 ? 10n ** BigInt(decimalDiff) : 1n;
-      const decimalAdjustDen = decimalDiff >= 0 ? 1n : 10n ** BigInt(-decimalDiff);
+      const decimalAdjustNum =
+        decimalDiff >= 0 ? 10n ** BigInt(decimalDiff) : 1n;
+      const decimalAdjustDen =
+        decimalDiff >= 0 ? 1n : 10n ** BigInt(-decimalDiff);
 
       const rawPoints: Array<{
         timestamp: number;
