@@ -23,14 +23,25 @@ export function createBridgeSwapHandler(logger: Logger) {
         return;
       }
 
-      const data = toSwapData(req.body);
-      const { id, ...updateData } = data;
+      const { id, ...updateData } = toSwapData(req.body);
 
-      const bridgeSwap = await prisma.bridgeSwap.upsert({
+      const existingSwap = await prisma.bridgeSwap.findUnique({
         where: { id },
-        create: data,
-        update: updateData,
       });
+
+      if (
+        existingSwap &&
+        existingSwap.userId.toLowerCase() !== req.user!.address.toLowerCase()
+      ) {
+        res
+          .status(403)
+          .json({ error: "Forbidden", detail: "You do not own this swap" });
+        return;
+      }
+
+      const bridgeSwap = await (existingSwap
+        ? prisma.bridgeSwap.update({ where: { id }, data: updateData })
+        : prisma.bridgeSwap.create({ data: { id, ...updateData } }));
 
       logger.info(
         {
