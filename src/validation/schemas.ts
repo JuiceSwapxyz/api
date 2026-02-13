@@ -495,21 +495,21 @@ export const CreateBridgeSwapSchema = z.object({
   claimPrivateKeyIndex: z.number().int().optional(),
   refundPrivateKeyIndex: z.number().int().optional(),
   claimAddress: z.string(),
-  address: z.string().optional(),
-  refundAddress: z.string().optional(),
-  lockupAddress: z.string().optional(),
-  claimTx: z.string().optional(),
-  refundTx: z.string().optional(),
-  lockupTx: z.string().optional(),
-  invoice: z.string().optional(),
-  acceptZeroConf: z.boolean().optional(),
-  expectedAmount: numericString.optional(),
-  onchainAmount: numericString.optional(),
-  timeoutBlockHeight: z.number().int().optional(),
+  address: z.string().nullish(),
+  refundAddress: z.string().nullish(),
+  lockupAddress: z.string().nullish(),
+  claimTx: z.string().nullish(),
+  refundTx: z.string().nullish(),
+  lockupTx: z.string().nullish(),
+  invoice: z.string().nullish(),
+  acceptZeroConf: z.boolean().nullish(),
+  expectedAmount: numericString.nullish(),
+  onchainAmount: numericString.nullish(),
+  timeoutBlockHeight: z.number().int().nullish(),
   claimDetails: z.any().optional(),
   lockupDetails: z.any().optional(),
-  referralId: z.string().optional(),
-  chainId: z.number().int().optional(),
+  referralId: z.string().nullish(),
+  chainId: z.number().int().nullish(),
 });
 
 export type CreateBridgeSwapRequest = z.infer<typeof CreateBridgeSwapSchema>;
@@ -537,7 +537,7 @@ export const GetBridgeSwapsByUserQuerySchema = z.object({
     .optional()
     .default("0")
     .transform((val) => parseInt(val, 10)),
-  status: z.string().optional(),
+  status: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
 export type GetBridgeSwapsByUserQuery = z.infer<
