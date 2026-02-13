@@ -15,6 +15,10 @@ export const fixOnchainBtcExpiredSwap =
       swap.assetReceive === "BTC" &&
       swap.status === LdsSwapStatus.SwapExpired
     ) {
+      // First check the evm side to know if the user:
+      // - has locked up any funds
+      // - if so, check if it has refunded said lockup
+      // - we don't care about the claims made by the bridge operator
       const [lockups] = await evmBridgeIndexerService.getLockup(
         swap.preimageHash,
         ChainId.CITREA_MAINNET,
@@ -32,6 +36,8 @@ export const fixOnchainBtcExpiredSwap =
         };
       }
 
+      // Second check the onchain side to know if the user:
+      // - has claimed said lockup via witness spending
       if (
         swap.claimDetails &&
         typeof swap.claimDetails === "object" &&
@@ -39,7 +45,7 @@ export const fixOnchainBtcExpiredSwap =
       ) {
         const swapTree = (swap.claimDetails as any).swapTree;
         const claimLeaf = swapTree.claimLeaf.output;
-        const lockupAddress = lockups.claimDetails.lockupAddress;
+        const lockupAddress = (swap.claimDetails as any).lockupAddress;
 
         const txs =
           await btcOnchainIndexerService.getTransactionsByAddress(

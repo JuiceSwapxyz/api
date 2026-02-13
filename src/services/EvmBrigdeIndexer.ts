@@ -1,4 +1,5 @@
 import Logger from "bunyan";
+import { prefix0x } from "../utils/hex";
 
 export interface EvmLockup {
   id: string;
@@ -61,7 +62,7 @@ export class EvmBridgeIndexer {
     return await res.json();
   }
 
-  async getLockup(preimageHash: string, chainId: number) {
+  async getLockup(preimageHash: string, chainId: number): Promise<EvmLockup[]> {
     const data = await this.query(
       `query GetLockup($preimageHash: String = "", $chainId: Int = 0) {
         lockupss(where: { preimageHash: $preimageHash, chainId: $chainId }) {
@@ -70,7 +71,7 @@ export class EvmBridgeIndexer {
           }
         }
       }`,
-      { preimageHash, chainId },
+      { preimageHash: prefix0x(preimageHash), chainId },
     );
     return data?.lockupss?.items ?? [];
   }
@@ -79,7 +80,10 @@ export class EvmBridgeIndexer {
     preimageHash: string,
     originChainId: number,
     destinationChainId: number,
-  ) {
+  ): Promise<{
+    originLockup: EvmLockup | null;
+    destinationLockup: EvmLockup | null;
+  }> {
     const data = await this.query(
       `query EvmBridgeLockups($originLockup: String = "", $destinationLockup: String = "") {
         originLockup: lockups(id: $originLockup) {
@@ -90,8 +94,8 @@ export class EvmBridgeIndexer {
         }
       }`,
       {
-        originLockup: `${originChainId}:${preimageHash}`,
-        destinationLockup: `${destinationChainId}:${preimageHash}`,
+        originLockup: `${originChainId}:${prefix0x(preimageHash)}`,
+        destinationLockup: `${destinationChainId}:${prefix0x(preimageHash)}`,
       },
     );
 
