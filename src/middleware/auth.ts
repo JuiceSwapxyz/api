@@ -49,6 +49,7 @@ export function requireAuth(
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    decoded.address = decoded.address.toLowerCase();
     req.user = decoded;
     next();
   } catch (error) {

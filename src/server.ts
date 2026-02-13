@@ -93,6 +93,7 @@ import {
   createBridgeSwapHandler,
   createBulkBridgeSwapHandler,
   createGetBridgeSwapByIdHandler,
+  createGetBridgeSwapByPreimageHashHandler,
   createGetBridgeSwapsByUserHandler,
 } from "./endpoints/bridgeSwap";
 import {
@@ -100,7 +101,12 @@ import {
   createVerifyHandler,
   createMeHandler,
 } from "./endpoints/auth";
+import {
+  createMyBridgeSwapsSummaryHandler,
+  createClaimRefundHandler,
+} from "./endpoints/bridgeSwap";
 import { requireAuth } from "./middleware/auth";
+import { noCache } from "./middleware/noCache";
 
 // Initialize logger
 const logger = Logger.createLogger({
@@ -323,7 +329,13 @@ async function bootstrap() {
   const handleCreateBridgeSwap = createBridgeSwapHandler(logger);
   const handleBulkCreateBridgeSwap = createBulkBridgeSwapHandler(logger);
   const handleGetBridgeSwapById = createGetBridgeSwapByIdHandler(logger);
+  const handleGetBridgeSwapByPreimageHash =
+    createGetBridgeSwapByPreimageHashHandler(logger);
   const handleGetBridgeSwapsByUser = createGetBridgeSwapsByUserHandler(logger);
+
+  // My bridge swaps summary endpoint handler
+  const handleMyBridgeSwapsSummary = createMyBridgeSwapsSummaryHandler(logger);
+  const handleClaimRefund = createClaimRefundHandler(providers, logger);
 
   // Auth endpoint handlers
   const handleNonce = createNonceHandler(logger);
@@ -567,8 +579,31 @@ async function bootstrap() {
     "/v1/bridge-swap/user",
     generalLimiter,
     requireAuth,
+    noCache,
     validateQuery(GetBridgeSwapsByUserQuerySchema, logger),
     handleGetBridgeSwapsByUser,
+  );
+  // My bridge swaps summary endpoint
+  app.get(
+    "/v1/my-bridge-swaps-summary",
+    generalLimiter,
+    requireAuth,
+    handleMyBridgeSwapsSummary,
+  );
+
+  // Claim/refund endpoint
+  app.get(
+    "/v1/bridge-swap/claim-refund",
+    generalLimiter,
+    requireAuth,
+    handleClaimRefund,
+  );
+
+  app.get(
+    "/v1/bridge-swap/preimage-hash/:preimageHash",
+    generalLimiter,
+    requireAuth,
+    handleGetBridgeSwapByPreimageHash,
   );
 
   app.get(
