@@ -199,7 +199,11 @@ export class ExploreStatsService {
   private backgroundRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private yearlyVolumeCache: Map<
     number,
-    { v3Stats: PonderPoolStat[]; v2Stats: PonderV2PoolStat[]; timestamp: number }
+    {
+      v3Stats: PonderPoolStat[];
+      v2Stats: PonderV2PoolStat[];
+      timestamp: number;
+    }
   > = new Map();
   private readonly YEARLY_CACHE_TTL = 15 * 60_000; // 15 minutes
 
@@ -235,7 +239,10 @@ export class ExploreStatsService {
 
     // Immediately pre-warm
     refresh();
-    this.logger.info({ chainIds }, "ExploreStatsService background refresh started");
+    this.logger.info(
+      { chainIds },
+      "ExploreStatsService background refresh started",
+    );
 
     // Refresh just before TTL expires to keep cache perpetually warm
     this.backgroundRefreshTimer = setInterval(refresh, this.REFRESH_INTERVAL);
@@ -404,12 +411,20 @@ export class ExploreStatsService {
     const [fdvMap, v3PoolTvl, v2PoolTvl] = await Promise.all([
       this.computeTokenFdv(tokens, prices, multicallProvider),
       this.computeV3PoolTvl(v3Pools, tokenMap, prices, multicallProvider),
-      this.computeV2PoolTvl(chainId, v2Pools, tokenMap, prices, multicallProvider),
+      this.computeV2PoolTvl(
+        chainId,
+        v2Pools,
+        tokenMap,
+        prices,
+        multicallProvider,
+      ),
     ]);
 
     // 7. Compute pool volumes
     const v3PoolMap = new Map(v3Pools.map((p) => [p.address.toLowerCase(), p]));
-    const v2PoolMap = new Map(v2Pools.map((p) => [p.pairAddress.toLowerCase(), p]));
+    const v2PoolMap = new Map(
+      v2Pools.map((p) => [p.pairAddress.toLowerCase(), p]),
+    );
 
     const v3Vol1d = this.aggregatePoolVolumes(
       v3PoolStats24h,

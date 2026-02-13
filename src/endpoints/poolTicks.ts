@@ -98,8 +98,7 @@ export function createPoolTicksHandler(
       const currentWordIndex = compressedTick >> 8;
 
       // Word bounds for the full usable tick range at this tick spacing
-      const maxUsableTick =
-        Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
+      const maxUsableTick = Math.floor(MAX_TICK / tickSpacing) * tickSpacing;
       const fullRangeMaxWord = Math.floor(maxUsableTick / tickSpacing) >> 8;
       const fullRangeMinWord = Math.floor(-maxUsableTick / tickSpacing) >> 8;
 
@@ -131,7 +130,10 @@ export function createPoolTicksHandler(
           tickLensContract
             .getPopulatedTicksInWord(poolAddress, wordIndex)
             .catch((err: Error) => {
-              log.warn({ wordIndex, error: err.message }, "TickLens word fetch failed");
+              log.warn(
+                { wordIndex, error: err.message },
+                "TickLens word fetch failed",
+              );
               return [];
             }),
         );
@@ -165,7 +167,10 @@ export function createPoolTicksHandler(
       allTicks.sort((a, b) => a.tick - b.tick);
 
       if (allTicks.length === 0 && poolLiquidity !== "0") {
-        log.warn({ poolAddress, currentTick, poolLiquidity }, "No ticks found for pool with non-zero liquidity");
+        log.warn(
+          { poolAddress, currentTick, poolLiquidity },
+          "No ticks found for pool with non-zero liquidity",
+        );
       }
 
       res.json({
