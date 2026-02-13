@@ -1,10 +1,11 @@
 import { Request, Response } from "express";
 import Logger from "bunyan";
 import { getAddress } from "viem";
-import { ethers } from "ethers";
 import { getPonderClient } from "../services/PonderClient";
 import { ExploreStatsService } from "../services/ExploreStatsService";
 import { ResponseCache } from "../cache/responseCache";
+import { ponderPaginate } from "../utils/ponderPaginate";
+import { computeVolumeUsd } from "../utils/volumeUsd";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
@@ -92,57 +93,33 @@ export function createPoolVolumeHistoryHandler(
       // Fetch poolStat buckets from Ponder
       // Use pagination for large time ranges (YEAR can exceed 1000 records)
       const ponderClient = getPonderClient(logger);
-      const PAGE_LIMIT = 1000;
-      const MAX_PAGES = 10; // Safety cap: 10k records max
-      const buckets: any[] = [];
-      let lastTimestamp = cutoff;
-      let lastId: string | undefined;
-
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const result = await ponderClient.query(
-          `
+      const buckets = await ponderPaginate<{
+        id: string;
+        poolAddress: string;
+        volume0: string;
+        volume1: string;
+        timestamp: string;
+        type: string;
+      }>({
+        ponderClient,
+        query: `
           query GetPoolStatsForChart($where: poolStatFilter = {}) {
-            poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: ${PAGE_LIMIT}) {
+            poolStats(where: $where, orderBy: "timestamp", orderDirection: "asc", limit: 1000) {
               items { id, poolAddress, volume0, volume1, timestamp, type }
             }
           }
-          `,
-          {
-            where: {
-              type: bucketType,
-              poolAddress: poolAddress,
-              timestamp_gte: lastTimestamp,
-            },
+        `,
+        variables: {
+          where: {
+            type: bucketType,
+            poolAddress: poolAddress,
+            timestamp_gte: cutoff,
           },
-        );
-
-        const rawItems = result.poolStats?.items || [];
-        if (rawItems.length === 0) break;
-
-        // Deduplicate: when re-fetching from the same timestamp, skip already-seen records
-        let items = rawItems;
-        if (lastId) {
-          const idx = items.findIndex((a: { id: string }) => a.id === lastId);
-          if (idx >= 0) {
-            items = items.slice(idx + 1);
-          }
-        }
-
-        if (items.length > 0) {
-          buckets.push(...items);
-        }
-
-        // Stop if this page wasn't full (no more data)
-        if (rawItems.length < PAGE_LIMIT) break;
-
-        // No new items means all records at this timestamp were already seen
-        if (items.length === 0) break;
-
-        // Advance cursor using compound timestamp + id to avoid skipping same-block records
-        const lastItem = items[items.length - 1];
-        lastTimestamp = lastItem.timestamp;
-        lastId = lastItem.id;
-      }
+        },
+        itemsPath: "poolStats",
+        timestampField: "timestamp",
+        timestampFilterKey: "timestamp_gte",
+      });
 
       if (!enrichedPool && buckets.length === 0) {
         res.status(404).json({ error: "Pool not found" });
@@ -155,29 +132,37 @@ export function createPoolVolumeHistoryHandler(
         );
       }
 
-      const entries: VolumeHistoryEntry[] = buckets.map(
-        (bucket: { volume0: string; volume1: string; timestamp: string }) => {
-          let vol = 0;
-          if (token0Price > 0) {
-            vol =
-              parseFloat(
-                ethers.utils.formatUnits(bucket.volume0 || "0", token0Decimals),
-              ) * token0Price;
-          } else if (token1Price > 0) {
-            vol =
-              parseFloat(
-                ethers.utils.formatUnits(bucket.volume1 || "0", token1Decimals),
-              ) * token1Price;
-          }
+      const entries: VolumeHistoryEntry[] = buckets.map((bucket) => {
+        const vol = computeVolumeUsd(
+          bucket.volume0,
+          bucket.volume1,
+          token0Decimals,
+          token1Decimals,
+          token0Price,
+          token1Price,
+        );
+        const ts = parseInt(bucket.timestamp);
+        return {
+          id: `${poolAddress}-${ts}`,
+          value: vol,
+          timestamp: ts,
+        };
+      });
 
-          const ts = parseInt(bucket.timestamp);
-          return {
-            id: `${poolAddress}-${ts}`,
-            value: vol,
-            timestamp: ts,
-          };
-        },
-      );
+      // Pad to current bucket so low-volume pools don't trigger stale-data warnings
+      const bucketSeconds = bucketType === "1h" ? 3600 : 86400;
+      const currentBucketStart =
+        Math.floor(Date.now() / 1000 / bucketSeconds) * bucketSeconds;
+      if (
+        entries.length === 0 ||
+        entries[entries.length - 1].timestamp < currentBucketStart
+      ) {
+        entries.push({
+          id: `${poolAddress}-${currentBucketStart}`,
+          value: 0,
+          timestamp: currentBucketStart,
+        });
+      }
 
       volumeHistoryCache.set(cacheKey, entries);
       res.json(entries);

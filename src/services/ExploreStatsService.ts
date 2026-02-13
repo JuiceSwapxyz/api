@@ -164,13 +164,9 @@ interface TransactionStatsResponse {
 interface ExploreStatsResponseData {
   stats: {
     tokenStats: TokenStatsResponse[];
-    poolStats: PoolStatsResponse[];
     poolStatsV2: PoolStatsResponse[];
     poolStatsV3: PoolStatsResponse[];
-    poolStatsV4: PoolStatsResponse[];
     transactionStats: TransactionStatsResponse[];
-    dailyProtocolTvl?: { v2: never[]; v3: never[]; v4: never[] };
-    historicalProtocolVolume?: null;
   };
 }
 
@@ -807,13 +803,9 @@ export class ExploreStatsService {
     const response: ExploreStatsResponseData = {
       stats: {
         tokenStats: tokenStatsResponse,
-        poolStats: [],
         poolStatsV2: poolStatsV2Response,
         poolStatsV3: poolStatsV3Response,
-        poolStatsV4: [],
         transactionStats: transactionStatsResponse,
-        dailyProtocolTvl: { v2: [], v3: [], v4: [] },
-        historicalProtocolVolume: null,
       },
     };
 

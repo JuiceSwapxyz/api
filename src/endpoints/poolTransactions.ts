@@ -5,6 +5,7 @@ import { ethers } from "ethers";
 import { getPonderClient } from "../services/PonderClient";
 import { ExploreStatsService } from "../services/ExploreStatsService";
 import { getChainName } from "../config/chains";
+import { computeVolumeUsd } from "../utils/volumeUsd";
 
 export function createPoolTransactionsHandler(
   exploreStatsService: ExploreStatsService,
@@ -134,12 +135,14 @@ export function createPoolTransactionsHandler(
           );
 
           // Calculate USD value from the priced side
-          let usdValue = 0;
-          if (token0Price > 0) {
-            usdValue = amount0Formatted * token0Price;
-          } else if (token1Price > 0) {
-            usdValue = amount1Formatted * token1Price;
-          }
+          const usdValue = computeVolumeUsd(
+            (amount0Raw < 0n ? -amount0Raw : amount0Raw).toString(),
+            (amount1Raw < 0n ? -amount1Raw : amount1Raw).toString(),
+            token0Decimals,
+            token1Decimals,
+            token0Price,
+            token1Price,
+          );
 
           // Determine quantities with sign:
           // In a swap, one amount is positive (received by pool) and the other is negative (sent out)
@@ -156,29 +159,17 @@ export function createPoolTransactionsHandler(
             hash: activity.txHash,
             account: activity.sender,
             token0: {
-              id: token0Info?.address ?? "",
               address: token0Info?.address ?? "",
               symbol: token0Info?.symbol ?? "",
               chain: chainName,
               decimals: token0Decimals,
-              project: {
-                id: token0Info?.address ?? "",
-                name: token0Info?.name ?? "",
-                logo: null,
-              },
             },
             token0Quantity,
             token1: {
-              id: token1Info?.address ?? "",
               address: token1Info?.address ?? "",
               symbol: token1Info?.symbol ?? "",
               chain: chainName,
               decimals: token1Decimals,
-              project: {
-                id: token1Info?.address ?? "",
-                name: token1Info?.name ?? "",
-                logo: null,
-              },
             },
             token1Quantity,
             usdValue: { value: usdValue },

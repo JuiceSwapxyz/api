@@ -3,10 +3,11 @@ import Logger from "bunyan";
 import { getPonderClient } from "../services/PonderClient";
 import { erc20Abi, formatUnits, getAddress } from "viem";
 import { ChainId } from "@juiceswapxyz/sdk-core";
-import { providers, utils, ethers } from "ethers";
+import { providers, utils } from "ethers";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ExploreStatsService } from "../services/ExploreStatsService";
 import { getChainName } from "../config/chains";
+import { computeVolumeUsd } from "../utils/volumeUsd";
 
 export interface PoolDetailsRequestBody {
   address: string;
@@ -269,31 +270,17 @@ export function createPoolDetailsHandler(
 
         const buckets = poolStatsResult.poolStats?.items || [];
         historicalVolume = buckets.map(
-          (bucket: { volume0: string; volume1: string; timestamp: string }) => {
-            // Convert raw volume to USD using token prices from ExploreStatsService
-            let vol = 0;
-            if (token0Price > 0) {
-              vol =
-                parseFloat(
-                  ethers.utils.formatUnits(
-                    bucket.volume0 || "0",
-                    tokenInfo.token0.decimals,
-                  ),
-                ) * token0Price;
-            } else if (token1Price > 0) {
-              vol =
-                parseFloat(
-                  ethers.utils.formatUnits(
-                    bucket.volume1 || "0",
-                    tokenInfo.token1.decimals,
-                  ),
-                ) * token1Price;
-            }
-            return {
-              value: vol,
-              timestamp: parseInt(bucket.timestamp),
-            };
-          },
+          (bucket: { volume0: string; volume1: string; timestamp: string }) => ({
+            value: computeVolumeUsd(
+              bucket.volume0,
+              bucket.volume1,
+              tokenInfo.token0.decimals,
+              tokenInfo.token1.decimals,
+              token0Price,
+              token1Price,
+            ),
+            timestamp: parseInt(bucket.timestamp),
+          }),
         );
       } catch (err) {
         log.warn({ error: err }, "Failed to fetch historical volume for pool");

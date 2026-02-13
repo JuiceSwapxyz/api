@@ -4,6 +4,7 @@ import { getAddress } from "viem";
 import { getPonderClient } from "../services/PonderClient";
 import { ExploreStatsService } from "../services/ExploreStatsService";
 import { ResponseCache } from "../cache/responseCache";
+import { ponderPaginate } from "../utils/ponderPaginate";
 
 type Duration = "DAY" | "WEEK" | "MONTH" | "YEAR";
 
@@ -86,56 +87,30 @@ export function createPoolPriceHistoryHandler(
       // Query poolActivity for swap history (sqrtPriceX96 snapshots)
       // Use pagination for large time ranges (YEAR can exceed 1000 records)
       const ponderClient = getPonderClient(logger);
-      const PAGE_LIMIT = 1000;
-      const MAX_PAGES = 10; // Safety cap: 10k records max
-      const activities: any[] = [];
-      let lastTimestamp = cutoff;
-      let lastId: string | undefined;
-
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const result = await ponderClient.query(
-          `
+      const activities = await ponderPaginate<{
+        id: string;
+        poolAddress: string;
+        sqrtPriceX96: string;
+        blockTimestamp: string;
+      }>({
+        ponderClient,
+        query: `
           query GetPoolActivities($where: poolActivityFilter = {}) {
-            poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: ${PAGE_LIMIT}) {
+            poolActivitys(where: $where, orderBy: "blockTimestamp", orderDirection: "asc", limit: 1000) {
               items { id, poolAddress, sqrtPriceX96, blockTimestamp }
             }
           }
-          `,
-          {
-            where: {
-              poolAddress: poolAddress,
-              blockTimestamp_gte: lastTimestamp,
-            },
+        `,
+        variables: {
+          where: {
+            poolAddress: poolAddress,
+            blockTimestamp_gte: cutoff,
           },
-        );
-
-        const rawItems = result.poolActivitys?.items || [];
-        if (rawItems.length === 0) break;
-
-        // Deduplicate: when re-fetching from the same timestamp, skip already-seen records
-        let items = rawItems;
-        if (lastId) {
-          const idx = items.findIndex((a: { id: string }) => a.id === lastId);
-          if (idx >= 0) {
-            items = items.slice(idx + 1);
-          }
-        }
-
-        if (items.length > 0) {
-          activities.push(...items);
-        }
-
-        // Stop if this page wasn't full (no more data)
-        if (rawItems.length < PAGE_LIMIT) break;
-
-        // No new items means all records at this timestamp were already seen
-        if (items.length === 0) break;
-
-        // Advance cursor using compound timestamp + id to avoid skipping same-block records
-        const lastItem = items[items.length - 1];
-        lastTimestamp = lastItem.blockTimestamp;
-        lastId = lastItem.id;
-      }
+        },
+        itemsPath: "poolActivitys",
+        timestampField: "blockTimestamp",
+        timestampFilterKey: "blockTimestamp_gte",
+      });
 
       if (!enrichedPool && activities.length === 0) {
         res.status(404).json({ error: "Pool not found" });
@@ -216,6 +191,18 @@ export function createPoolPriceHistoryHandler(
           token1Price: point.token1Price,
           timestamp: point.timestamp,
         }));
+
+      // Forward-fill last price to "now" so low-volume pools don't trigger stale-data warnings
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (entries.length > 0 && entries[entries.length - 1].timestamp < nowSeconds) {
+        const lastEntry = entries[entries.length - 1];
+        entries.push({
+          id: `${poolAddress}-${nowSeconds}`,
+          token0Price: lastEntry.token0Price,
+          token1Price: lastEntry.token1Price,
+          timestamp: nowSeconds,
+        });
+      }
 
       priceHistoryCache.set(cacheKey, entries);
       res.json(entries);
