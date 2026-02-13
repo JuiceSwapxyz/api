@@ -64,7 +64,7 @@ const computeLockupsReadyToRefund = async (
 
   const readyToRefund = supportedLockups.filter((lockup) => {
     const blockHeight = blockHeightByChainId.get(lockup.chainId);
-    return blockHeight && lockup.timelock < blockHeight;
+    return blockHeight && lockup.timelock <= blockHeight;
   });
 
   const waitUnlock = supportedLockups.filter((lockup) => {
