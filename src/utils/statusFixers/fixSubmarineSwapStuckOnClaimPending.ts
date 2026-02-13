@@ -1,4 +1,3 @@
-
 import { BridgeSwap, SwapType } from "../../generated/prisma";
 import { LdsSwapStatus } from "../../types/BridgeSwapsStatus";
 import { SwapFixerFn } from "./types";
