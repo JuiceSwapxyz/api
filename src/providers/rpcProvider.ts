@@ -3,6 +3,7 @@ import { ChainId } from "@juiceswapxyz/sdk-core";
 import Logger from "bunyan";
 import * as dotenv from "dotenv";
 import { initializeRPCMonitor } from "../utils/rpcMonitor";
+import { getChainName } from "../config/chains";
 
 dotenv.config();
 
@@ -117,11 +118,6 @@ export function initializeProviders(
 
   logger.info(`Successfully initialized ${providerMap.size} RPC providers`);
   return providerMap;
-}
-
-export function getChainName(chainId: ChainId): string {
-  const config = CHAIN_CONFIGS.find((c) => c.chainId === chainId);
-  return config?.name || `Chain ${chainId}`;
 }
 
 // Helper function to verify provider connectivity

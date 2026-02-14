@@ -234,3 +234,20 @@ export function detectJuiceDollarToken(
   if (isCtusdAddress(chainId, address)) return "CTUSD";
   return null;
 }
+
+/**
+ * TickLens contract addresses per chain.
+ * Used by the poolTicks endpoint to read populated ticks.
+ */
+const TICK_LENS_ADDRESSES: Record<number, string> = {
+  4114: "0xD9d430f27F922A3316d22Cd9d58558f45Dad8012",
+  5115: "0x00Ba410Bd715d0D9F9eFAbC65c7df8F0C5D4E7Eb",
+};
+
+/**
+ * Get the TickLens contract address for a given chain ID.
+ * Returns undefined if no TickLens is deployed on that chain.
+ */
+export function getTickLensAddress(chainId: number): string | undefined {
+  return TICK_LENS_ADDRESSES[chainId];
+}
