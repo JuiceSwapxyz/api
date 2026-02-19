@@ -863,7 +863,9 @@ export class ExploreStatsService {
         }),
       );
 
-      const seen = new Set(regularTokens.map((t: PonderToken) => t.address.toLowerCase()));
+      const seen = new Set(
+        regularTokens.map((t: PonderToken) => t.address.toLowerCase()),
+      );
       const unique = launchpadTokens.filter(
         (t: PonderToken) => !seen.has(t.address.toLowerCase()),
       );
@@ -1378,7 +1380,13 @@ export class ExploreStatsService {
       ? await this.batchCalculateBuy(toPrice, multicallProvider)
       : await this.individualCalculateBuy(toPrice, chainId);
 
-    this.applyBondingCurvePrices(toPrice, buyResults, tokenMap, prices, jusdPrice);
+    this.applyBondingCurvePrices(
+      toPrice,
+      buyResults,
+      tokenMap,
+      prices,
+      jusdPrice,
+    );
   }
 
   private async batchCalculateBuy(
