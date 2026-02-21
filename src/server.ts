@@ -157,9 +157,6 @@ async function bootstrap() {
   // Initialize svJUSD price service for share price caching
   const svJusdPriceService = new SvJusdPriceService(providers, logger);
 
-  // Initialize GraphQL resolvers
-  initializeResolvers(routerService, logger);
-
   // Create Express app
   const app = express();
 
@@ -326,6 +323,7 @@ async function bootstrap() {
     logger,
   );
   const exploreStatsService = new ExploreStatsService(providers, logger);
+  initializeResolvers(routerService, logger, exploreStatsService);
   const handlePoolDetails = createPoolDetailsHandler(
     providers,
     logger,
