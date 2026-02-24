@@ -29,6 +29,11 @@ const V3_POOL_SLOT0_ABI = [
   "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)",
 ];
 
+// Launchpad bonding curve token — calculateBuy returns tokens out for a given base input
+const LAUNCHPAD_TOKEN_ABI = [
+  "function calculateBuy(uint256 baseIn) view returns (uint256 tokensOut)",
+];
+
 // ---------- Ponder raw data types ----------
 
 interface PonderToken {
@@ -147,7 +152,7 @@ interface PoolStatsResponse {
   protocolVersion?: string;
 }
 
-interface TransactionStatsResponse {
+export interface TransactionStatsResponse {
   hash: string;
   chain: string;
   timestamp: number;
@@ -393,12 +398,20 @@ export class ExploreStatsService {
       allTokenAddrs.add(p.token1.toLowerCase());
     }
 
+    // Create a single multicall provider for all on-chain reads
+    const provider = this.providers.get(chainId as ChainId);
+    const multicallProvider = provider
+      ? new UniswapMulticallProvider(chainId as ChainId, provider, 375000)
+      : null;
+
     // 4. Get token prices (BTC, stablecoins, JUICE on-chain, then derive unknown from pools)
     const prices = await this.resolveAllTokenPrices(
       chainId,
       allTokenAddrs,
       v3Pools,
+      v2Pools,
       tokenMap,
+      multicallProvider,
     );
 
     // Group pool activities by pool address (shared by price changes + sparklines)
@@ -422,12 +435,6 @@ export class ExploreStatsService {
       activitiesByPool,
       chainId,
     );
-
-    // Create a single multicall provider for all on-chain reads
-    const provider = this.providers.get(chainId as ChainId);
-    const multicallProvider = provider
-      ? new UniswapMulticallProvider(chainId as ChainId, provider, 375000)
-      : null;
 
     // 5. Compute FDV + TVL via parallel multicalls (all read-only against `prices`)
     const [fdvMap, v3PoolTvl, v2PoolTvl] = await Promise.all([
@@ -833,20 +840,57 @@ export class ExploreStatsService {
   ): Promise<PonderToken[]> {
     try {
       const query = `
-        query GetTokens($where: tokenFilter = {}) {
+        query GetTokens($where: tokenFilter = {}, $whereLaunchpad: launchpadTokenFilter = {}) {
           tokens(where: $where, limit: 200) {
             items { address, decimals, symbol, name }
           }
+          launchpadTokens(where: $whereLaunchpad, limit: 200) {
+            items { address, name, symbol }
+          }
         }
       `;
+
       const result = await ponderClient.query(query, {
         where: { chainId },
+        whereLaunchpad: { chainId },
       });
-      return result.tokens?.items || [];
+
+      const regularTokens = result.tokens?.items || [];
+      const launchpadTokens = (result.launchpadTokens?.items || []).map(
+        (t: { address: string; name: string; symbol: string }) => ({
+          ...t,
+          decimals: 18,
+        }),
+      );
+
+      const seen = new Set(
+        regularTokens.map((t: PonderToken) => t.address.toLowerCase()),
+      );
+      const unique = launchpadTokens.filter(
+        (t: PonderToken) => !seen.has(t.address.toLowerCase()),
+      );
+      return [...regularTokens, ...unique];
     } catch {
       this.logger.warn("Failed to fetch tokens from Ponder");
       return [];
     }
+  }
+
+  private async nonGraduatedTokens(chainId: number) {
+    const query = `
+      query NonGraduated($where: launchpadTokenFilter = {}) {
+        launchpadTokens(where: $where) {
+          items {
+            address
+            graduated
+          }
+        }
+      }
+    `;
+    const result = await getPonderClient(this.logger).query(query, {
+      where: { graduated: false, chainId },
+    });
+    return result.launchpadTokens?.items || [];
   }
 
   private async fetchV3Pools(
@@ -1035,7 +1079,9 @@ export class ExploreStatsService {
     chainId: number,
     allTokenAddrs: Set<string>,
     v3Pools: PonderPool[],
+    v2Pools: PonderV2Pool[],
     tokenMap: Map<string, PonderToken>,
+    multicallProvider: UniswapMulticallProvider | null,
   ): Promise<Map<string, number>> {
     const prices = await this.priceService.getTokenPrices(
       chainId,
@@ -1043,6 +1089,13 @@ export class ExploreStatsService {
     );
     await this.fetchJuicePrice(chainId, prices);
     await this.deriveUnknownPrices(chainId, v3Pools, tokenMap, prices);
+    await this.deriveV2Prices(chainId, v2Pools, tokenMap, prices);
+    await this.deriveBondingCurvePrices(
+      chainId,
+      tokenMap,
+      prices,
+      multicallProvider,
+    );
     return prices;
   }
 
@@ -1201,6 +1254,220 @@ export class ExploreStatsService {
             fromPool: pool.address,
           },
           "Derived token price from pool slot0",
+        );
+      }
+    }
+  }
+
+  /**
+   * Derive prices for graduated launchpad tokens from V2 pair reserves.
+   * price = (jusdReserve / tokenReserve) * jusdPrice
+   */
+  private async deriveV2Prices(
+    chainId: number,
+    v2Pools: PonderV2Pool[],
+    tokenMap: Map<string, PonderToken>,
+    prices: Map<string, number>,
+  ): Promise<void> {
+    const provider = this.providers.get(chainId as ChainId);
+    const contracts = getChainContracts(chainId);
+    if (!provider || !contracts?.JUSD || v2Pools.length === 0) return;
+
+    const jusdAddress = contracts.JUSD.toLowerCase();
+    const jusdPrice = prices.get(jusdAddress) ?? 1.0;
+
+    const poolsToPrice = v2Pools.filter((pool) => {
+      const launchpad = pool.launchpadTokenAddress?.toLowerCase();
+      return launchpad && (prices.get(launchpad) ?? 0) === 0;
+    });
+
+    if (poolsToPrice.length === 0) return;
+
+    const reserveResults = await Promise.all(
+      poolsToPrice.map(async (pool) => {
+        try {
+          const pairContract = new ethers.Contract(
+            pool.pairAddress,
+            V2_PAIR_ABI,
+            provider,
+          );
+          return await pairContract.getReserves();
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    for (let i = 0; i < poolsToPrice.length; i++) {
+      const reserves = reserveResults[i];
+      if (!reserves) continue;
+
+      const pool = poolsToPrice[i];
+      const t0 = pool.token0.toLowerCase();
+      const isToken0Jusd = t0 === jusdAddress;
+
+      const jusdDecimals = tokenMap.get(jusdAddress)?.decimals ?? 18;
+      const launchpadAddr = pool.launchpadTokenAddress.toLowerCase();
+      const launchpadDecimals = tokenMap.get(launchpadAddr)?.decimals ?? 18;
+
+      const jusdReserve = parseFloat(
+        ethers.utils.formatUnits(
+          isToken0Jusd ? reserves[0] : reserves[1],
+          jusdDecimals,
+        ),
+      );
+      const launchpadReserve = parseFloat(
+        ethers.utils.formatUnits(
+          isToken0Jusd ? reserves[1] : reserves[0],
+          launchpadDecimals,
+        ),
+      );
+
+      if (launchpadReserve <= 0) continue;
+
+      const derivedPrice = (jusdReserve / launchpadReserve) * jusdPrice;
+      if (derivedPrice > 0 && isFinite(derivedPrice)) {
+        prices.set(launchpadAddr, derivedPrice);
+        this.logger.debug(
+          {
+            token: launchpadAddr,
+            symbol: tokenMap.get(launchpadAddr)?.symbol,
+            derivedPrice,
+            fromV2Pool: pool.pairAddress,
+          },
+          "Derived graduated token price from V2 reserves",
+        );
+      }
+    }
+  }
+
+  /**
+   * Derive prices for non-graduated launchpad tokens still on the bonding curve.
+   * Uses multicall to batch calculateBuy(1 JUSD) across all token contracts,
+   * then price = 1 / tokensOut.
+   */
+  private async deriveBondingCurvePrices(
+    chainId: number,
+    tokenMap: Map<string, PonderToken>,
+    prices: Map<string, number>,
+    multicallProvider: UniswapMulticallProvider | null,
+  ): Promise<void> {
+    const contracts = getChainContracts(chainId);
+    if (!contracts?.JUSD) return;
+
+    const jusdPrice = prices.get(contracts.JUSD.toLowerCase()) ?? 1.0;
+
+    let nonGraduatedItems: Array<{ address: string }>;
+    try {
+      nonGraduatedItems = await this.nonGraduatedTokens(chainId);
+    } catch {
+      this.logger.warn("Failed to fetch non-graduated token list");
+      return;
+    }
+
+    const toPrice = nonGraduatedItems.filter(
+      (item) => (prices.get(item.address.toLowerCase()) ?? 0) === 0,
+    );
+
+    if (toPrice.length === 0) return;
+
+    this.logger.debug(
+      { count: toPrice.length },
+      "Pricing non-graduated bonding curve tokens via calculateBuy",
+    );
+
+    const buyResults = multicallProvider
+      ? await this.batchCalculateBuy(toPrice, multicallProvider)
+      : await this.individualCalculateBuy(toPrice, chainId);
+
+    this.applyBondingCurvePrices(
+      toPrice,
+      buyResults,
+      tokenMap,
+      prices,
+      jusdPrice,
+    );
+  }
+
+  private async batchCalculateBuy(
+    toPrice: Array<{ address: string }>,
+    multicallProvider: UniswapMulticallProvider,
+  ): Promise<Array<ethers.BigNumber | null>> {
+    const oneJusd = ethers.utils.parseUnits("1", 18);
+    const iface = new ethers.utils.Interface(LAUNCHPAD_TOKEN_ABI);
+    const addresses = toPrice.map((t) => ethers.utils.getAddress(t.address));
+
+    try {
+      const { results } =
+        await multicallProvider.callSameFunctionOnMultipleContracts({
+          addresses,
+          contractInterface: iface,
+          functionName: "calculateBuy",
+          functionParams: [oneJusd],
+        });
+      return results.map((r) => (r?.success ? r.result[0] : null));
+    } catch (error) {
+      this.logger.warn(
+        { error },
+        "Multicall calculateBuy failed, falling back to individual calls",
+      );
+      return toPrice.map(() => null);
+    }
+  }
+
+  private async individualCalculateBuy(
+    toPrice: Array<{ address: string }>,
+    chainId: number,
+  ): Promise<Array<ethers.BigNumber | null>> {
+    const provider = this.providers.get(chainId as ChainId);
+    if (!provider) return toPrice.map(() => null);
+
+    const oneJusd = ethers.utils.parseUnits("1", 18);
+    return Promise.all(
+      toPrice.map(async (item) => {
+        try {
+          const contract = new ethers.Contract(
+            item.address,
+            LAUNCHPAD_TOKEN_ABI,
+            provider,
+          );
+          return await contract.calculateBuy(oneJusd);
+        } catch {
+          return null;
+        }
+      }),
+    );
+  }
+
+  private applyBondingCurvePrices(
+    toPrice: Array<{ address: string }>,
+    buyResults: Array<ethers.BigNumber | null>,
+    tokenMap: Map<string, PonderToken>,
+    prices: Map<string, number>,
+    jusdPrice: number,
+  ): void {
+    for (let i = 0; i < toPrice.length; i++) {
+      const tokensOut = buyResults[i];
+      if (!tokensOut) continue;
+
+      const addr = toPrice[i].address.toLowerCase();
+      const decimals = tokenMap.get(addr)?.decimals ?? 18;
+      const tokensOutFormatted = parseFloat(
+        ethers.utils.formatUnits(tokensOut, decimals),
+      );
+      if (tokensOutFormatted <= 0) continue;
+
+      const derivedPrice = (1 / tokensOutFormatted) * jusdPrice;
+      if (derivedPrice > 0 && isFinite(derivedPrice)) {
+        prices.set(addr, derivedPrice);
+        this.logger.debug(
+          {
+            token: addr,
+            symbol: tokenMap.get(addr)?.symbol,
+            derivedPrice,
+            tokensPerJusd: tokensOutFormatted,
+          },
+          "Derived bonding curve token price from calculateBuy",
         );
       }
     }
