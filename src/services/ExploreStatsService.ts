@@ -147,7 +147,7 @@ interface PoolStatsResponse {
   protocolVersion?: string;
 }
 
-interface TransactionStatsResponse {
+export interface TransactionStatsResponse {
   hash: string;
   chain: string;
   timestamp: number;
