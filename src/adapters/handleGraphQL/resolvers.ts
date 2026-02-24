@@ -2,7 +2,10 @@ import { Request, Response } from "express";
 import { createQuoteHandler } from "../../endpoints/quote";
 import { createSwapsHandler } from "../../endpoints/swaps";
 import Logger from "bunyan";
-import { ExploreStatsService, TransactionStatsResponse } from "../../services/ExploreStatsService";
+import {
+  ExploreStatsService,
+  TransactionStatsResponse,
+} from "../../services/ExploreStatsService";
 import { getChainName } from "../../config/chains";
 
 let quoteHandler: any;
@@ -127,13 +130,22 @@ function mapTxToPoolTransaction(tx: TransactionStatsResponse, chainId: number) {
 
 async function getPoolTransactions(
   _: any,
-  { chain, first, timestampCursor }: { chain: string; first: number; timestampCursor?: number },
+  {
+    chain,
+    first,
+    timestampCursor,
+  }: { chain: string; first: number; timestampCursor?: number },
 ) {
   const chainId = CHAIN_NAME_TO_CHAIN_ID[chain];
   if (chainId == null || !exploreStatsService) return [];
   const { stats } = await exploreStatsService.getExploreStats(chainId);
-  const sorted = stats.transactionStats.slice().sort((a, b) => b.timestamp - a.timestamp);
-  const page = timestampCursor != null ? sorted.filter((t) => t.timestamp < timestampCursor) : sorted;
+  const sorted = stats.transactionStats
+    .slice()
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const page =
+    timestampCursor != null
+      ? sorted.filter((t) => t.timestamp < timestampCursor)
+      : sorted;
   return page.slice(0, first).map((t) => mapTxToPoolTransaction(t, chainId));
 }
 
