@@ -6,6 +6,7 @@ import { fixTransactionLockupFailedSwap } from "./fixTransactionLockupFailedSwap
 import { fixBtcOnchainTransactionLockupExpiredSwap } from "./fixBtcOnchainTransactionLockupExpiredSwap";
 import { fixErc20ExpiredSwap } from "./fixErc20ExpiredSwap";
 import { fixSubmarineSwapStuckOnClaimPending } from "./fixSubmarineSwapStuckOnClaimPending";
+import { fixEvmClaimPending } from "./fixEvmClaimPending";
 
 export type { SwapFixerDeps, SwapFixerFn };
 
@@ -13,6 +14,8 @@ export const buildFixSwapStatuses = (deps: SwapFixerDeps) => {
   const fixers: SwapFixerFn[] = [
     // cBTC → BTC | transaction.claim.pending
     fixCbtcToBtcOnchainClaimPending(deps),
+    // Evm → Evm | transaction.claim.pending
+    fixEvmClaimPending(deps),
     // cBTC → BTC (chain) | swap.expired
     fixOnchainBtcExpiredSwap(deps),
     // BTC → cBTC (chain) | transaction.lockup.failed
