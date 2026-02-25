@@ -29,7 +29,7 @@ export const fixEvmClaimPending =
       swap.preimageHash,
       destinationChain,
     );
-    
+
     if (lockup && lockup.claimed) {
       return {
         ...swap,
