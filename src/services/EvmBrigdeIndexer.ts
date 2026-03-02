@@ -17,6 +17,8 @@ export interface EvmLockup {
   refundTxHash: string | null;
   lockupTxHash: string | null;
   preimage: string | null;
+  createdAt: string | null;
+  senderAddress: string | null;
   knownPreimage?: { preimage: string } | null;
 }
 
@@ -38,6 +40,8 @@ const LockupFragment = `
   refundTxHash
   lockupTxHash
   preimage
+  createdAt
+  senderAddress
 `;
 
 export class EvmBridgeIndexer {
