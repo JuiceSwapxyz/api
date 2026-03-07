@@ -24,11 +24,9 @@ const EXCLUDED_LOW_LIQUIDITY_POOLS = [
 export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
   private ponderClient: PonderClient;
   private chainId: ChainId;
-  private logger: Logger;
 
   constructor(logger: Logger, chainId: ChainId) {
     this.chainId = chainId;
-    this.logger = logger;
     this.ponderClient = getPonderClient(logger);
   }
 
@@ -105,25 +103,6 @@ export class CitreaV3SubgraphProvider implements IV3SubgraphProvider {
         tvlUSD: 1000,
       };
     });
-
-    this.logger.info(
-      {
-        provider: "CitreaV3SubgraphProvider",
-        chainId: this.chainId,
-        tokenIn: tokenInAddress,
-        tokenOut: tokenOutAddress,
-        directPoolCount: directPools.length,
-        candidatePoolCount: allPools.length,
-        selectedPoolCount: pools.length,
-        selectedPools: pools.map((pool) => ({
-          id: pool.id,
-          token0: pool.token0.id,
-          token1: pool.token1.id,
-          feeTier: pool.feeTier,
-        })),
-      },
-      "V3 pools selected for routing",
-    );
 
     return pools;
   }
