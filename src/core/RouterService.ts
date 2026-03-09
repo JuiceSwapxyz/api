@@ -411,8 +411,8 @@ export class RouterService {
       },
       maxSwapsPerPath: 3,
       minSplits: 1,
-      maxSplits: 3,
-      distributionPercent: 10,
+      maxSplits: 1,
+      distributionPercent: 100,
       forceCrossProtocol: false,
       optimisticCachedRoutes: false,
     };
