@@ -39,7 +39,7 @@ jobs:
           context: .
           push: true
           tags: ${{ env.DOCKER_TAGS }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/arm64
 
       - name: Log in to Azure
         uses: azure/login@v2
