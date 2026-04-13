@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_TAGS: dfxswiss/juiceswap-api:latest
+  DOCKER_TAGS: juiceswap/api:latest
   DEPLOY_INFO: ${{ github.ref_name }}-${{ github.sha }}
 
 permissions:
