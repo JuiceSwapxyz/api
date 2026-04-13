@@ -162,8 +162,12 @@ export function createLaunchpadTokenHandler(logger: Logger) {
 
       res.status(200).json(response.data);
     } catch (error: any) {
-      log.error({ error: error.message }, "Error fetching launchpad token");
       const status = error.response?.status || 500;
+      if (status === 404) {
+        log.debug({ address: req.params.address }, "Launchpad token not found");
+      } else {
+        log.error({ error: error.message }, "Error fetching launchpad token");
+      }
       res.status(status).json({
         error: error.response?.data?.error || "Failed to fetch launchpad token",
       });
