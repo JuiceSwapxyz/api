@@ -50,6 +50,7 @@ export class PriceService {
   private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null =
     null;
   private readonly CACHE_TTL = 60_000; // 60 seconds
+  private readonly coinGeckoHeaders: Record<string, string>;
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
   private btcTokens: Map<number, Set<string>> = new Map();
@@ -59,6 +60,11 @@ export class PriceService {
 
   constructor(logger: Logger) {
     this.logger = logger.child({ service: "PriceService" });
+    this.coinGeckoHeaders = { accept: "application/json" };
+    const apiKey = process.env.COINGECKO_API_KEY;
+    if (apiKey) {
+      this.coinGeckoHeaders["x-cg-demo-api-key"] = apiKey;
+    }
     this.initializeKnownTokens();
   }
 
@@ -184,6 +190,7 @@ export class PriceService {
         "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
         {
           params: { vs_currency: "usd", days: 1 },
+          headers: this.coinGeckoHeaders,
           timeout: 5000,
         },
       );
@@ -273,6 +280,7 @@ export class PriceService {
           developer_data: false,
           sparkline: false,
         },
+        headers: this.coinGeckoHeaders,
         timeout: 5000,
       },
     );
@@ -391,6 +399,7 @@ export class PriceService {
       "https://api.coingecko.com/api/v3/simple/price",
       {
         params: { ids: "bitcoin", vs_currencies: "usd" },
+        headers: this.coinGeckoHeaders,
         timeout: 5000,
       },
     );
