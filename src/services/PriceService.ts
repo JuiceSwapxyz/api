@@ -219,6 +219,8 @@ export class PriceService {
         "Failed to fetch BTC price history from CoinGecko",
       );
       if (this.btcPriceHistoryCache) {
+        // Refresh timestamp so we don't retry on every call while rate-limited
+        this.btcPriceHistoryCache.timestamp = Date.now();
         return this.btcPriceHistoryCache.data;
       }
       return null;
@@ -250,6 +252,8 @@ export class PriceService {
           "Both BTC price data sources failed",
         );
         if (this.btcPriceDataCache) {
+          // Refresh timestamp so we don't retry on every call while rate-limited
+          this.btcPriceDataCache.timestamp = Date.now();
           return this.btcPriceDataCache.data;
         }
         throw new Error("Unable to fetch BTC price data");
@@ -312,6 +316,8 @@ export class PriceService {
         );
         // Return stale cache if available
         if (this.btcPriceCache) {
+          // Refresh timestamp so we don't retry on every call while rate-limited
+          this.btcPriceCache.timestamp = Date.now();
           return this.btcPriceCache.price;
         }
         throw new Error("Unable to fetch BTC price");
