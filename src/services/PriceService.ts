@@ -50,6 +50,7 @@ export class PriceService {
   private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null =
     null;
   private readonly CACHE_TTL = 60_000; // 60 seconds
+  private readonly coinGeckoHeaders: Record<string, string>;
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
   private btcTokens: Map<number, Set<string>> = new Map();
@@ -59,6 +60,11 @@ export class PriceService {
 
   constructor(logger: Logger) {
     this.logger = logger.child({ service: "PriceService" });
+    this.coinGeckoHeaders = { accept: "application/json" };
+    const apiKey = process.env.COINGECKO_API_KEY;
+    if (apiKey) {
+      this.coinGeckoHeaders["x-cg-demo-api-key"] = apiKey;
+    }
     this.initializeKnownTokens();
   }
 
@@ -184,6 +190,7 @@ export class PriceService {
         "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
         {
           params: { vs_currency: "usd", days: 1 },
+          headers: this.coinGeckoHeaders,
           timeout: 5000,
         },
       );
@@ -219,6 +226,8 @@ export class PriceService {
         "Failed to fetch BTC price history from CoinGecko",
       );
       if (this.btcPriceHistoryCache) {
+        // Refresh timestamp so we don't retry on every call while rate-limited
+        this.btcPriceHistoryCache.timestamp = Date.now();
         return this.btcPriceHistoryCache.data;
       }
       return null;
@@ -250,6 +259,8 @@ export class PriceService {
           "Both BTC price data sources failed",
         );
         if (this.btcPriceDataCache) {
+          // Refresh timestamp so we don't retry on every call while rate-limited
+          this.btcPriceDataCache.timestamp = Date.now();
           return this.btcPriceDataCache.data;
         }
         throw new Error("Unable to fetch BTC price data");
@@ -269,6 +280,7 @@ export class PriceService {
           developer_data: false,
           sparkline: false,
         },
+        headers: this.coinGeckoHeaders,
         timeout: 5000,
       },
     );
@@ -312,6 +324,8 @@ export class PriceService {
         );
         // Return stale cache if available
         if (this.btcPriceCache) {
+          // Refresh timestamp so we don't retry on every call while rate-limited
+          this.btcPriceCache.timestamp = Date.now();
           return this.btcPriceCache.price;
         }
         throw new Error("Unable to fetch BTC price");
@@ -385,6 +399,7 @@ export class PriceService {
       "https://api.coingecko.com/api/v3/simple/price",
       {
         params: { ids: "bitcoin", vs_currencies: "usd" },
+        headers: this.coinGeckoHeaders,
         timeout: 5000,
       },
     );
