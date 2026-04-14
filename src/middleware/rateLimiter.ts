@@ -68,7 +68,7 @@ export const quoteLimiter = isDevelopment
 
       // Skip rate limiting for health checks
       skip: (req) => {
-        return req.path === "/healthz" || req.path === "/readyz";
+        return req.path === "/healthz" || req.path === "/readyz" || req.path === "/dependenciesz";
       },
     });
 
@@ -107,6 +107,6 @@ export const generalLimiter = isDevelopment
 
       // Skip rate limiting for health checks
       skip: (req) => {
-        return req.path === "/healthz" || req.path === "/readyz";
+        return req.path === "/healthz" || req.path === "/readyz" || req.path === "/dependenciesz";
       },
     });

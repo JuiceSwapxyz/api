@@ -87,6 +87,7 @@ import {
   PoolTransactionsQuerySchema,
   PoolTicksQuerySchema,
 } from "./validation/schemas";
+import axios from "axios";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
 import { createLightningInvoiceHandler } from "./endpoints/lightningInvoice";
@@ -700,6 +701,49 @@ async function bootstrap() {
     } else {
       res.status(503).send("not ready");
     }
+  });
+
+  // Dependency health check endpoint
+  app.get("/dependenciesz", async (_req: Request, res: Response) => {
+    const ldsBaseUrl = process.env.LDS_API_URL || "https://lightning.space/v1";
+    const timeout = 5000;
+
+    const checks = [
+      { name: "lds-api", url: `${ldsBaseUrl}/boltz/balance` },
+      { name: "lds-boltz", url: `${ldsBaseUrl}/swap/version` },
+      { name: "lds-claim", url: `${ldsBaseUrl}/claim/graphql` },
+      { name: "lds-bitcoin-node", url: `${ldsBaseUrl}/swap/v2/chain/BTC/height` },
+      { name: "lds-citrea-node", url: `${ldsBaseUrl}/swap/v2/chain/cBTC/height` },
+      { name: "lds-ethereum-node", url: `${ldsBaseUrl}/swap/v2/chain/USDT_ETH/height` },
+      { name: "lds-lnd", url: `${ldsBaseUrl}/lndhub/getinfo` },
+    ];
+
+    const results = await Promise.all(
+      checks.map(async (check) => {
+        const start = Date.now();
+        try {
+          const response = await axios.get(check.url, { timeout });
+          return {
+            name: check.name,
+            status: response.status >= 200 && response.status < 400 ? "up" : "down",
+            responseTime: Date.now() - start,
+          };
+        } catch {
+          return {
+            name: check.name,
+            status: "down",
+            responseTime: Date.now() - start,
+          };
+        }
+      }),
+    );
+
+    const allUp = results.every((r) => r.status === "up");
+
+    res.status(allUp ? 200 : 503).json({
+      status: allUp ? "healthy" : "degraded",
+      dependencies: results,
+    });
   });
 
   // Version endpoint
