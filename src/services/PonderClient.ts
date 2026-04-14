@@ -121,7 +121,15 @@ export class PonderClient {
       activateFallback(this.logger);
       shouldRetry = true;
     }
-    // Other errors (400, 404, 500, etc.) - don't retry, just throw
+    // 404 - resource not found, expected for non-launchpad tokens
+    else if (status === 404) {
+      this.logger.debug(
+        `[Ponder] ${method} resource not found (404), not retrying`,
+        { status, path },
+      );
+      return { shouldRetry: false, shouldThrow: true };
+    }
+    // Other errors (400, 500, etc.) - don't retry, just throw
     else {
       this.logger.error(
         `[Ponder] ${method} non-network error from primary, not retrying`,
