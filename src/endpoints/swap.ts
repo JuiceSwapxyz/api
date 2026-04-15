@@ -552,7 +552,7 @@ async function handleGatewaySwap(
         });
         gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
       } catch (e) {
-        log.warn(
+        log.info(
           { error: e },
           "Gas estimation failed for direct conversion, using default",
         );
@@ -667,7 +667,7 @@ async function handleGatewaySwap(
       });
       gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
     } catch (e) {
-      log.warn(
+      log.info(
         { error: e },
         "Gas estimation failed for Gateway swap, using default",
       );
@@ -885,7 +885,7 @@ async function handleClassicSwap(
       });
       gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
     } catch (e) {
-      log.warn(
+      log.info(
         { error: e },
         "Gas estimation failed for Classic swap, using default",
       );
