@@ -109,10 +109,7 @@ export class PonderClient {
           `Ponder ${method} request failed (404 on fallback)`,
         );
       } else {
-        this.logger.info(
-          failureCtx,
-          `Ponder ${method} request failed`,
-        );
+        this.logger.info(failureCtx, `Ponder ${method} request failed`);
       }
       this.logger.error(`[Ponder] ${method} fallback server failed, giving up`);
       return { shouldRetry: false, shouldThrow: true };
