@@ -80,26 +80,42 @@ export class PonderClient {
       url ===
       (process.env.PONDER_FALLBACK_URL || "https://dev.ponder.juiceswap.com");
 
-    this.logger.warn(
-      {
-        method,
-        path,
-        attempt,
-        maxRetries,
-        error: error.message,
-        status,
-        isAxiosError,
-        wasUsingFallback,
-      },
-      `Ponder ${method} request failed`,
-    );
+    const failureCtx = {
+      method,
+      path,
+      attempt,
+      maxRetries,
+      error: error.message,
+      status,
+      isAxiosError,
+      wasUsingFallback,
+    };
+
+    // 404 on primary — expected for missing resources; avoid info/warn noise in prod
+    if (!wasUsingFallback && status === 404) {
+      this.logger.debug(
+        failureCtx,
+        `Ponder ${method} resource not found (404), not retrying`,
+      );
+      return { shouldRetry: false, shouldThrow: true };
+    }
 
     // If fallback failed, give up immediately
     // No retries on fallback errors - just return the error to the caller
     if (wasUsingFallback) {
+      if (status === 404) {
+        this.logger.debug(
+          failureCtx,
+          `Ponder ${method} request failed (404 on fallback)`,
+        );
+      } else {
+        this.logger.info(failureCtx, `Ponder ${method} request failed`);
+      }
       this.logger.error(`[Ponder] ${method} fallback server failed, giving up`);
       return { shouldRetry: false, shouldThrow: true };
     }
+
+    this.logger.info(failureCtx, `Ponder ${method} request failed`);
 
     // We're on primary - only handle network errors
     // Network errors include: 503 and connection/timeout errors
@@ -120,14 +136,6 @@ export class PonderClient {
       );
       activateFallback(this.logger);
       shouldRetry = true;
-    }
-    // 404 - resource not found, expected for non-launchpad tokens
-    else if (status === 404) {
-      this.logger.debug(
-        `[Ponder] ${method} resource not found (404), not retrying`,
-        { status, path },
-      );
-      return { shouldRetry: false, shouldThrow: true };
     }
     // Other errors (400, 500, etc.) - don't retry, just throw
     else {
