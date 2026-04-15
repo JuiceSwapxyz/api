@@ -551,9 +551,14 @@ async function handleGatewaySwap(
           value: "0x0",
         });
         gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
-      } catch (e) {
+      } catch (e: unknown) {
+        const err = e as { message?: string; code?: string; reason?: string };
         log.info(
-          { error: e },
+          {
+            errMessage: err?.message,
+            errCode: err?.code,
+            errReason: err?.reason,
+          },
           "Gas estimation failed for direct conversion, using default",
         );
       }
@@ -666,9 +671,14 @@ async function handleGatewaySwap(
         value: isNativeInput ? body.amount : "0x0",
       });
       gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
-    } catch (e) {
+    } catch (e: unknown) {
+      const err = e as { message?: string; code?: string; reason?: string };
       log.info(
-        { error: e },
+        {
+          errMessage: err?.message,
+          errCode: err?.code,
+          errReason: err?.reason,
+        },
         "Gas estimation failed for Gateway swap, using default",
       );
     }
@@ -884,9 +894,14 @@ async function handleClassicSwap(
         value: swapRoute.methodParameters.value,
       });
       gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
-    } catch (e) {
+    } catch (e: unknown) {
+      const err = e as { message?: string; code?: string; reason?: string };
       log.info(
-        { error: e },
+        {
+          errMessage: err?.message,
+          errCode: err?.code,
+          errReason: err?.reason,
+        },
         "Gas estimation failed for Classic swap, using default",
       );
     }
