@@ -222,9 +222,22 @@ export class JuiceGatewayService {
     try {
       const fee = await contract.DEFAULT_FEE();
       return (fee as ethers.BigNumber).toNumber();
-    } catch (error) {
+    } catch (error: unknown) {
+      const e = error as {
+        message?: string;
+        code?: string;
+        reason?: string;
+        error?: { message?: string; code?: number };
+      };
       this.logger.info(
-        { chainId, error },
+        {
+          chainId,
+          errMessage: e?.message,
+          errCode: e?.code,
+          errReason: e?.reason,
+          rpcMessage: e?.error?.message,
+          rpcCode: e?.error?.code,
+        },
         "Failed to get default fee, using 3000",
       );
       return 3000;
