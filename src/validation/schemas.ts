@@ -33,6 +33,15 @@ export const ChainIdSchema = z
     (val) => [1, 11155111, 137, 5115, 4114].includes(val),
     "Unsupported chain ID",
   );
+
+// Chains with DEX routing support (AlphaRouter). Used for quote/swap endpoints.
+export const RoutingChainIdSchema = z
+  .number()
+  .int()
+  .refine(
+    (val) => [5115, 4114].includes(val),
+    "Unsupported chain ID for routing",
+  );
 export const AmountSchema = z
   .string()
   .regex(/^[1-9]\d*$/, "Amount must be a positive non-zero integer string");
@@ -61,11 +70,11 @@ export const SlippageToleranceSchema = z.coerce
 // Quote endpoint schema
 export const QuoteRequestSchema = z
   .object({
-    tokenInChainId: ChainIdSchema,
+    tokenInChainId: RoutingChainIdSchema,
     tokenIn: AddressSchema.optional(),
     tokenInAddress: AddressSchema.optional(),
     tokenInDecimals: z.coerce.number().int().positive().optional(),
-    tokenOutChainId: ChainIdSchema,
+    tokenOutChainId: RoutingChainIdSchema,
     tokenOut: AddressSchema.optional(),
     tokenOutAddress: AddressSchema.optional(),
     tokenOutDecimals: z.coerce.number().int().positive().optional(),
@@ -102,11 +111,11 @@ const RequiredSlippageToleranceSchema = z.coerce.string().refine(
 export const SwapRequestSchema = z
   .object({
     type: z.enum(["WRAP", "UNWRAP", "exactIn", "exactOut"]).optional(),
-    tokenInChainId: ChainIdSchema,
+    tokenInChainId: RoutingChainIdSchema,
     tokenIn: AddressSchema.optional(),
     tokenInAddress: AddressSchema.optional(),
     tokenInDecimals: z.coerce.number().int().positive().optional(),
-    tokenOutChainId: ChainIdSchema,
+    tokenOutChainId: RoutingChainIdSchema,
     tokenOut: AddressSchema.optional(),
     tokenOutAddress: AddressSchema.optional(),
     tokenOutDecimals: z.coerce.number().int().positive().optional(),
@@ -115,7 +124,7 @@ export const SwapRequestSchema = z
     slippageTolerance: RequiredSlippageToleranceSchema,
     deadline: z.coerce.string().optional(),
     from: AddressSchema,
-    chainId: ChainIdSchema.optional(),
+    chainId: RoutingChainIdSchema.optional(),
     enableUniversalRouter: z.boolean().optional(),
     simulate: z.boolean().optional(),
     protocols: z.array(z.string()).optional(),
@@ -137,7 +146,7 @@ export const SwappableTokensQuerySchema = z.object({
   tokenInChainId: z
     .string()
     .transform((val) => parseInt(val, 10))
-    .pipe(ChainIdSchema),
+    .pipe(RoutingChainIdSchema),
   tokenIn: AddressSchema.optional(),
 });
 

@@ -104,12 +104,21 @@ export class RouterService {
     return instance;
   }
 
+  // Chains that need AlphaRouter (DEX routing). Other chains only need RPC providers (bridge, gas).
+  private static readonly ROUTING_CHAINS = new Set<ChainId>([
+    ChainId.CITREA_MAINNET,
+    ChainId.CITREA_TESTNET,
+  ]);
+
   private async initialize(): Promise<void> {
     // Enable smart-order-router internal logging
     setGlobalLogger(this.logger);
 
-    // Initialize routers for each chain with essential providers
+    // Initialize routers only for chains that need DEX routing
     for (const [chainId, provider] of this.providers.entries()) {
+      if (!RouterService.ROUTING_CHAINS.has(chainId)) {
+        continue;
+      }
       // Initialize multicall provider for efficient batching
       const multicallProvider = new UniswapMulticallProvider(
         chainId,
