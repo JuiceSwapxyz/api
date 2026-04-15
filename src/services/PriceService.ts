@@ -49,7 +49,7 @@ export class PriceService {
   private btcPriceHistoryCache: BtcPriceHistoryCache | null = null;
   private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null =
     null;
-  private readonly CACHE_TTL = 60_000; // 60 seconds
+  private readonly CACHE_TTL = 300_000; // 5 minutes
   private readonly coinGeckoHeaders: Record<string, string>;
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
