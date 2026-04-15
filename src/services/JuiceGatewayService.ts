@@ -223,7 +223,7 @@ export class JuiceGatewayService {
       const fee = await contract.DEFAULT_FEE();
       return (fee as ethers.BigNumber).toNumber();
     } catch (error) {
-      this.logger.warn(
+      this.logger.info(
         { chainId, error },
         "Failed to get default fee, using 3000",
       );
