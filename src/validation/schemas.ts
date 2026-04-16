@@ -166,7 +166,7 @@ export type SwapsQuery = z.infer<typeof SwapsQuerySchema>;
 // Swap Approve schema
 export const SwapApproveRequestSchema = z.object({
   walletAddress: AddressSchema,
-  chainId: ChainIdSchema,
+  chainId: RoutingChainIdSchema,
   tokenIn: AddressSchema,
   spenderAddress: AddressSchema,
 });
@@ -180,7 +180,7 @@ export const LpApproveRequestSchema = z
   .object({
     simulateTransaction: z.boolean().optional(),
     walletAddress: AddressSchema,
-    chainId: ChainIdSchema,
+    chainId: RoutingChainIdSchema,
     protocol: z.literal("V3"),
     token0: AddressSchema, // Always required (for Gateway routing detection)
     token1: AddressSchema, // Always required (for Gateway routing detection)
@@ -223,7 +223,7 @@ export const LpCreateRequestSchema = z
     simulateTransaction: z.boolean().optional(),
     protocol: z.literal("V3"),
     walletAddress: AddressSchema,
-    chainId: ChainIdSchema,
+    chainId: RoutingChainIdSchema,
     independentAmount: AmountSchema,
     independentToken: z.enum(["TOKEN_0", "TOKEN_1"]),
     initialDependentAmount: AmountSchema.optional(),
@@ -252,7 +252,7 @@ export const LpIncreaseRequestSchema = z.object({
   simulateTransaction: z.boolean().optional(),
   protocol: z.literal("V3"),
   walletAddress: AddressSchema,
-  chainId: ChainIdSchema,
+  chainId: RoutingChainIdSchema,
   tokenId: z.number().int().positive(),
   independentAmount: AmountSchema,
   independentToken: z.enum(["TOKEN_0", "TOKEN_1"]),
@@ -266,7 +266,7 @@ export const LpDecreaseRequestSchema = z.object({
   simulateTransaction: z.boolean().optional(),
   protocol: z.literal("V3"),
   tokenId: z.number().int().positive(),
-  chainId: ChainIdSchema,
+  chainId: RoutingChainIdSchema,
   walletAddress: AddressSchema,
   liquidityPercentageToDecrease: z.number().positive().max(100),
   positionLiquidity: AmountSchema,
@@ -283,7 +283,7 @@ export const LpClaimRequestSchema = z.object({
   protocol: z.literal("V3"),
   tokenId: z.number().int().positive(),
   walletAddress: AddressSchema,
-  chainId: ChainIdSchema,
+  chainId: RoutingChainIdSchema,
   position: PositionInfoSchema,
   expectedTokenOwed0RawAmount: NonNegativeAmountSchema,
   expectedTokenOwed1RawAmount: NonNegativeAmountSchema,
@@ -299,7 +299,7 @@ export const PortfolioQuerySchema = z.object({
     .optional()
     .default("4114")
     .transform((val) => parseInt(val, 10))
-    .pipe(ChainIdSchema),
+    .pipe(RoutingChainIdSchema),
 });
 
 export type PortfolioQuery = z.infer<typeof PortfolioQuerySchema>;
@@ -449,7 +449,7 @@ export type LaunchpadUploadMetadataRequest = z.infer<
 
 // Protocol Stats endpoint schema
 export const ProtocolStatsRequestSchema = z.object({
-  chainId: ChainIdSchema,
+  chainId: RoutingChainIdSchema,
 });
 
 export type ProtocolStatsRequest = z.infer<typeof ProtocolStatsRequestSchema>;
@@ -461,7 +461,7 @@ export const PositionInfoQuerySchema = z.object({
     .optional()
     .default("5115")
     .transform((val) => parseInt(val, 10))
-    .pipe(ChainIdSchema),
+    .pipe(RoutingChainIdSchema),
   protocol: z.enum(["V2", "V3"]).optional().default("V3"),
 });
 
@@ -476,7 +476,7 @@ export type PositionInfoQuery = z.infer<typeof PositionInfoQuerySchema>;
 // Positions by owner endpoint schema
 export const PositionsOwnerRequestSchema = z.object({
   address: AddressSchema,
-  chainIds: z.array(ChainIdSchema).optional(),
+  chainIds: z.array(RoutingChainIdSchema).optional(),
 });
 
 export type PositionsOwnerRequest = z.infer<typeof PositionsOwnerRequestSchema>;
@@ -564,7 +564,7 @@ export const PoolHistoryQuerySchema = z.object({
     .optional()
     .default("4114")
     .transform((val) => parseInt(val, 10))
-    .pipe(ChainIdSchema),
+    .pipe(RoutingChainIdSchema),
   duration: z
     .string()
     .optional()
@@ -579,7 +579,7 @@ export const PoolTransactionsQuerySchema = z.object({
     .optional()
     .default("4114")
     .transform((val) => parseInt(val, 10))
-    .pipe(ChainIdSchema),
+    .pipe(RoutingChainIdSchema),
   first: z
     .string()
     .optional()
@@ -595,7 +595,7 @@ export const PoolTicksQuerySchema = z.object({
     .optional()
     .default("4114")
     .transform((val) => parseInt(val, 10))
-    .pipe(ChainIdSchema),
+    .pipe(RoutingChainIdSchema),
 });
 
 // Auth schemas

@@ -7,17 +7,13 @@ import {
   V3PoolProvider,
   V2PoolProvider,
   V2QuoteProvider,
-  TokenProvider,
   UniswapMulticallProvider,
-  CachingTokenProviderWithFallback,
-  NodeJSCache,
   EIP1559GasPriceProvider,
   nativeOnChain,
   ITokenPropertiesProvider,
   TokenPropertiesResult,
   setGlobalLogger,
 } from "@juiceswapxyz/smart-order-router";
-import NodeCache from "node-cache";
 import {
   ChainId,
   CurrencyAmount,
@@ -126,36 +122,15 @@ export class RouterService {
         375000,
       );
 
-      // Initialize token provider with Ponder integration for Citrea
-      let tokenProvider;
-      if (
-        chainId === ChainId.CITREA_TESTNET ||
-        chainId === ChainId.CITREA_MAINNET
-      ) {
-        // Create token list provider from Ponder + static list
-        const tokenListProvider = await createLocalTokenListProvider(chainId);
-        // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
-        // This is needed for graduated launchpad tokens not yet in the token list
-        tokenProvider = new FallbackTokenProvider(
-          chainId,
-          tokenListProvider,
-          multicallProvider,
-        );
-      } else {
-        // Initialize basic token provider for non-Citrea chains
-        const baseTokenProvider = new TokenProvider(chainId, multicallProvider);
-
-        // Use caching wrapper with fallback
-        const tokenCache = new NodeJSCache<Token>(
-          new NodeCache({ stdTTL: 3600, checkperiod: 600 }),
-        );
-        tokenProvider = new CachingTokenProviderWithFallback(
-          chainId,
-          tokenCache,
-          baseTokenProvider,
-          baseTokenProvider,
-        );
-      }
+      // Create token list provider from Ponder + static list
+      const tokenListProvider = await createLocalTokenListProvider(chainId);
+      // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
+      // This is needed for graduated launchpad tokens not yet in the token list
+      const tokenProvider = new FallbackTokenProvider(
+        chainId,
+        tokenListProvider,
+        multicallProvider,
+      );
 
       // Store token provider for token lookup
       this.tokenProviders.set(chainId, tokenProvider);
