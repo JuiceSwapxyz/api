@@ -3,6 +3,7 @@ import { ChainId } from "@juiceswapxyz/sdk-core";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ethers } from "ethers";
 import { PriceService, BtcPriceData, BtcPriceHistory } from "./PriceService";
+import { errorFields } from "../utils/errorFields";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
 import { getChainName } from "../config/chains";
@@ -332,11 +333,11 @@ export class ExploreStatsService {
       this.fetchRecentSwaps(ponderClient, chainId),
       this.fetchPoolActivities(ponderClient, chainId),
       this.priceService.getBtcPriceData().catch((err) => {
-        this.logger.warn({ error: err }, "Failed to fetch BTC price data");
+        this.logger.warn(errorFields(err), "Failed to fetch BTC price data");
         return { price: 0, change1h: 0, change24h: 0 } as BtcPriceData;
       }),
       this.priceService.getBtcPriceHistory().catch((err) => {
-        this.logger.warn({ error: err }, "Failed to fetch BTC price history");
+        this.logger.warn(errorFields(err), "Failed to fetch BTC price history");
         return null;
       }),
       this.getYearlyVolumeStats(ponderClient, chainId),

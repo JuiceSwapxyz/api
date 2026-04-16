@@ -2,6 +2,7 @@ import axios from "axios";
 import Logger from "bunyan";
 import { ChainId, WETH9 } from "@juiceswapxyz/sdk-core";
 import { getChainContracts } from "../config/contracts";
+import { errorFields } from "../utils/errorFields";
 
 interface PriceCache {
   price: number;
@@ -44,11 +45,14 @@ export class PriceService {
   private logger: Logger;
   private btcPriceCache: PriceCache | null = null;
   private btcPriceInflight: Promise<number> | null = null;
+  private btcPriceErrorUntil: number = 0;
   private btcPriceDataCache: BtcPriceDataCache | null = null;
   private btcPriceDataInflight: Promise<BtcPriceData> | null = null;
+  private btcPriceDataErrorUntil: number = 0;
   private btcPriceHistoryCache: BtcPriceHistoryCache | null = null;
   private btcPriceHistoryInflight: Promise<BtcPriceHistory | null> | null =
     null;
+  private btcPriceHistoryErrorUntil: number = 0;
   private readonly CACHE_TTL = 300_000; // 5 minutes
   private readonly coinGeckoHeaders: Record<string, string>;
 
@@ -115,6 +119,11 @@ export class PriceService {
       return this.btcPriceCache.price;
     }
 
+    if (now < this.btcPriceErrorUntil) {
+      if (this.btcPriceCache) return this.btcPriceCache.price;
+      throw new Error("BTC price unavailable (backing off after error)");
+    }
+
     // If a getBtcPriceData() fetch is already inflight, piggyback on it
     // instead of making a separate /simple/price request
     if (this.btcPriceDataInflight) {
@@ -147,6 +156,11 @@ export class PriceService {
       return this.btcPriceDataCache.data;
     }
 
+    if (now < this.btcPriceDataErrorUntil) {
+      if (this.btcPriceDataCache) return this.btcPriceDataCache.data;
+      throw new Error("BTC price data unavailable (backing off after error)");
+    }
+
     if (this.btcPriceDataInflight) {
       return this.btcPriceDataInflight;
     }
@@ -170,6 +184,10 @@ export class PriceService {
       now - this.btcPriceHistoryCache.timestamp < this.CACHE_TTL
     ) {
       return this.btcPriceHistoryCache.data;
+    }
+
+    if (now < this.btcPriceHistoryErrorUntil) {
+      return this.btcPriceHistoryCache?.data ?? null;
     }
 
     if (this.btcPriceHistoryInflight) {
@@ -221,8 +239,9 @@ export class PriceService {
       );
       return data;
     } catch (error) {
+      this.btcPriceHistoryErrorUntil = Date.now() + this.CACHE_TTL;
       this.logger.warn(
-        { error },
+        errorFields(error),
         "Failed to fetch BTC price history from CoinGecko",
       );
       if (this.btcPriceHistoryCache) {
@@ -244,7 +263,7 @@ export class PriceService {
       return data;
     } catch (error) {
       this.logger.warn(
-        { error },
+        errorFields(error),
         "CoinGecko BTC price data fetch failed, falling back to Binance (no % changes)",
       );
       try {
@@ -254,8 +273,9 @@ export class PriceService {
         this.btcPriceCache = { price, timestamp: now };
         return data;
       } catch (fallbackError) {
+        this.btcPriceDataErrorUntil = Date.now() + this.CACHE_TTL;
         this.logger.error(
-          { error: fallbackError },
+          errorFields(fallbackError),
           "Both BTC price data sources failed",
         );
         if (this.btcPriceDataCache) {
@@ -310,7 +330,7 @@ export class PriceService {
       return price;
     } catch (error) {
       this.logger.warn(
-        { error },
+        errorFields(error),
         "CoinGecko BTC price fetch failed, trying Binance",
       );
       try {
@@ -318,8 +338,9 @@ export class PriceService {
         this.btcPriceCache = { price, timestamp: now };
         return price;
       } catch (fallbackError) {
+        this.btcPriceErrorUntil = Date.now() + this.CACHE_TTL;
         this.logger.error(
-          { error: fallbackError },
+          errorFields(fallbackError),
           "Both BTC price sources failed",
         );
         // Return stale cache if available
