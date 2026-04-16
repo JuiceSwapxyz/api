@@ -229,12 +229,12 @@ export class JuiceGatewayService {
         reason?: string;
         error?: { message?: string; code?: number };
       };
-      this.logger.info(
+      this.logger.debug(
         {
           chainId,
-          errMessage: e?.message,
-          errCode: e?.code,
-          errReason: e?.reason,
+          fallbackMessage: e?.message,
+          fallbackCode: e?.code,
+          fallbackReason: e?.reason,
           rpcMessage: e?.error?.message,
           rpcCode: e?.error?.code,
         },
