@@ -553,11 +553,11 @@ async function handleGatewaySwap(
         gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
       } catch (e: unknown) {
         const err = e as { message?: string; code?: string; reason?: string };
-        log.info(
+        log.debug(
           {
-            errMessage: err?.message,
-            errCode: err?.code,
-            errReason: err?.reason,
+            fallbackMessage: err?.message,
+            fallbackCode: err?.code,
+            fallbackReason: err?.reason,
           },
           "Gas estimation failed for direct conversion, using default",
         );
@@ -673,11 +673,11 @@ async function handleGatewaySwap(
       gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
     } catch (e: unknown) {
       const err = e as { message?: string; code?: string; reason?: string };
-      log.info(
+      log.debug(
         {
-          errMessage: err?.message,
-          errCode: err?.code,
-          errReason: err?.reason,
+          fallbackMessage: err?.message,
+          fallbackCode: err?.code,
+          fallbackReason: err?.reason,
         },
         "Gas estimation failed for Gateway swap, using default",
       );
@@ -730,9 +730,9 @@ async function handleGatewaySwap(
     // Bridge liquidity error - fall through to classic V3 routing
     // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
     if (error instanceof BridgeLiquidityError) {
-      log.info(
+      log.debug(
         {
-          error: error.message,
+          reason: error.message,
           available: error.available,
           required: error.required,
         },
@@ -896,11 +896,11 @@ async function handleClassicSwap(
       gasLimit = estimatedGas.mul(110).div(100); // 10% buffer
     } catch (e: unknown) {
       const err = e as { message?: string; code?: string; reason?: string };
-      log.info(
+      log.debug(
         {
-          errMessage: err?.message,
-          errCode: err?.code,
-          errReason: err?.reason,
+          fallbackMessage: err?.message,
+          fallbackCode: err?.code,
+          fallbackReason: err?.reason,
         },
         "Gas estimation failed for Classic swap, using default",
       );
