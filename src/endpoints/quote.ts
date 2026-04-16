@@ -621,9 +621,9 @@ export function createQuoteHandler(
             // Bridge liquidity error - fall through to classic V3 routing
             // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
             if (error instanceof BridgeLiquidityError) {
-              log.info(
+              log.debug(
                 {
-                  error: error.message,
+                  reason: error.message,
                   available: error.available,
                   required: error.required,
                   tokenIn,
