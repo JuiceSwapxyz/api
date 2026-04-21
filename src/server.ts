@@ -43,6 +43,7 @@ import {
   createDiscordStatusHandler,
   createBAppsStatusHandler,
   createNFTSignatureHandler,
+  createFirstSqueezerEligibilityHandler,
 } from "./endpoints/firstSqueezerCampaign";
 import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
 import {
@@ -315,6 +316,8 @@ async function bootstrap() {
   const handleDiscordStatus = createDiscordStatusHandler(logger);
   const handleBAppsStatus = createBAppsStatusHandler(logger);
   const handleNFTSignature = createNFTSignatureHandler(logger);
+  const handleFirstSqueezerEligibility =
+    createFirstSqueezerEligibilityHandler(logger);
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress =
     createValidateLightningAddressHandler(logger);
@@ -616,6 +619,13 @@ async function bootstrap() {
     "/v1/campaigns/first-squeezer/nft/signature",
     generalLimiter,
     handleNFTSignature,
+  );
+
+  // Campaign endpoints - Mainnet claim eligibility pre-flight
+  app.get(
+    "/v1/campaigns/first-squeezer/eligibility",
+    generalLimiter,
+    handleFirstSqueezerEligibility,
   );
 
   // Bridge Swap endpoints
