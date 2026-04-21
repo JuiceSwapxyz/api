@@ -7,11 +7,34 @@ import { getTwitterApiIoService } from "../services/TwitterApiIoService";
 import { getDiscordOAuthService } from "../services/DiscordOAuthService";
 import { getPonderClient } from "../services/PonderClient";
 import { prisma } from "../db/prisma";
-import { FIRST_SQUEEZER_NFT_CONTRACT } from "../lib/constants/campaigns";
+import {
+  FIRST_SQUEEZER_NFT_CONTRACT,
+  FIRST_SQUEEZER_TESTNET_NFT_CONTRACT,
+} from "../lib/constants/campaigns";
 
 /**
  * First Squeezer Campaign - Social OAuth Endpoints (Twitter & Discord)
  */
+
+/**
+ * Returns true if the wallet ran claim() on the testnet First Squeezer NFT
+ * contract (Oct 2025 campaign). Used by the mainnet claim eligibility gate.
+ * Throws on RPC failure — callers must fail closed, not permit claims.
+ */
+async function hasClaimedTestnetNFT(walletAddress: string): Promise<boolean> {
+  if (!process.env.CITREA_5115_RPC_URL) {
+    throw new Error("CITREA_5115_RPC_URL not configured");
+  }
+  const provider = new ethers.providers.JsonRpcProvider(
+    process.env.CITREA_5115_RPC_URL,
+  );
+  const contract = new ethers.Contract(
+    FIRST_SQUEEZER_TESTNET_NFT_CONTRACT,
+    ["function hasClaimed(address) view returns (bool)"],
+    provider,
+  );
+  return contract.hasClaimed(walletAddress);
+}
 
 /**
  * @swagger
@@ -957,6 +980,33 @@ export function createNFTSignatureHandler(logger: Logger) {
         return;
       }
 
+      // Gate: caller must have claimed the testnet First Squeezer NFT.
+      // Fail CLOSED on RPC errors — this check is the sole enforcer of the gate.
+      try {
+        const hasTestnetClaim = await hasClaimedTestnetNFT(normalizedAddress);
+        if (!hasTestnetClaim) {
+          log.debug(
+            { walletAddress: normalizedAddress },
+            "Not eligible: no testnet First Squeezer claim on record",
+          );
+          res.status(403).json({
+            message:
+              "Only wallets that claimed the testnet First Squeezer NFT are eligible",
+            eligible: false,
+          });
+          return;
+        }
+      } catch (error: any) {
+        log.error(
+          { error: error.message, context: "testnet claim gate" },
+          "Failed to verify testnet claim — failing closed",
+        );
+        res
+          .status(503)
+          .json({ message: "Could not verify eligibility; please retry" });
+        return;
+      }
+
       // Check Twitter and Discord verification.
       const campaign = user.ogCampaign;
       const twitterVerified = !!campaign.twitterVerifiedAt;
@@ -1052,6 +1102,58 @@ export function createNFTSignatureHandler(logger: Logger) {
         "Error in handleNFTSignature",
       );
       res.status(500).json({ message: "Failed to generate signature" });
+    }
+  };
+}
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/eligibility:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Check whether a wallet is eligible for the mainnet First Squeezer NFT
+ *     description: |
+ *       Returns `{ eligible: true }` iff the wallet ran claim() on the testnet
+ *       First Squeezer NFT contract (Oct 2025 campaign). Used by the frontend
+ *       for pre-flight UX; the authoritative gate is enforced in /nft/signature.
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 eligible:
+ *                   type: boolean
+ */
+export function createFirstSqueezerEligibilityHandler(logger: Logger) {
+  return async function handleFirstSqueezerEligibility(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "first-squeezer-eligibility" });
+
+    const walletAddress = req.query.walletAddress as string;
+    if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      res.status(400).json({ message: "Invalid wallet address" });
+      return;
+    }
+
+    try {
+      const eligible = await hasClaimedTestnetNFT(walletAddress.toLowerCase());
+      res.status(200).json({ eligible });
+    } catch (error: any) {
+      log.error(
+        { error: error.message, walletAddress },
+        "Eligibility check failed",
+      );
+      res.status(503).json({ message: "Could not verify eligibility" });
     }
   };
 }
