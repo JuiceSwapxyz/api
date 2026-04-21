@@ -832,7 +832,7 @@ export function createBAppsStatusHandler(logger: Logger) {
         const ponderClient = getPonderClient(log);
         const response = await ponderClient.post("/campaign/progress", {
           walletAddress: normalizedAddress,
-          chainId: ChainId.CITREA_TESTNET,
+          chainId: ChainId.CITREA_MAINNET,
         });
 
         log.debug(
@@ -957,50 +957,17 @@ export function createNFTSignatureHandler(logger: Logger) {
         return;
       }
 
-      // Check Twitter and Discord verification
+      // Check Twitter and Discord verification.
       const campaign = user.ogCampaign;
       const twitterVerified = !!campaign.twitterVerifiedAt;
       const discordVerified = !!campaign.discordVerifiedAt;
 
-      // Check bApps completion (3 swaps) via Ponder API
-      let bappsCompleted = false;
-
-      try {
-        const ponderClient = getPonderClient(log);
-        const response = await ponderClient.post("/campaign/progress", {
-          walletAddress: normalizedAddress,
-          chainId: ChainId.CITREA_TESTNET,
-        });
-
-        const completedTasks = response.data?.completedTasks || 0;
-        bappsCompleted = completedTasks === 3;
-
-        log.debug(
-          { walletAddress: normalizedAddress, completedTasks, bappsCompleted },
-          "Ponder API verification",
-        );
-      } catch (error: any) {
-        log.error(
-          {
-            error: error.message,
-            context: "NFT signature - bApps verification",
-          },
-          "Failed to verify bApps completion via Ponder",
-        );
-        res
-          .status(500)
-          .json({ message: "Failed to verify campaign completion" });
-        return;
-      }
-
-      // Verify ALL steps completed
-      if (!twitterVerified || !discordVerified || !bappsCompleted) {
+      if (!twitterVerified || !discordVerified) {
         log.debug(
           {
             walletAddress: normalizedAddress,
             twitterVerified,
             discordVerified,
-            bappsCompleted,
           },
           "User has not completed all verifications",
         );
@@ -1008,20 +975,19 @@ export function createNFTSignatureHandler(logger: Logger) {
           message: "Complete all verification steps first",
           twitterVerified,
           discordVerified,
-          bappsCompleted,
         });
         return;
       }
 
       // Check if NFT already claimed (query contract)
       try {
-        if (!process.env.CITREA_5115_RPC_URL) {
+        if (!process.env.CITREA_4114_RPC_URL) {
           throw new Error(
-            "CITREA_5115_RPC_URL environment variable is required",
+            "CITREA_4114_RPC_URL environment variable is required",
           );
         }
         const provider = new ethers.providers.JsonRpcProvider(
-          process.env.CITREA_5115_RPC_URL,
+          process.env.CITREA_4114_RPC_URL,
         );
         const nftContract = new ethers.Contract(
           contractAddress,
@@ -1052,15 +1018,16 @@ export function createNFTSignatureHandler(logger: Logger) {
           { error: error.message, context: "NFT claim status check" },
           "Failed to check NFT claim status, continuing with signature generation",
         );
-        // Continue even if check fails - contract will reject if already claimed
+        // The contract still prevents double claims.
       }
 
       // Generate signature (matches contract verification)
       // keccak256(abi.encodePacked(address(this), block.chainid, msg.sender))
+      // Chain id must match the target chain.
       const signer = new ethers.Wallet(signerPrivateKey);
       const messageHash = ethers.utils.solidityKeccak256(
         ["address", "uint256", "address"],
-        [contractAddress, ChainId.CITREA_TESTNET, normalizedAddress],
+        [contractAddress, ChainId.CITREA_MAINNET, normalizedAddress],
       );
       const signature = await signer.signMessage(
         ethers.utils.arrayify(messageHash),
