@@ -892,7 +892,9 @@ export function createBAppsStatusHandler(logger: Logger) {
  *   get:
  *     tags: [Campaign]
  *     summary: Get NFT claim signature
- *     description: Requires Twitter, Discord, and 3 swaps completed
+ *     description: |
+ *       Requires both social verifications and a prior claim on the testnet
+ *       First Squeezer NFT.
  *     parameters:
  *       - in: query
  *         name: walletAddress
