@@ -1,4 +1,8 @@
 import axios from "axios";
+import {
+  DISCORD_GUILD_ID,
+  DISCORD_JUICER_ROLE_ID,
+} from "../lib/constants/campaigns";
 import { generateState } from "../utils/pkce";
 import { prisma } from "../db/prisma";
 
@@ -15,8 +19,6 @@ interface DiscordOAuthConfig {
   clientSecret: string;
   botToken: string;
   callbackUrl: string;
-  guildId: string;
-  juicerRoleId: string;
 }
 
 interface DiscordTokenResponse {
@@ -235,7 +237,7 @@ export class DiscordOAuthService {
    */
   public async isUserInGuild(accessToken: string): Promise<boolean> {
     const guilds = await this.getUserGuilds(accessToken);
-    return guilds.some((guild) => guild.id === this.config.guildId);
+    return guilds.some((guild) => guild.id === DISCORD_GUILD_ID);
   }
 
   /**
@@ -245,14 +247,14 @@ export class DiscordOAuthService {
    * invoke addUserToGuild first.
    */
   public async hasJuicerRole(userId: string): Promise<boolean> {
-    const url = `${this.ADD_GUILD_MEMBER_URL}/${this.config.guildId}/members/${userId}`;
+    const url = `${this.ADD_GUILD_MEMBER_URL}/${DISCORD_GUILD_ID}/members/${userId}`;
     try {
       const response = await axios.get<{ roles: string[] }>(url, {
         headers: {
           Authorization: `Bot ${this.config.botToken}`,
         },
       });
-      return response.data.roles.includes(this.config.juicerRoleId);
+      return response.data.roles.includes(DISCORD_JUICER_ROLE_ID);
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         return false;
@@ -276,7 +278,7 @@ export class DiscordOAuthService {
     accessToken: string,
   ): Promise<void> {
     try {
-      const url = `${this.ADD_GUILD_MEMBER_URL}/${this.config.guildId}/members/${userId}`;
+      const url = `${this.ADD_GUILD_MEMBER_URL}/${DISCORD_GUILD_ID}/members/${userId}`;
 
       await axios.put(
         url,
@@ -373,17 +375,13 @@ export function getDiscordOAuthService(): DiscordOAuthService {
       clientSecret: process.env.DISCORD_CLIENT_SECRET || "",
       botToken: process.env.DISCORD_BOT_TOKEN || "",
       callbackUrl: process.env.DISCORD_CALLBACK_URL || "",
-      guildId: process.env.DISCORD_GUILD_ID || "",
-      juicerRoleId: process.env.DISCORD_JUICER_ROLE_ID || "",
     };
 
     if (
       !config.clientId ||
       !config.clientSecret ||
       !config.botToken ||
-      !config.callbackUrl ||
-      !config.guildId ||
-      !config.juicerRoleId
+      !config.callbackUrl
     ) {
       throw new Error("Missing Discord OAuth environment variables");
     }
