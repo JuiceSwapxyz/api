@@ -540,12 +540,12 @@ export function createDiscordCallbackHandler(logger: Logger) {
       // Get Discord OAuth service
       const discordService = getDiscordOAuthService();
 
-      // Complete OAuth flow (includes guild membership check)
+      // Complete OAuth flow (includes Juicer role check)
       log.debug({ state }, "Starting Discord OAuth flow completion");
-      const { walletAddress, discordUser, isInGuild } =
+      const { walletAddress, discordUser, hasJuicerRole } =
         await discordService.completeOAuthFlow(code, state);
       log.debug(
-        { walletAddress, username: discordUser.username, isInGuild },
+        { walletAddress, username: discordUser.username, hasJuicerRole },
         "Discord OAuth flow completed successfully",
       );
 
@@ -564,14 +564,14 @@ export function createDiscordCallbackHandler(logger: Logger) {
         return;
       }
 
-      // Check if user is in the JuiceSwap Discord guild
-      if (!isInGuild) {
+      // Gate: user must carry the Juicer role in the JuiceSwap Discord
+      if (!hasJuicerRole) {
         log.warn(
           { walletAddress, discordUsername: discordUser.username },
-          "User is not in JuiceSwap Discord guild",
+          "User does not have the Juicer role in JuiceSwap Discord",
         );
         res.redirect(
-          `${process.env.FRONTEND_URL || "http://localhost:3001"}/oauth-callback?discord=error&message=${encodeURIComponent("You must join the JuiceSwap Discord server first")}`,
+          `${process.env.FRONTEND_URL || "http://localhost:3001"}/oauth-callback?discord=error&message=${encodeURIComponent("Your Discord account must have the Juicer role in the JuiceSwap server")}`,
         );
         return;
       }
