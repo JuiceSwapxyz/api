@@ -38,6 +38,7 @@ import {
   createTwitterStartHandler,
   createTwitterCallbackHandler,
   createTwitterStatusHandler,
+  createTwitterMarkFollowedHandler,
   createDiscordStartHandler,
   createDiscordCallbackHandler,
   createDiscordStatusHandler,
@@ -311,6 +312,7 @@ async function bootstrap() {
   const handleTwitterStart = createTwitterStartHandler(logger);
   const handleTwitterCallback = createTwitterCallbackHandler(logger);
   const handleTwitterStatus = createTwitterStatusHandler(logger);
+  const handleTwitterMarkFollowed = createTwitterMarkFollowedHandler(logger);
   const handleDiscordStart = createDiscordStartHandler(logger);
   const handleDiscordCallback = createDiscordCallbackHandler(logger);
   const handleDiscordStatus = createDiscordStatusHandler(logger);
@@ -588,6 +590,11 @@ async function bootstrap() {
     "/v1/campaigns/first-squeezer/twitter/status",
     generalLimiter,
     handleTwitterStatus,
+  );
+  app.post(
+    "/v1/campaigns/first-squeezer/twitter/mark-followed",
+    generalLimiter,
+    handleTwitterMarkFollowed,
   );
 
   // Campaign endpoints - Discord OAuth
