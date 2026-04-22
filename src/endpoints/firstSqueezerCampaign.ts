@@ -404,6 +404,100 @@ export function createTwitterStatusHandler(logger: Logger) {
 }
 
 /**
+ * @swagger
+ * /v1/campaigns/first-squeezer/twitter/mark-followed:
+ *   post:
+ *     tags: [Campaign]
+ *     summary: Mark a wallet as having followed @JuiceSwap_com (honor system)
+ *     description: >
+ *       Sets `twitterVerifiedAt` for the wallet. Does NOT verify the follow on
+ *       Twitter's side and does NOT touch `twitterUsername` / `twitterUserId`,
+ *       preserving data from any prior OAuth-based verification for the same
+ *       wallet.
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 verifiedAt:
+ *                   type: string
+ *                   format: date-time
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+export function createTwitterMarkFollowedHandler(logger: Logger) {
+  return async function handleTwitterMarkFollowed(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "twitter-mark-followed" });
+
+    try {
+      const walletAddress = req.query.walletAddress as string;
+
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        res.status(400).json({ message: "Invalid wallet address" });
+        return;
+      }
+
+      const normalizedAddress = walletAddress.toLowerCase();
+
+      // Find or create user
+      let user = await prisma.user.findUnique({
+        where: { address: normalizedAddress },
+      });
+      if (!user) {
+        user = await prisma.user.create({
+          data: { address: normalizedAddress },
+        });
+      }
+
+      // Upsert only `twitterVerifiedAt`. `twitterUsername` and `twitterUserId`
+      // are intentionally omitted from the update so any values populated via
+      // a previous OAuth flow are preserved.
+      const verifiedAt = new Date();
+      await prisma.ogCampaignUser.upsert({
+        where: { userId: user.id },
+        update: { twitterVerifiedAt: verifiedAt },
+        create: {
+          userId: user.id,
+          twitterVerifiedAt: verifiedAt,
+        },
+      });
+
+      log.info(
+        { walletAddress: normalizedAddress },
+        "Twitter follow marked (honor system)",
+      );
+
+      res
+        .status(200)
+        .json({ success: true, verifiedAt: verifiedAt.toISOString() });
+    } catch (error: any) {
+      log.error(
+        { error: error.message, stack: error.stack },
+        "Error in handleTwitterMarkFollowed",
+      );
+      res.status(500).json({ message: "Failed to mark Twitter follow" });
+    }
+  };
+}
+
+/**
  * Discord OAuth Endpoints
  */
 
