@@ -16,6 +16,7 @@ interface DiscordOAuthConfig {
   botToken: string;
   callbackUrl: string;
   guildId: string;
+  juicerRoleId: string;
 }
 
 interface DiscordTokenResponse {
@@ -238,6 +239,34 @@ export class DiscordOAuthService {
   }
 
   /**
+   * Check whether the user carries the Juicer role in the JuiceSwap guild.
+   * Uses the bot token (no extra OAuth scope needed). Returns false if the
+   * user is not a guild member — expected to be a no-op path since callers
+   * invoke addUserToGuild first.
+   */
+  public async hasJuicerRole(userId: string): Promise<boolean> {
+    const url = `${this.ADD_GUILD_MEMBER_URL}/${this.config.guildId}/members/${userId}`;
+    try {
+      const response = await axios.get<{ roles: string[] }>(url, {
+        headers: {
+          Authorization: `Bot ${this.config.botToken}`,
+        },
+      });
+      return response.data.roles.includes(this.config.juicerRoleId);
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return false;
+      }
+      if (axios.isAxiosError(error)) {
+        throw new Error(
+          `Failed to fetch Discord guild member: ${error.response?.data?.message || error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Add user to the JuiceSwap Discord guild
    * Requires guilds.join scope from user OAuth and bot to be in the guild
    * Uses Bot token to make the API call
@@ -272,7 +301,8 @@ export class DiscordOAuthService {
   }
 
   /**
-   * Complete OAuth flow: exchange code, get user info, add to guild, and verify membership
+   * Complete OAuth flow: exchange code, get user info, add to guild, and
+   * verify the user carries the Juicer role.
    */
   public async completeOAuthFlow(
     code: string,
@@ -280,7 +310,7 @@ export class DiscordOAuthService {
   ): Promise<{
     walletAddress: string;
     discordUser: DiscordUserData;
-    isInGuild: boolean;
+    hasJuicerRole: boolean;
   }> {
     // Exchange code for token
     const { accessToken, walletAddress } = await this.exchangeCodeForToken(
@@ -291,16 +321,17 @@ export class DiscordOAuthService {
     // Get user info
     const discordUser = await this.getUserInfo(accessToken);
 
-    // Add user to Discord guild (auto-invite with guilds.join scope)
+    // Auto-invite into the guild so the bot can subsequently read the member
+    // object. Idempotent (Discord returns 204 if already a member).
     await this.addUserToGuild(discordUser.id, accessToken);
 
-    // Check if user is in the JuiceSwap Discord guild (should be true after auto-add)
-    const isInGuild = await this.isUserInGuild(accessToken);
+    // Gate: the user must carry the Juicer role.
+    const hasJuicerRole = await this.hasJuicerRole(discordUser.id);
 
     return {
       walletAddress,
       discordUser,
-      isInGuild,
+      hasJuicerRole,
     };
   }
 
@@ -343,6 +374,7 @@ export function getDiscordOAuthService(): DiscordOAuthService {
       botToken: process.env.DISCORD_BOT_TOKEN || "",
       callbackUrl: process.env.DISCORD_CALLBACK_URL || "",
       guildId: process.env.DISCORD_GUILD_ID || "",
+      juicerRoleId: process.env.DISCORD_JUICER_ROLE_ID || "",
     };
 
     if (
@@ -350,7 +382,8 @@ export function getDiscordOAuthService(): DiscordOAuthService {
       !config.clientSecret ||
       !config.botToken ||
       !config.callbackUrl ||
-      !config.guildId
+      !config.guildId ||
+      !config.juicerRoleId
     ) {
       throw new Error("Missing Discord OAuth environment variables");
     }
