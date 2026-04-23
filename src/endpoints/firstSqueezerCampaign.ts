@@ -7,11 +7,34 @@ import { getTwitterApiIoService } from "../services/TwitterApiIoService";
 import { getDiscordOAuthService } from "../services/DiscordOAuthService";
 import { getPonderClient } from "../services/PonderClient";
 import { prisma } from "../db/prisma";
-import { FIRST_SQUEEZER_NFT_CONTRACT } from "../lib/constants/campaigns";
+import {
+  FIRST_SQUEEZER_NFT_CONTRACT,
+  FIRST_SQUEEZER_TESTNET_NFT_CONTRACT,
+} from "../lib/constants/campaigns";
 
 /**
  * First Squeezer Campaign - Social OAuth Endpoints (Twitter & Discord)
  */
+
+/**
+ * Returns true if the wallet ran claim() on the testnet First Squeezer NFT
+ * contract (Oct 2025 campaign). Used by the mainnet claim eligibility gate.
+ * Throws on RPC failure — callers must fail closed, not permit claims.
+ */
+async function hasClaimedTestnetNFT(walletAddress: string): Promise<boolean> {
+  if (!process.env.CITREA_5115_RPC_URL) {
+    throw new Error("CITREA_5115_RPC_URL not configured");
+  }
+  const provider = new ethers.providers.JsonRpcProvider(
+    process.env.CITREA_5115_RPC_URL,
+  );
+  const contract = new ethers.Contract(
+    FIRST_SQUEEZER_TESTNET_NFT_CONTRACT,
+    ["function hasClaimed(address) view returns (bool)"],
+    provider,
+  );
+  return contract.hasClaimed(walletAddress);
+}
 
 /**
  * @swagger
@@ -381,6 +404,100 @@ export function createTwitterStatusHandler(logger: Logger) {
 }
 
 /**
+ * @swagger
+ * /v1/campaigns/first-squeezer/twitter/mark-followed:
+ *   post:
+ *     tags: [Campaign]
+ *     summary: Mark a wallet as having followed @JuiceSwap_com (honor system)
+ *     description: >
+ *       Sets `twitterVerifiedAt` for the wallet. Does NOT verify the follow on
+ *       Twitter's side and does NOT touch `twitterUsername` / `twitterUserId`,
+ *       preserving data from any prior OAuth-based verification for the same
+ *       wallet.
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "0x2F0cC51C02E5D4EC68bC155728798969D5c0F714"
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 verifiedAt:
+ *                   type: string
+ *                   format: date-time
+ *       default:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+export function createTwitterMarkFollowedHandler(logger: Logger) {
+  return async function handleTwitterMarkFollowed(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "twitter-mark-followed" });
+
+    try {
+      const walletAddress = req.query.walletAddress as string;
+
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        res.status(400).json({ message: "Invalid wallet address" });
+        return;
+      }
+
+      const normalizedAddress = walletAddress.toLowerCase();
+
+      // Find or create user
+      let user = await prisma.user.findUnique({
+        where: { address: normalizedAddress },
+      });
+      if (!user) {
+        user = await prisma.user.create({
+          data: { address: normalizedAddress },
+        });
+      }
+
+      // Upsert only `twitterVerifiedAt`. `twitterUsername` and `twitterUserId`
+      // are intentionally omitted from the update so any values populated via
+      // a previous OAuth flow are preserved.
+      const verifiedAt = new Date();
+      await prisma.ogCampaignUser.upsert({
+        where: { userId: user.id },
+        update: { twitterVerifiedAt: verifiedAt },
+        create: {
+          userId: user.id,
+          twitterVerifiedAt: verifiedAt,
+        },
+      });
+
+      log.info(
+        { walletAddress: normalizedAddress },
+        "Twitter follow marked (honor system)",
+      );
+
+      res
+        .status(200)
+        .json({ success: true, verifiedAt: verifiedAt.toISOString() });
+    } catch (error: any) {
+      log.error(
+        { error: error.message, stack: error.stack },
+        "Error in handleTwitterMarkFollowed",
+      );
+      res.status(500).json({ message: "Failed to mark Twitter follow" });
+    }
+  };
+}
+
+/**
  * Discord OAuth Endpoints
  */
 
@@ -517,12 +634,12 @@ export function createDiscordCallbackHandler(logger: Logger) {
       // Get Discord OAuth service
       const discordService = getDiscordOAuthService();
 
-      // Complete OAuth flow (includes guild membership check)
+      // Complete OAuth flow (includes Juicer role check)
       log.debug({ state }, "Starting Discord OAuth flow completion");
-      const { walletAddress, discordUser, isInGuild } =
+      const { walletAddress, discordUser, hasJuicerRole } =
         await discordService.completeOAuthFlow(code, state);
       log.debug(
-        { walletAddress, username: discordUser.username, isInGuild },
+        { walletAddress, username: discordUser.username, hasJuicerRole },
         "Discord OAuth flow completed successfully",
       );
 
@@ -541,14 +658,14 @@ export function createDiscordCallbackHandler(logger: Logger) {
         return;
       }
 
-      // Check if user is in the JuiceSwap Discord guild
-      if (!isInGuild) {
+      // Gate: user must carry the Juicer role in the JuiceSwap Discord
+      if (!hasJuicerRole) {
         log.warn(
           { walletAddress, discordUsername: discordUser.username },
-          "User is not in JuiceSwap Discord guild",
+          "User does not have the Juicer role in JuiceSwap Discord",
         );
         res.redirect(
-          `${process.env.FRONTEND_URL || "http://localhost:3001"}/oauth-callback?discord=error&message=${encodeURIComponent("You must join the JuiceSwap Discord server first")}`,
+          `${process.env.FRONTEND_URL || "http://localhost:3001"}/oauth-callback?discord=error&message=${encodeURIComponent("Your Discord account must have the Juicer role in the JuiceSwap server")}`,
         );
         return;
       }
@@ -832,7 +949,7 @@ export function createBAppsStatusHandler(logger: Logger) {
         const ponderClient = getPonderClient(log);
         const response = await ponderClient.post("/campaign/progress", {
           walletAddress: normalizedAddress,
-          chainId: ChainId.CITREA_TESTNET,
+          chainId: ChainId.CITREA_MAINNET,
         });
 
         log.debug(
@@ -869,7 +986,9 @@ export function createBAppsStatusHandler(logger: Logger) {
  *   get:
  *     tags: [Campaign]
  *     summary: Get NFT claim signature
- *     description: Requires Twitter, Discord, and 3 swaps completed
+ *     description: |
+ *       Requires both social verifications and a prior claim on the testnet
+ *       First Squeezer NFT.
  *     parameters:
  *       - in: query
  *         name: walletAddress
@@ -957,50 +1076,44 @@ export function createNFTSignatureHandler(logger: Logger) {
         return;
       }
 
-      // Check Twitter and Discord verification
+      // Gate: caller must have claimed the testnet First Squeezer NFT.
+      // Fail CLOSED on RPC errors — this check is the sole enforcer of the gate.
+      try {
+        const hasTestnetClaim = await hasClaimedTestnetNFT(normalizedAddress);
+        if (!hasTestnetClaim) {
+          log.debug(
+            { walletAddress: normalizedAddress },
+            "Not eligible: no testnet First Squeezer claim on record",
+          );
+          res.status(403).json({
+            message:
+              "Only wallets that claimed the testnet First Squeezer NFT are eligible",
+            eligible: false,
+          });
+          return;
+        }
+      } catch (error: any) {
+        log.error(
+          { error: error.message, context: "testnet claim gate" },
+          "Failed to verify testnet claim — failing closed",
+        );
+        res
+          .status(503)
+          .json({ message: "Could not verify eligibility; please retry" });
+        return;
+      }
+
+      // Check Twitter and Discord verification.
       const campaign = user.ogCampaign;
       const twitterVerified = !!campaign.twitterVerifiedAt;
       const discordVerified = !!campaign.discordVerifiedAt;
 
-      // Check bApps completion (3 swaps) via Ponder API
-      let bappsCompleted = false;
-
-      try {
-        const ponderClient = getPonderClient(log);
-        const response = await ponderClient.post("/campaign/progress", {
-          walletAddress: normalizedAddress,
-          chainId: ChainId.CITREA_TESTNET,
-        });
-
-        const completedTasks = response.data?.completedTasks || 0;
-        bappsCompleted = completedTasks === 3;
-
-        log.debug(
-          { walletAddress: normalizedAddress, completedTasks, bappsCompleted },
-          "Ponder API verification",
-        );
-      } catch (error: any) {
-        log.error(
-          {
-            error: error.message,
-            context: "NFT signature - bApps verification",
-          },
-          "Failed to verify bApps completion via Ponder",
-        );
-        res
-          .status(500)
-          .json({ message: "Failed to verify campaign completion" });
-        return;
-      }
-
-      // Verify ALL steps completed
-      if (!twitterVerified || !discordVerified || !bappsCompleted) {
+      if (!twitterVerified || !discordVerified) {
         log.debug(
           {
             walletAddress: normalizedAddress,
             twitterVerified,
             discordVerified,
-            bappsCompleted,
           },
           "User has not completed all verifications",
         );
@@ -1008,20 +1121,19 @@ export function createNFTSignatureHandler(logger: Logger) {
           message: "Complete all verification steps first",
           twitterVerified,
           discordVerified,
-          bappsCompleted,
         });
         return;
       }
 
       // Check if NFT already claimed (query contract)
       try {
-        if (!process.env.CITREA_5115_RPC_URL) {
+        if (!process.env.CITREA_4114_RPC_URL) {
           throw new Error(
-            "CITREA_5115_RPC_URL environment variable is required",
+            "CITREA_4114_RPC_URL environment variable is required",
           );
         }
         const provider = new ethers.providers.JsonRpcProvider(
-          process.env.CITREA_5115_RPC_URL,
+          process.env.CITREA_4114_RPC_URL,
         );
         const nftContract = new ethers.Contract(
           contractAddress,
@@ -1052,15 +1164,16 @@ export function createNFTSignatureHandler(logger: Logger) {
           { error: error.message, context: "NFT claim status check" },
           "Failed to check NFT claim status, continuing with signature generation",
         );
-        // Continue even if check fails - contract will reject if already claimed
+        // The contract still prevents double claims.
       }
 
       // Generate signature (matches contract verification)
       // keccak256(abi.encodePacked(address(this), block.chainid, msg.sender))
+      // Chain id must match the target chain.
       const signer = new ethers.Wallet(signerPrivateKey);
       const messageHash = ethers.utils.solidityKeccak256(
         ["address", "uint256", "address"],
-        [contractAddress, ChainId.CITREA_TESTNET, normalizedAddress],
+        [contractAddress, ChainId.CITREA_MAINNET, normalizedAddress],
       );
       const signature = await signer.signMessage(
         ethers.utils.arrayify(messageHash),
@@ -1085,6 +1198,58 @@ export function createNFTSignatureHandler(logger: Logger) {
         "Error in handleNFTSignature",
       );
       res.status(500).json({ message: "Failed to generate signature" });
+    }
+  };
+}
+
+/**
+ * @swagger
+ * /v1/campaigns/first-squeezer/eligibility:
+ *   get:
+ *     tags: [Campaign]
+ *     summary: Check whether a wallet is eligible for the mainnet First Squeezer NFT
+ *     description: |
+ *       Returns `{ eligible: true }` iff the wallet ran claim() on the testnet
+ *       First Squeezer NFT contract (Oct 2025 campaign). Used by the frontend
+ *       for pre-flight UX; the authoritative gate is enforced in /nft/signature.
+ *     parameters:
+ *       - in: query
+ *         name: walletAddress
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 eligible:
+ *                   type: boolean
+ */
+export function createFirstSqueezerEligibilityHandler(logger: Logger) {
+  return async function handleFirstSqueezerEligibility(
+    req: Request,
+    res: Response,
+  ): Promise<void> {
+    const log = logger.child({ endpoint: "first-squeezer-eligibility" });
+
+    const walletAddress = req.query.walletAddress as string;
+    if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      res.status(400).json({ message: "Invalid wallet address" });
+      return;
+    }
+
+    try {
+      const eligible = await hasClaimedTestnetNFT(walletAddress.toLowerCase());
+      res.status(200).json({ eligible });
+    } catch (error: any) {
+      log.error(
+        { error: error.message, walletAddress },
+        "Eligibility check failed",
+      );
+      res.status(503).json({ message: "Could not verify eligibility" });
     }
   };
 }

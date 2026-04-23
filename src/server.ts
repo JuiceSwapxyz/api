@@ -38,11 +38,13 @@ import {
   createTwitterStartHandler,
   createTwitterCallbackHandler,
   createTwitterStatusHandler,
+  createTwitterMarkFollowedHandler,
   createDiscordStartHandler,
   createDiscordCallbackHandler,
   createDiscordStatusHandler,
   createBAppsStatusHandler,
   createNFTSignatureHandler,
+  createFirstSqueezerEligibilityHandler,
 } from "./endpoints/firstSqueezerCampaign";
 import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
 import {
@@ -310,11 +312,14 @@ async function bootstrap() {
   const handleTwitterStart = createTwitterStartHandler(logger);
   const handleTwitterCallback = createTwitterCallbackHandler(logger);
   const handleTwitterStatus = createTwitterStatusHandler(logger);
+  const handleTwitterMarkFollowed = createTwitterMarkFollowedHandler(logger);
   const handleDiscordStart = createDiscordStartHandler(logger);
   const handleDiscordCallback = createDiscordCallbackHandler(logger);
   const handleDiscordStatus = createDiscordStatusHandler(logger);
   const handleBAppsStatus = createBAppsStatusHandler(logger);
   const handleNFTSignature = createNFTSignatureHandler(logger);
+  const handleFirstSqueezerEligibility =
+    createFirstSqueezerEligibilityHandler(logger);
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress =
     createValidateLightningAddressHandler(logger);
@@ -586,6 +591,11 @@ async function bootstrap() {
     generalLimiter,
     handleTwitterStatus,
   );
+  app.post(
+    "/v1/campaigns/first-squeezer/twitter/mark-followed",
+    generalLimiter,
+    handleTwitterMarkFollowed,
+  );
 
   // Campaign endpoints - Discord OAuth
   app.get(
@@ -616,6 +626,13 @@ async function bootstrap() {
     "/v1/campaigns/first-squeezer/nft/signature",
     generalLimiter,
     handleNFTSignature,
+  );
+
+  // Campaign endpoints - Mainnet claim eligibility pre-flight
+  app.get(
+    "/v1/campaigns/first-squeezer/eligibility",
+    generalLimiter,
+    handleFirstSqueezerEligibility,
   );
 
   // Bridge Swap endpoints

@@ -1,4 +1,8 @@
 import axios from "axios";
+import {
+  DISCORD_GUILD_ID,
+  DISCORD_JUICER_ROLE_ID,
+} from "../lib/constants/campaigns";
 import { generateState } from "../utils/pkce";
 import { prisma } from "../db/prisma";
 
@@ -15,7 +19,6 @@ interface DiscordOAuthConfig {
   clientSecret: string;
   botToken: string;
   callbackUrl: string;
-  guildId: string;
 }
 
 interface DiscordTokenResponse {
@@ -234,7 +237,35 @@ export class DiscordOAuthService {
    */
   public async isUserInGuild(accessToken: string): Promise<boolean> {
     const guilds = await this.getUserGuilds(accessToken);
-    return guilds.some((guild) => guild.id === this.config.guildId);
+    return guilds.some((guild) => guild.id === DISCORD_GUILD_ID);
+  }
+
+  /**
+   * Check whether the user carries the Juicer role in the JuiceSwap guild.
+   * Uses the bot token (no extra OAuth scope needed). Returns false if the
+   * user is not a guild member — expected to be a no-op path since callers
+   * invoke addUserToGuild first.
+   */
+  public async hasJuicerRole(userId: string): Promise<boolean> {
+    const url = `${this.ADD_GUILD_MEMBER_URL}/${DISCORD_GUILD_ID}/members/${userId}`;
+    try {
+      const response = await axios.get<{ roles: string[] }>(url, {
+        headers: {
+          Authorization: `Bot ${this.config.botToken}`,
+        },
+      });
+      return response.data.roles.includes(DISCORD_JUICER_ROLE_ID);
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return false;
+      }
+      if (axios.isAxiosError(error)) {
+        throw new Error(
+          `Failed to fetch Discord guild member: ${error.response?.data?.message || error.message}`,
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -247,7 +278,7 @@ export class DiscordOAuthService {
     accessToken: string,
   ): Promise<void> {
     try {
-      const url = `${this.ADD_GUILD_MEMBER_URL}/${this.config.guildId}/members/${userId}`;
+      const url = `${this.ADD_GUILD_MEMBER_URL}/${DISCORD_GUILD_ID}/members/${userId}`;
 
       await axios.put(
         url,
@@ -272,7 +303,8 @@ export class DiscordOAuthService {
   }
 
   /**
-   * Complete OAuth flow: exchange code, get user info, add to guild, and verify membership
+   * Complete OAuth flow: exchange code, get user info, add to guild, and
+   * verify the user carries the Juicer role.
    */
   public async completeOAuthFlow(
     code: string,
@@ -280,7 +312,7 @@ export class DiscordOAuthService {
   ): Promise<{
     walletAddress: string;
     discordUser: DiscordUserData;
-    isInGuild: boolean;
+    hasJuicerRole: boolean;
   }> {
     // Exchange code for token
     const { accessToken, walletAddress } = await this.exchangeCodeForToken(
@@ -291,16 +323,17 @@ export class DiscordOAuthService {
     // Get user info
     const discordUser = await this.getUserInfo(accessToken);
 
-    // Add user to Discord guild (auto-invite with guilds.join scope)
+    // Auto-invite into the guild so the bot can subsequently read the member
+    // object. Idempotent (Discord returns 204 if already a member).
     await this.addUserToGuild(discordUser.id, accessToken);
 
-    // Check if user is in the JuiceSwap Discord guild (should be true after auto-add)
-    const isInGuild = await this.isUserInGuild(accessToken);
+    // Gate: the user must carry the Juicer role.
+    const hasJuicerRole = await this.hasJuicerRole(discordUser.id);
 
     return {
       walletAddress,
       discordUser,
-      isInGuild,
+      hasJuicerRole,
     };
   }
 
@@ -342,15 +375,13 @@ export function getDiscordOAuthService(): DiscordOAuthService {
       clientSecret: process.env.DISCORD_CLIENT_SECRET || "",
       botToken: process.env.DISCORD_BOT_TOKEN || "",
       callbackUrl: process.env.DISCORD_CALLBACK_URL || "",
-      guildId: process.env.DISCORD_GUILD_ID || "",
     };
 
     if (
       !config.clientId ||
       !config.clientSecret ||
       !config.botToken ||
-      !config.callbackUrl ||
-      !config.guildId
+      !config.callbackUrl
     ) {
       throw new Error("Missing Discord OAuth environment variables");
     }
