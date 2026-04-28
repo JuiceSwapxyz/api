@@ -3,6 +3,7 @@ import { ChainId } from "@juiceswapxyz/sdk-core";
 import { UniswapMulticallProvider } from "@juiceswapxyz/smart-order-router";
 import { ethers } from "ethers";
 import { PriceService, BtcPriceData, BtcPriceHistory } from "./PriceService";
+import { SvJusdPriceService } from "./SvJusdPriceService";
 import { errorFields } from "../utils/errorFields";
 import { getPonderClient } from "./PonderClient";
 import { getChainContracts } from "../config/contracts";
@@ -212,9 +213,13 @@ export class ExploreStatsService {
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
     logger: Logger,
+    svJusdPriceService?: SvJusdPriceService,
   ) {
     this.logger = logger.child({ service: "ExploreStatsService" });
     this.priceService = new PriceService(logger);
+    if (svJusdPriceService) {
+      this.priceService.setSvJusdPriceService(svJusdPriceService);
+    }
     this.providers = providers;
   }
 
@@ -1870,7 +1875,10 @@ export class ExploreStatsService {
       if (category === "BTC") {
         pctChange1h.set(addr, btcPriceData.change1h);
         pctChange24h.set(addr, btcPriceData.change24h);
-      } else if (category === "STABLECOIN") {
+      } else if (
+        category === "STABLECOIN" ||
+        category === "ERC4626_STABLECOIN"
+      ) {
         pctChange1h.set(addr, 0);
         pctChange24h.set(addr, 0);
       }
@@ -1915,7 +1923,10 @@ export class ExploreStatsService {
       // Fallback: if no pool activity, the pool ratio hasn't changed, so the
       // token's USD price change equals the counterpart's USD price change.
       if (!activities || activities.length === 0) {
-        if (knownCategory === "STABLECOIN") {
+        if (
+          knownCategory === "STABLECOIN" ||
+          knownCategory === "ERC4626_STABLECOIN"
+        ) {
           // Paired with stablecoin, no trades → price is constant → 0%
           pctChange1h.set(addr, 0);
           pctChange24h.set(addr, 0);
@@ -1956,8 +1967,11 @@ export class ExploreStatsService {
 
         // Determine historical counterpart price
         let historicalCounterpartPrice: number;
-        if (knownCategory === "STABLECOIN") {
-          historicalCounterpartPrice = 1.0;
+        if (
+          knownCategory === "STABLECOIN" ||
+          knownCategory === "ERC4626_STABLECOIN"
+        ) {
+          historicalCounterpartPrice = prices.get(knownPriceAddr) ?? 1.0;
         } else if (knownCategory === "BTC") {
           historicalCounterpartPrice = historicalBtcPrice;
         } else {
@@ -2099,12 +2113,13 @@ export class ExploreStatsService {
       const addr = token.address.toLowerCase();
       const category = this.priceService.getTokenCategory(chainId, addr);
 
-      if (category === "STABLECOIN") {
+      if (category === "STABLECOIN" || category === "ERC4626_STABLECOIN") {
+        const stablePrice = prices.get(addr) ?? 1.0;
         result.set(addr, {
           start,
           end,
           step,
-          values: Array(bucketCount).fill(1.0),
+          values: Array(bucketCount).fill(stablePrice),
         });
         continue;
       }
@@ -2186,8 +2201,11 @@ export class ExploreStatsService {
 
           // Determine counterpart price at this time
           let counterpartPrice: number;
-          if (knownCategory === "STABLECOIN") {
-            counterpartPrice = 1.0;
+          if (
+            knownCategory === "STABLECOIN" ||
+            knownCategory === "ERC4626_STABLECOIN"
+          ) {
+            counterpartPrice = prices.get(knownPriceAddr) ?? 1.0;
           } else if (knownCategory === "BTC" && btcPriceHistory) {
             counterpartPrice = this.interpolateBtcPrice(
               btcPriceHistory,
