@@ -1,8 +1,10 @@
 import axios from "axios";
 import Logger from "bunyan";
 import { ChainId, WETH9 } from "@juiceswapxyz/sdk-core";
+import { ethers } from "ethers";
 import { getChainContracts } from "../config/contracts";
 import { errorFields } from "../utils/errorFields";
+import { SvJusdPriceService } from "./SvJusdPriceService";
 
 interface PriceCache {
   price: number;
@@ -32,7 +34,7 @@ interface BtcPriceHistoryCache {
 /**
  * Known token categories for price resolution
  */
-type TokenCategory = "BTC" | "STABLECOIN";
+type TokenCategory = "BTC" | "STABLECOIN" | "ERC4626_STABLECOIN";
 
 /**
  * PriceService - Fetches and caches token prices for TVL/volume calculations
@@ -62,6 +64,12 @@ export class PriceService {
   // Known stablecoin tokens by chain (lowercased addresses)
   private stablecoinTokens: Map<number, Set<string>> = new Map();
 
+  // ERC4626 vault stablecoins (e.g. svJUSD) — priced via share price, not $1.00
+  private erc4626StablecoinTokens: Map<number, Set<string>> = new Map();
+
+  // Optional: SvJusdPriceService for on-chain share price lookups
+  private svJusdPriceService: SvJusdPriceService | null = null;
+
   constructor(logger: Logger) {
     this.logger = logger.child({ service: "PriceService" });
     this.coinGeckoHeaders = { accept: "application/json" };
@@ -72,6 +80,14 @@ export class PriceService {
     this.initializeKnownTokens();
   }
 
+  /**
+   * Inject SvJusdPriceService for on-chain ERC4626 share price lookups.
+   * Must be called after construction to enable svJUSD pricing.
+   */
+  setSvJusdPriceService(service: SvJusdPriceService): void {
+    this.svJusdPriceService = service;
+  }
+
   private initializeKnownTokens(): void {
     for (const chainId of [ChainId.CITREA_MAINNET, ChainId.CITREA_TESTNET]) {
       const contracts = getChainContracts(chainId);
@@ -79,6 +95,7 @@ export class PriceService {
 
       const btcSet = new Set<string>();
       const stableSet = new Set<string>();
+      const erc4626Set = new Set<string>();
 
       // BTC-pegged tokens
       if (wcbtc) {
@@ -93,15 +110,18 @@ export class PriceService {
       // Stablecoin tokens
       if (contracts) {
         if (contracts.JUSD) stableSet.add(contracts.JUSD.toLowerCase());
-        if (contracts.SV_JUSD) stableSet.add(contracts.SV_JUSD.toLowerCase());
         if (contracts.USDC) stableSet.add(contracts.USDC.toLowerCase());
         if (contracts.USDT) stableSet.add(contracts.USDT.toLowerCase());
         if (contracts.CTUSD) stableSet.add(contracts.CTUSD.toLowerCase());
         if (contracts.SUSD) stableSet.add(contracts.SUSD.toLowerCase());
+
+        // svJUSD is an ERC4626 vault — price = $1 × sharePrice, not flat $1
+        if (contracts.SV_JUSD) erc4626Set.add(contracts.SV_JUSD.toLowerCase());
       }
 
       this.btcTokens.set(chainId, btcSet);
       this.stablecoinTokens.set(chainId, stableSet);
+      this.erc4626StablecoinTokens.set(chainId, erc4626Set);
     }
   }
 
@@ -360,6 +380,8 @@ export class PriceService {
   getTokenCategory(chainId: number, address: string): TokenCategory | null {
     const addr = address.toLowerCase();
     if (this.btcTokens.get(chainId)?.has(addr)) return "BTC";
+    if (this.erc4626StablecoinTokens.get(chainId)?.has(addr))
+      return "ERC4626_STABLECOIN";
     if (this.stablecoinTokens.get(chainId)?.has(addr)) return "STABLECOIN";
     return null;
   }
@@ -375,6 +397,8 @@ export class PriceService {
         return this.getBtcPriceUsd();
       case "STABLECOIN":
         return 1.0;
+      case "ERC4626_STABLECOIN":
+        return this.getErc4626StablecoinPrice(chainId);
       default:
         // Unknown token - return 0 (caller can derive from pool ratios)
         return 0;
@@ -391,6 +415,7 @@ export class PriceService {
   ): Promise<Map<string, number>> {
     const prices = new Map<string, number>();
     let btcPrice: number | null = null;
+    let erc4626Price: number | null = null;
 
     for (const addr of tokenAddresses) {
       const lowerAddr = addr.toLowerCase();
@@ -406,6 +431,12 @@ export class PriceService {
         case "STABLECOIN":
           prices.set(lowerAddr, 1.0);
           break;
+        case "ERC4626_STABLECOIN":
+          if (erc4626Price === null) {
+            erc4626Price = await this.getErc4626StablecoinPrice(chainId);
+          }
+          prices.set(lowerAddr, erc4626Price);
+          break;
         default:
           prices.set(lowerAddr, 0);
           break;
@@ -413,6 +444,32 @@ export class PriceService {
     }
 
     return prices;
+  }
+
+  /**
+   * Get USD price for an ERC4626 vault stablecoin (svJUSD).
+   * Price = $1.00 × sharePrice (JUSD per svJUSD).
+   * Falls back to $1.00 if SvJusdPriceService is not available.
+   */
+  private async getErc4626StablecoinPrice(chainId: number): Promise<number> {
+    if (!this.svJusdPriceService) {
+      this.logger.warn(
+        "SvJusdPriceService not injected, falling back to $1.00 for svJUSD",
+      );
+      return 1.0;
+    }
+    try {
+      const sharePrice = await this.svJusdPriceService.getSharePrice(
+        chainId as ChainId,
+      );
+      return parseFloat(ethers.utils.formatEther(sharePrice));
+    } catch (error) {
+      this.logger.warn(
+        errorFields(error),
+        "Failed to fetch svJUSD share price, falling back to $1.00",
+      );
+      return 1.0;
+    }
   }
 
   private async fetchBtcPriceCoinGecko(): Promise<number> {
