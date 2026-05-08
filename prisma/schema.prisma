@@ -147,3 +147,33 @@ enum SwapType {
   reverse
   chain
 }
+
+/**
+ * Juicer NFT campaign — atomic JP-spend record.
+ *
+ * Each row represents a single Juicer NFT mint claim. The unique
+ * (walletAddress, chainId) constraint guarantees a wallet can only
+ * trade JP once per chain (the on-chain hasClaimed mapping is the
+ * authoritative second line of defence). Inserting a row deducts
+ * `amount` JP from the wallet's available balance going forward.
+ *
+ * The signature column is set after generation so /spend is idempotent:
+ * a retried POST returns the same signature as the first call instead
+ * of issuing a new one.
+ */
+model JuicerSpend {
+  id              String   @id @default(uuid())
+  walletAddress   String   @map("wallet_address")
+  chainId         Int      @map("chain_id")
+  amount          Int                                // JP spent (typically JUICER_JP_COST)
+  signature       String                             // backend-issued claim signature
+  contractAddress String   @map("contract_address")  // JuicerNFT contract this signature is bound to
+  spentAt         DateTime @default(now()) @map("spent_at")
+  txHash          String?  @map("tx_hash")           // populated once frontend reports the on-chain claim
+  txConfirmedAt   DateTime? @map("tx_confirmed_at")
+
+  @@unique([walletAddress, chainId], map: "juicer_spend_wallet_chain_unique")
+  @@index([walletAddress])
+  @@index([chainId])
+  @@map("juicer_spend")
+}

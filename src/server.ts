@@ -46,6 +46,10 @@ import {
   createNFTSignatureHandler,
   createFirstSqueezerEligibilityHandler,
 } from "./endpoints/firstSqueezerCampaign";
+import {
+  createJuicerProgressHandler,
+  createJuicerSpendHandler,
+} from "./endpoints/juicerCampaign";
 import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
 import {
   validateBody,
@@ -320,6 +324,8 @@ async function bootstrap() {
   const handleNFTSignature = createNFTSignatureHandler(logger);
   const handleFirstSqueezerEligibility =
     createFirstSqueezerEligibilityHandler(logger);
+  const handleJuicerProgress = createJuicerProgressHandler(logger);
+  const handleJuicerSpend = createJuicerSpendHandler(logger);
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress =
     createValidateLightningAddressHandler(logger);
@@ -637,6 +643,18 @@ async function bootstrap() {
     "/v1/campaigns/first-squeezer/eligibility",
     generalLimiter,
     handleFirstSqueezerEligibility,
+  );
+
+  // Juicer NFT campaign — JP-trade flow
+  app.get(
+    "/v1/campaigns/juicer/progress",
+    generalLimiter,
+    handleJuicerProgress,
+  );
+  app.post(
+    "/v1/campaigns/juicer/spend",
+    generalLimiter,
+    handleJuicerSpend,
   );
 
   // Bridge Swap endpoints
