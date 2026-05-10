@@ -26,6 +26,11 @@ const QUOTER_V2_ABI = [
   "function quoteExactInputSingle((address tokenIn, address tokenOut, address deployer, uint256 amountIn, uint160 limitSqrtPrice)) returns (uint256 amountOut, uint160 limitSqrtPriceAfter, uint32 initializedTicksCrossed, uint256 gasEstimate, uint16 fee)",
 ];
 
+// Algebra Integral v1.9 SwapRouter — same `deployer=0x0` convention as Quoter.
+const SWAP_ROUTER_ABI = [
+  "function exactInputSingle((address tokenIn, address tokenOut, address deployer, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 limitSqrtPrice)) payable returns (uint256 amountOut)",
+];
+
 export interface SatsumaQuoteResult {
   amountOut: string;
   gasEstimate: string;
@@ -108,5 +113,33 @@ export class SatsumaPoolService {
 
   routerAddress(): string {
     return SATSUMA_SWAP_ROUTER;
+  }
+
+  /**
+   * Builds the calldata for a Satsuma SwapRouter `exactInputSingle` call.
+   * Caller is responsible for computing the correct `amountOutMinimum`
+   * (typically `quote * (1 - slippageTolerance)`).
+   */
+  buildExactInputSingleCalldata(params: {
+    tokenIn: string;
+    tokenOut: string;
+    recipient: string;
+    deadline: number;
+    amountIn: string;
+    amountOutMinimum: string;
+  }): string {
+    const iface = new ethers.utils.Interface(SWAP_ROUTER_ABI);
+    return iface.encodeFunctionData("exactInputSingle", [
+      {
+        tokenIn: params.tokenIn,
+        tokenOut: params.tokenOut,
+        deployer: ethers.constants.AddressZero,
+        recipient: params.recipient,
+        deadline: BigNumber.from(params.deadline),
+        amountIn: BigNumber.from(params.amountIn),
+        amountOutMinimum: BigNumber.from(params.amountOutMinimum),
+        limitSqrtPrice: 0,
+      },
+    ]);
   }
 }

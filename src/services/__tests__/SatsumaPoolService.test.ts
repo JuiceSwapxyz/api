@@ -109,6 +109,50 @@ describe("SatsumaPoolService.quoteExactInput()", () => {
   });
 });
 
+describe("SatsumaPoolService.buildExactInputSingleCalldata()", () => {
+  let service: SatsumaPoolService;
+
+  beforeEach(() => {
+    service = new SatsumaPoolService(
+      new Map<ChainId, ethers.providers.StaticJsonRpcProvider>(),
+      mockLogger,
+    );
+  });
+
+  it("encodes a valid Algebra exactInputSingle call", () => {
+    const calldata = service.buildExactInputSingleCalldata({
+      tokenIn: USDC_E,
+      tokenOut: CTUSD,
+      recipient: "0xa9798102cea07a07e5afdd55129c584d54c3d9ea",
+      deadline: 1715000000,
+      amountIn: "3000000000",
+      amountOutMinimum: "2999000000",
+    });
+
+    // Algebra exactInputSingle((address,address,address,address,uint256,uint256,uint256,uint160))
+    // selector is the first 4 bytes
+    expect(calldata.startsWith("0x")).toBe(true);
+    expect(calldata.length).toBeGreaterThan(2 + 8); // selector + tuple data
+
+    // Decode and verify the round-trip
+    const iface = new ethers.utils.Interface([
+      "function exactInputSingle((address tokenIn, address tokenOut, address deployer, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 limitSqrtPrice)) payable returns (uint256 amountOut)",
+    ]);
+    const decoded = iface.decodeFunctionData("exactInputSingle", calldata);
+    const params = decoded[0];
+    expect(params.tokenIn.toLowerCase()).toBe(USDC_E.toLowerCase());
+    expect(params.tokenOut.toLowerCase()).toBe(CTUSD.toLowerCase());
+    expect(params.deployer).toBe(ethers.constants.AddressZero);
+    expect(params.recipient.toLowerCase()).toBe(
+      "0xa9798102cea07a07e5afdd55129c584d54c3d9ea",
+    );
+    expect(params.deadline.toString()).toBe("1715000000");
+    expect(params.amountIn.toString()).toBe("3000000000");
+    expect(params.amountOutMinimum.toString()).toBe("2999000000");
+    expect(params.limitSqrtPrice.toString()).toBe("0");
+  });
+});
+
 describe("SatsumaPoolService addresses", () => {
   let service: SatsumaPoolService;
 

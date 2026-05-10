@@ -269,6 +269,7 @@ async function bootstrap() {
     routerService,
     logger,
     juiceGatewayService,
+    satsumaPoolService,
   );
   const handleSwappableTokens = createSwappableTokensHandler(logger);
   const handleSwapApprove = createSwapApproveHandler(routerService, logger);
