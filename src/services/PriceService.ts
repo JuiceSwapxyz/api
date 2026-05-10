@@ -56,6 +56,7 @@ export class PriceService {
     null;
   private btcPriceHistoryErrorUntil: number = 0;
   private readonly CACHE_TTL = 300_000; // 5 minutes
+  private readonly coinGeckoBaseUrl: string;
   private readonly coinGeckoHeaders: Record<string, string>;
 
   // Known BTC-pegged tokens by chain (lowercased addresses)
@@ -72,10 +73,25 @@ export class PriceService {
 
   constructor(logger: Logger) {
     this.logger = logger.child({ service: "PriceService" });
-    this.coinGeckoHeaders = { accept: "application/json" };
+    // Resolution priority:
+    //  1. COINGECKO_BASE_URL set → trust the caller (typically an in-cluster
+    //     pricing proxy that injects the upstream key itself); no auth header.
+    //  2. COINGECKO_API_KEY set → Pro tier: pro-api.coingecko.com with the
+    //     `x-cg-pro-api-key` header. The earlier setup of public host plus
+    //     `x-cg-demo-api-key` was wrong for Pro keys: CoinGecko ignored the
+    //     auth and the calls fell into the anonymous IP-shared quota, which
+    //     produced sporadic 429s under load.
+    //  3. Otherwise → unauthenticated public endpoint.
     const apiKey = process.env.COINGECKO_API_KEY;
-    if (apiKey) {
-      this.coinGeckoHeaders["x-cg-demo-api-key"] = apiKey;
+    const baseUrl = process.env.COINGECKO_BASE_URL;
+    this.coinGeckoHeaders = { accept: "application/json" };
+    if (baseUrl) {
+      this.coinGeckoBaseUrl = baseUrl;
+    } else if (apiKey) {
+      this.coinGeckoBaseUrl = "https://pro-api.coingecko.com";
+      this.coinGeckoHeaders["x-cg-pro-api-key"] = apiKey;
+    } else {
+      this.coinGeckoBaseUrl = "https://api.coingecko.com";
     }
     this.initializeKnownTokens();
   }
@@ -225,7 +241,7 @@ export class PriceService {
   private async fetchBtcPriceHistory(): Promise<BtcPriceHistory | null> {
     try {
       const response = await axios.get(
-        "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+        `${this.coinGeckoBaseUrl}/api/v3/coins/bitcoin/market_chart`,
         {
           params: { vs_currency: "usd", days: 1 },
           headers: this.coinGeckoHeaders,
@@ -310,7 +326,7 @@ export class PriceService {
 
   private async fetchBtcPriceDataCoinGecko(): Promise<BtcPriceData> {
     const response = await axios.get(
-      "https://api.coingecko.com/api/v3/coins/bitcoin",
+      `${this.coinGeckoBaseUrl}/api/v3/coins/bitcoin`,
       {
         params: {
           localization: false,
@@ -474,7 +490,7 @@ export class PriceService {
 
   private async fetchBtcPriceCoinGecko(): Promise<number> {
     const response = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price",
+      `${this.coinGeckoBaseUrl}/api/v3/simple/price`,
       {
         params: { ids: "bitcoin", vs_currencies: "usd" },
         headers: this.coinGeckoHeaders,
