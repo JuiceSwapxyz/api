@@ -73,15 +73,22 @@ export class PriceService {
 
   constructor(logger: Logger) {
     this.logger = logger.child({ service: "PriceService" });
-    // All CoinGecko traffic goes through the in-cluster pricing proxy. The
-    // proxy holds the upstream key and validates upstream errors, so this
-    // service never talks to pro-api.coingecko.com directly.
+    // COINGECKO_BASE_URL is the origin the service calls — typically the
+    // in-cluster pricing-proxy (https://github.com/DFXswiss/pricing-proxy),
+    // but any CoinGecko-compatible host works. COINGECKO_API_KEY is
+    // optional and only attached as `x-cg-pro-api-key` on every request
+    // when set (proxy mode leaves it unset because the proxy injects its
+    // own key).
     const baseUrl = process.env.COINGECKO_BASE_URL;
     if (!baseUrl) {
       throw new Error("COINGECKO_BASE_URL is not set");
     }
     this.coinGeckoBaseUrl = baseUrl;
     this.coinGeckoHeaders = { accept: "application/json" };
+    const apiKey = process.env.COINGECKO_API_KEY;
+    if (apiKey) {
+      this.coinGeckoHeaders["x-cg-pro-api-key"] = apiKey;
+    }
     this.initializeKnownTokens();
   }
 
