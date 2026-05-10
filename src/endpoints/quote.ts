@@ -12,6 +12,7 @@ import {
   JuiceGatewayService,
   BridgeLiquidityError,
 } from "../services/JuiceGatewayService";
+import { SatsumaPoolService } from "../services/SatsumaPoolService";
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -69,6 +70,95 @@ function calculatePriceImpact(_route: any): string {
   return "0.30";
 }
 
+interface BuildSatsumaQuoteParams {
+  satsumaResult: { amountOut: string; gasEstimate: string; poolAddress: string; routerAddress: string };
+  tokenIn: string;
+  tokenInDecimals: number;
+  tokenInSymbol: string | undefined;
+  tokenOut: string;
+  tokenOutDecimals: number;
+  tokenOutSymbol: string | undefined;
+  chainId: number;
+  requestBody: QuoteRequestBody;
+  quoteId: string;
+  blockNumber: string | undefined;
+  gasPriceWei: string;
+}
+
+function buildSatsumaFormattedQuote(params: BuildSatsumaQuoteParams): any {
+  const {
+    satsumaResult,
+    tokenIn,
+    tokenInDecimals,
+    tokenInSymbol,
+    tokenOut,
+    tokenOutDecimals,
+    tokenOutSymbol,
+    chainId,
+    requestBody,
+    quoteId,
+    blockNumber,
+    gasPriceWei,
+  } = params;
+
+  const amountDecimals = formatDecimals(requestBody.amount, tokenInDecimals);
+  const quoteDecimals = formatDecimals(satsumaResult.amountOut, tokenOutDecimals);
+
+  const route = [
+    [
+      {
+        type: "satsuma-pool",
+        address: satsumaResult.poolAddress,
+        router: satsumaResult.routerAddress,
+        tokenIn: {
+          chainId,
+          decimals: tokenInDecimals.toString(),
+          address: tokenIn,
+          symbol: tokenInSymbol ?? "TOKEN",
+        },
+        tokenOut: {
+          chainId,
+          decimals: tokenOutDecimals.toString(),
+          address: tokenOut,
+          symbol: tokenOutSymbol ?? "TOKEN",
+        },
+        amountIn: requestBody.amount,
+        amountOut: satsumaResult.amountOut,
+      },
+    ],
+  ];
+
+  const routeString = `[SATSUMA] 100.00% = ${tokenInSymbol ?? "TOKEN"} -- [${satsumaResult.poolAddress}] -- ${tokenOutSymbol ?? "TOKEN"}`;
+
+  return {
+    blockNumber,
+    amount: requestBody.amount,
+    amountDecimals,
+    quote: satsumaResult.amountOut,
+    quoteDecimals,
+    quoteGasAdjusted: satsumaResult.amountOut,
+    quoteGasAdjustedDecimals: quoteDecimals,
+    gasUseEstimateQuote: "0",
+    gasUseEstimateQuoteDecimals: "0",
+    gasUseEstimate: satsumaResult.gasEstimate,
+    gasUseEstimateUSD: "0",
+    simulationStatus: "UNATTEMPTED",
+    simulationError: false,
+    gasPriceWei,
+    route,
+    routeString,
+    quoteId,
+    hitsCachedRoutes: false,
+    priceImpact: "0.05",
+    swapper: requestBody.swapper,
+    _internal: {
+      routingType: "SATSUMA",
+      pool: satsumaResult.poolAddress,
+      router: satsumaResult.routerAddress,
+    },
+  };
+}
+
 export interface QuoteRequestBody {
   tokenIn?: string;
   tokenInAddress?: string;
@@ -92,6 +182,7 @@ export enum Routing {
   GATEWAY_JUSD = "GATEWAY_JUSD", // JUSD/SUSD swap via JuiceSwapGateway
   GATEWAY_JUICE_OUT = "GATEWAY_JUICE_OUT", // Buy JUICE via Gateway + Equity
   GATEWAY_JUICE_IN = "GATEWAY_JUICE_IN", // Sell JUICE via Equity.redeem()
+  SATSUMA = "SATSUMA", // Direct swap via Satsuma (Algebra) pool on Citrea
 }
 
 export interface QuoteResponse {
@@ -142,6 +233,7 @@ export function createQuoteHandler(
   routerService: RouterService,
   logger: Logger,
   juiceGatewayService?: JuiceGatewayService,
+  satsumaPoolService?: SatsumaPoolService,
 ) {
   return async function handleQuote(
     req: Request,
@@ -878,6 +970,66 @@ export function createQuoteHandler(
         quote: formattedQuote,
         allQuotes: [{ routing: Routing.CLASSIC, quote: formattedQuote }],
       };
+
+      // ============================================
+      // Cross-DEX comparison: Satsuma USDC.e <-> ctUSD
+      // ============================================
+      // Today the JuiceSwap V3 USDC.e/ctUSD pool is very thin (~$5k each side)
+      // while the Satsuma Algebra pool holds ~$1.4M and prices virtually 1:1
+      // up to six-figure trades. When the user is doing exact-input on this
+      // pair, ask Satsuma for a quote and promote it to the primary route if
+      // it returns more output tokens.
+      if (
+        satsumaPoolService &&
+        body.type !== "EXACT_OUTPUT" &&
+        satsumaPoolService.isSupported(chainId, tokenIn, tokenOut)
+      ) {
+        const satsumaResult = await satsumaPoolService.quoteExactInput(
+          chainId,
+          tokenIn,
+          tokenOut,
+          body.amount,
+        );
+        if (satsumaResult) {
+          const satsumaQuote = buildSatsumaFormattedQuote({
+            satsumaResult,
+            tokenIn,
+            tokenInDecimals,
+            tokenInSymbol,
+            tokenOut,
+            tokenOutDecimals,
+            tokenOutSymbol,
+            chainId,
+            requestBody: body,
+            quoteId,
+            blockNumber: route.blockNumber?.toString(),
+            gasPriceWei: route.gasPriceWei.toString(),
+          });
+
+          // response.allQuotes is initialised above with the CLASSIC entry —
+          // narrow the type for TS.
+          const existing = response.allQuotes ?? [];
+          response.allQuotes = [
+            ...existing,
+            { routing: Routing.SATSUMA, quote: satsumaQuote },
+          ];
+
+          const classicAmount = BigInt(formattedQuote.quote);
+          const satsumaAmount = BigInt(satsumaResult.amountOut);
+          if (satsumaAmount > classicAmount) {
+            log.debug(
+              {
+                classicAmount: classicAmount.toString(),
+                satsumaAmount: satsumaAmount.toString(),
+                pool: satsumaResult.poolAddress,
+              },
+              "Satsuma quote beats Classic — promoting to primary route",
+            );
+            response.routing = Routing.SATSUMA;
+            response.quote = satsumaQuote;
+          }
+        }
+      }
 
       // Cache successful quotes
       if (quoteCache.shouldCache(body, response)) {
