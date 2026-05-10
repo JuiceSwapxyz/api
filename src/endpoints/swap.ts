@@ -194,6 +194,13 @@ export function createSwapHandler(
       // For exact-input swaps on this pair, the Satsuma pool dominates the
       // JuiceSwap V3 Classic route at every meaningful amount once Gateway
       // has been ruled out (see /v1/quote for the full comparison logic).
+      //
+      // Note: today the USDC.e/ctUSD pair is always picked up by Gateway
+      // routing above (both are JUSD-related stablecoins), so this dispatcher
+      // block is a safety net for future Satsuma-supported pairs that are NOT
+      // Gateway-routable. The active fallback for the USDC.e/ctUSD pair is
+      // the `BridgeLiquidityError` branch inside handleGatewaySwap, which
+      // prefers Satsuma over Classic when the bridge runs out.
       if (
         !hasLaunchpadToken &&
         satsumaPoolService &&
