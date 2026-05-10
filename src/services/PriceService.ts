@@ -73,29 +73,15 @@ export class PriceService {
 
   constructor(logger: Logger) {
     this.logger = logger.child({ service: "PriceService" });
-    // Resolution priority:
-    //  1. COINGECKO_BASE_URL set → trust the caller (typically an in-cluster
-    //     pricing proxy that injects the upstream key itself); no auth header.
-    //  2. COINGECKO_API_KEY set → Pro tier: pro-api.coingecko.com with the
-    //     `x-cg-pro-api-key` header.
-    //
-    // A misconfigured service that silently falls back to the anonymous
-    // public endpoint would route every call through the IP-shared quota
-    // and surface only later as sporadic 429s. Hard-fail instead so the
-    // problem shows up immediately at boot, where it actually is.
-    const apiKey = process.env.COINGECKO_API_KEY;
+    // All CoinGecko traffic goes through the in-cluster pricing proxy. The
+    // proxy holds the upstream key and validates upstream errors, so this
+    // service never talks to pro-api.coingecko.com directly.
     const baseUrl = process.env.COINGECKO_BASE_URL;
-    this.coinGeckoHeaders = { accept: "application/json" };
-    if (baseUrl) {
-      this.coinGeckoBaseUrl = baseUrl;
-    } else if (apiKey) {
-      this.coinGeckoBaseUrl = "https://pro-api.coingecko.com";
-      this.coinGeckoHeaders["x-cg-pro-api-key"] = apiKey;
-    } else {
-      throw new Error(
-        "CoinGecko is not configured: set COINGECKO_BASE_URL or COINGECKO_API_KEY",
-      );
+    if (!baseUrl) {
+      throw new Error("COINGECKO_BASE_URL is not set");
     }
+    this.coinGeckoBaseUrl = baseUrl;
+    this.coinGeckoHeaders = { accept: "application/json" };
     this.initializeKnownTokens();
   }
 
