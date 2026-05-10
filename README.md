@@ -170,10 +170,10 @@ COINGECKO_BASE_URL=http://pricing-proxy:8080/coingecko
 PriceService fetches BTC spot data from a CoinGecko-compatible endpoint
 (with a Binance fallback for resilience). Configuration is two env vars:
 
-| Var | Required | Purpose |
-|---|---|---|
-| `COINGECKO_BASE_URL` | yes | Origin the service calls. |
-| `COINGECKO_API_KEY` | no | Attached as the `x-cg-pro-api-key` header on every request when set. |
+| Var                  | Required | Purpose                                                              |
+| -------------------- | -------- | -------------------------------------------------------------------- |
+| `COINGECKO_BASE_URL` | yes      | Origin the service calls.                                            |
+| `COINGECKO_API_KEY`  | no       | Attached as the `x-cg-pro-api-key` header on every request when set. |
 
 The recommended deployment is the
 [**pricing-proxy**](https://github.com/DFXswiss/pricing-proxy) — a small
