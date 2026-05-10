@@ -34,10 +34,7 @@ export interface SatsumaQuoteResult {
 }
 
 export class SatsumaPoolService {
-  private readonly providersMap: Map<
-    ChainId,
-    providers.StaticJsonRpcProvider
-  >;
+  private readonly providersMap: Map<ChainId, providers.StaticJsonRpcProvider>;
   private readonly logger: Logger;
 
   constructor(

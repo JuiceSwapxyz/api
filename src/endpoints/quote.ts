@@ -71,7 +71,12 @@ function calculatePriceImpact(_route: any): string {
 }
 
 interface BuildSatsumaQuoteParams {
-  satsumaResult: { amountOut: string; gasEstimate: string; poolAddress: string; routerAddress: string };
+  satsumaResult: {
+    amountOut: string;
+    gasEstimate: string;
+    poolAddress: string;
+    routerAddress: string;
+  };
   tokenIn: string;
   tokenInDecimals: number;
   tokenInSymbol: string | undefined;
@@ -102,7 +107,10 @@ function buildSatsumaFormattedQuote(params: BuildSatsumaQuoteParams): any {
   } = params;
 
   const amountDecimals = formatDecimals(requestBody.amount, tokenInDecimals);
-  const quoteDecimals = formatDecimals(satsumaResult.amountOut, tokenOutDecimals);
+  const quoteDecimals = formatDecimals(
+    satsumaResult.amountOut,
+    tokenOutDecimals,
+  );
 
   const route = [
     [
