@@ -8,6 +8,7 @@ import {
   JuiceGatewayService,
   BridgeLiquidityError,
 } from "../services/JuiceGatewayService";
+import { SatsumaPoolService } from "../services/SatsumaPoolService";
 import {
   getChainContracts,
   hasJuiceDollarIntegration,
@@ -121,6 +122,7 @@ export function createSwapHandler(
   routerService: RouterService,
   logger: Logger,
   juiceGatewayService?: JuiceGatewayService,
+  satsumaPoolService?: SatsumaPoolService,
 ) {
   return async function handleSwap(req: Request, res: Response): Promise<void> {
     const requestId =
@@ -183,8 +185,35 @@ export function createSwapHandler(
             routerService,
             juiceGatewayService,
             routingType,
+            satsumaPoolService,
           );
         }
+      }
+
+      // Cross-DEX: Satsuma USDC.e<->ctUSD direct route
+      // For exact-input swaps on this pair, the Satsuma pool dominates the
+      // JuiceSwap V3 Classic route at every meaningful amount once Gateway
+      // has been ruled out (see /v1/quote for the full comparison logic).
+      //
+      // Note: today the USDC.e/ctUSD pair is always picked up by Gateway
+      // routing above (both are JUSD-related stablecoins), so this dispatcher
+      // block is a safety net for future Satsuma-supported pairs that are NOT
+      // Gateway-routable. The active fallback for the USDC.e/ctUSD pair is
+      // the `BridgeLiquidityError` branch inside handleGatewaySwap, which
+      // prefers Satsuma over Classic when the bridge runs out.
+      if (
+        !hasLaunchpadToken &&
+        satsumaPoolService &&
+        swapType === "exactIn" &&
+        satsumaPoolService.isSupported(chainId, tokenIn, tokenOut)
+      ) {
+        return await handleSatsumaSwap(
+          body,
+          res,
+          log,
+          routerService,
+          satsumaPoolService,
+        );
       }
 
       // Handle classic swaps (exactIn/exactOut)
@@ -395,6 +424,7 @@ async function handleGatewaySwap(
   routerService: RouterService,
   juiceGatewayService: JuiceGatewayService,
   routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN",
+  satsumaPoolService?: SatsumaPoolService,
 ): Promise<void> {
   try {
     const tokenIn = body.tokenIn || body.tokenInAddress!;
@@ -730,6 +760,35 @@ async function handleGatewaySwap(
     // Bridge liquidity error - fall through to classic V3 routing
     // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
     if (error instanceof BridgeLiquidityError) {
+      const tokenIn = body.tokenIn || body.tokenInAddress!;
+      const tokenOut = body.tokenOut || body.tokenOutAddress!;
+      const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+      const swapType = body.type || "exactIn";
+
+      // Prefer Satsuma over the thin JuiceSwap V3 Classic pool when the
+      // Bridge runs out and the pair is supported.
+      if (
+        satsumaPoolService &&
+        swapType === "exactIn" &&
+        satsumaPoolService.isSupported(chainId, tokenIn, tokenOut)
+      ) {
+        log.debug(
+          {
+            reason: error.message,
+            available: error.available,
+            required: error.required,
+          },
+          "Bridge liquidity insufficient, falling through to Satsuma route",
+        );
+        return handleSatsumaSwap(
+          body,
+          res,
+          log,
+          routerService,
+          satsumaPoolService,
+        );
+      }
+
       log.debug(
         {
           reason: error.message,
@@ -743,6 +802,132 @@ async function handleGatewaySwap(
     }
 
     log.error({ error }, "Error in handleGatewaySwap");
+    res.status(500).json({
+      error: "Internal server error",
+      detail: error instanceof Error ? error.message : "Unknown error occurred",
+    });
+  }
+}
+
+/**
+ * Handle Satsuma direct swap (Algebra SwapRouter exactInputSingle).
+ * Today this only services the USDC.e <-> ctUSD pool; other pairs fall
+ * through to handleClassicSwap if they ever reach this function.
+ */
+async function handleSatsumaSwap(
+  body: SwapRequestBody,
+  res: Response,
+  log: Logger,
+  routerService: RouterService,
+  satsumaPoolService: SatsumaPoolService,
+): Promise<void> {
+  try {
+    const tokenIn = body.tokenIn || body.tokenInAddress!;
+    const tokenOut = body.tokenOut || body.tokenOutAddress!;
+    const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+
+    const provider = routerService.getProvider(chainId);
+    if (!provider) {
+      res.status(500).json({
+        error: "Provider error",
+        detail: "RPC provider not available",
+      });
+      return;
+    }
+
+    const satsumaQuote = await satsumaPoolService.quoteExactInput(
+      chainId,
+      tokenIn,
+      tokenOut,
+      body.amount,
+    );
+
+    if (!satsumaQuote) {
+      log.debug(
+        { tokenIn, tokenOut, amount: body.amount },
+        "Satsuma quote failed at swap-time, falling through to classic",
+      );
+      return handleClassicSwap(body, res, log, routerService);
+    }
+
+    // amountOutMinimum = quote * (1 - slippageTolerance)
+    // slippageTolerance is sent as a percentage string (e.g. "0.5" → 0.5%)
+    const slippageBps = Math.round(parseFloat(body.slippageTolerance) * 100);
+    const minOut = ethers.BigNumber.from(satsumaQuote.amountOut)
+      .mul(BASIS_POINTS_DENOMINATOR - slippageBps)
+      .div(BASIS_POINTS_DENOMINATOR);
+
+    const deadline = body.deadline
+      ? Math.floor(Date.now() / 1000) + parseInt(body.deadline)
+      : Math.floor(Date.now() / 1000) + 1800;
+
+    const calldata = satsumaPoolService.buildExactInputSingleCalldata({
+      tokenIn,
+      tokenOut,
+      recipient: body.recipient,
+      deadline,
+      amountIn: body.amount,
+      amountOutMinimum: minOut.toString(),
+    });
+
+    const gasPrices = await getGasPrices(provider, log);
+
+    let gasLimit = ethers.BigNumber.from("250000"); // sensible Algebra default
+    try {
+      const estimated = await provider.estimateGas({
+        to: satsumaQuote.routerAddress,
+        from: body.from,
+        data: calldata,
+        value: "0x0",
+      });
+      gasLimit = estimated.mul(110).div(100); // 10% buffer
+    } catch (e) {
+      log.debug(
+        { err: e instanceof Error ? e.message : e },
+        "Satsuma gas estimate failed, using default",
+      );
+    }
+
+    const gasPrice = await provider.getGasPrice();
+    const gasFee = gasLimit.mul(gasPrice);
+
+    const swapData = {
+      data: calldata,
+      to: satsumaQuote.routerAddress,
+      value: "0x0",
+      from: body.from,
+      maxFeePerGas: gasPrices.maxFeePerGas,
+      maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+      gasLimit: gasLimit.toHexString(),
+      gasFee: gasFee.toString(),
+      gasEstimates: [
+        {
+          type: "eip1559",
+          gasLimit: gasLimit.toString(),
+          gasFee: gasFee.toString(),
+          maxFeePerGas: gasPrices.maxFeePerGas,
+          maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        },
+      ],
+      _routingType: "SATSUMA",
+      _pool: satsumaQuote.poolAddress,
+    };
+
+    log.debug(
+      {
+        tokenIn,
+        tokenOut,
+        amountIn: body.amount,
+        amountOut: satsumaQuote.amountOut,
+        amountOutMinimum: minOut.toString(),
+        pool: satsumaQuote.poolAddress,
+      },
+      "Satsuma swap transaction prepared",
+    );
+
+    res.json(swapData);
+  } catch (error) {
+    log.error({ error }, "Error in handleSatsumaSwap");
     res.status(500).json({
       error: "Internal server error",
       detail: error instanceof Error ? error.message : "Unknown error occurred",

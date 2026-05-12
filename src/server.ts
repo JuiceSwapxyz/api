@@ -9,6 +9,7 @@ import { initializeProviders, verifyProviders } from "./providers/rpcProvider";
 import { createQuoteHandler } from "./endpoints/quote";
 import { createSwapHandler } from "./endpoints/swap";
 import { JuiceGatewayService } from "./services/JuiceGatewayService";
+import { SatsumaPoolService } from "./services/SatsumaPoolService";
 import { SvJusdPriceService } from "./services/SvJusdPriceService";
 import { createSvJusdSharePriceHandler } from "./endpoints/svJusdSharePrice";
 import { createSwappableTokensHandler } from "./endpoints/swappableTokens";
@@ -156,6 +157,10 @@ async function bootstrap() {
   // SUSD is handled via Gateway's registerBridgedToken() mechanism
   const juiceGatewayService = new JuiceGatewayService(providers, logger);
 
+  // Initialize Satsuma pool service for cross-DEX quoting
+  // (currently only the deep USDC.e/ctUSD pool on Citrea Mainnet)
+  const satsumaPoolService = new SatsumaPoolService(providers, logger);
+
   // Initialize svJUSD price service for share price caching
   const svJusdPriceService = new SvJusdPriceService(providers, logger);
 
@@ -258,11 +263,13 @@ async function bootstrap() {
     routerService,
     logger,
     juiceGatewayService,
+    satsumaPoolService,
   );
   const handleSwap = createSwapHandler(
     routerService,
     logger,
     juiceGatewayService,
+    satsumaPoolService,
   );
   const handleSwappableTokens = createSwappableTokensHandler(logger);
   const handleSwapApprove = createSwapApproveHandler(routerService, logger);

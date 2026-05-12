@@ -159,7 +159,41 @@ PONDER_URL=https://ponder.juiceswap.com
 # Rate Limiting
 RATE_LIMIT_QUOTE_PER_MINUTE=2000
 RATE_LIMIT_GENERAL_PER_MINUTE=10000
+
+# CoinGecko (see "CoinGecko" section below)
+COINGECKO_BASE_URL=http://pricing-proxy:8080/coingecko
+# COINGECKO_API_KEY=
 ```
+
+### CoinGecko
+
+PriceService fetches BTC spot data from a CoinGecko-compatible endpoint
+(with a Binance fallback for resilience). Configuration is two env vars:
+
+| Var                  | Required | Purpose                                                              |
+| -------------------- | -------- | -------------------------------------------------------------------- |
+| `COINGECKO_BASE_URL` | yes      | Origin the service calls.                                            |
+| `COINGECKO_API_KEY`  | no       | Attached as the `x-cg-pro-api-key` header on every request when set. |
+
+The recommended deployment is the
+[**pricing-proxy**](https://github.com/DFXswiss/pricing-proxy) — a small
+caching reverse-proxy in front of CoinGecko Pro. It holds the upstream
+key, serves a 60 s shared cache, validates upstream error envelopes, and
+coalesces concurrent identical requests. When you use the proxy:
+
+```env
+COINGECKO_BASE_URL=http://pricing-proxy:8080/coingecko
+# COINGECKO_API_KEY left unset — the proxy injects its own key
+```
+
+Without the proxy, talk to CoinGecko directly:
+
+```env
+COINGECKO_BASE_URL=https://pro-api.coingecko.com
+COINGECKO_API_KEY=CG-xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+PriceService refuses to construct without `COINGECKO_BASE_URL`.
 
 ## Performance
 
