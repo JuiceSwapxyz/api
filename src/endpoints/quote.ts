@@ -65,17 +65,13 @@ function generateRouteString(formattedRoute: any[]): string {
   }
 }
 
-function calculatePriceImpact(_route: any): string {
-  // Simple price impact calculation - can be enhanced
-  return "0.30";
-}
-
 interface BuildSatsumaQuoteParams {
   satsumaResult: {
     amountOut: string;
     gasEstimate: string;
     poolAddress: string;
     routerAddress: string;
+    priceImpact: string;
   };
   tokenIn: string;
   tokenInDecimals: number;
@@ -157,7 +153,7 @@ function buildSatsumaFormattedQuote(params: BuildSatsumaQuoteParams): any {
     routeString,
     quoteId,
     hitsCachedRoutes: false,
-    priceImpact: "0.05",
+    priceImpact: satsumaResult.priceImpact,
     swapper: requestBody.swapper,
     _internal: {
       routingType: "SATSUMA",
@@ -812,8 +808,11 @@ export function createQuoteHandler(
       const gasUseEstimateQuoteDecimals =
         route.estimatedGasUsedQuoteToken.toExact();
 
-      // Calculate price impact
-      const priceImpact = calculatePriceImpact(route);
+      // Real price impact from the route's Trade: percent difference between
+      // the mid-price across the chosen pools and the actual execution price.
+      // String shape matches the legacy contract (Frontend parses it as a
+      // number and converts to Percent in basis points).
+      const priceImpact = route.trade.priceImpact.toFixed(2);
 
       // Build route response
       const routes = route.route;
