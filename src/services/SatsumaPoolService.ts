@@ -31,11 +31,21 @@ const SWAP_ROUTER_ABI = [
   "function exactInputSingle((address tokenIn, address tokenOut, address deployer, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 limitSqrtPrice)) payable returns (uint256 amountOut)",
 ];
 
+// Algebra Integral v1.9 pool ABI — `price` is the current sqrt(token1/token0)
+// in Q64.96, the canonical zero-impact mid-price for the pool.
+const POOL_ABI = [
+  "function globalState() external view returns (uint160 price, int24 tick, uint16 lastFee, uint8 pluginConfig, uint16 communityFee, bool unlocked)",
+];
+
+const Q192 = BigNumber.from(2).pow(192);
+
 export interface SatsumaQuoteResult {
   amountOut: string;
   gasEstimate: string;
   poolAddress: string;
   routerAddress: string;
+  /** Price impact as a percentage string, e.g. "0.42". May be negative. */
+  priceImpact: string;
 }
 
 export class SatsumaPoolService {
@@ -82,29 +92,90 @@ export class SatsumaPoolService {
       QUOTER_V2_ABI,
       provider,
     );
+    const pool = new ethers.Contract(
+      SATSUMA_POOL_USDC_E_CTUSD,
+      POOL_ABI,
+      provider,
+    );
 
     try {
-      const result = await quoter.callStatic.quoteExactInputSingle({
-        tokenIn,
-        tokenOut,
-        deployer: ethers.constants.AddressZero,
-        amountIn: BigNumber.from(amountIn),
-        limitSqrtPrice: 0,
-      });
+      // Quote the real trade and read the pool's mid-price in parallel.
+      // `globalState().price` is the canonical sqrt(token1/token0) Q64.96 —
+      // the zero-impact spot price the trade would execute at if liquidity
+      // were infinite. We use it to derive the trade's true price impact.
+      const [result, state] = await Promise.all([
+        quoter.callStatic.quoteExactInputSingle({
+          tokenIn,
+          tokenOut,
+          deployer: ethers.constants.AddressZero,
+          amountIn: BigNumber.from(amountIn),
+          limitSqrtPrice: 0,
+        }),
+        pool.callStatic.globalState(),
+      ]);
+
+      const amountOut = BigNumber.from(result.amountOut);
 
       return {
-        amountOut: BigNumber.from(result.amountOut).toString(),
+        amountOut: amountOut.toString(),
         gasEstimate: BigNumber.from(result.gasEstimate).toString(),
         poolAddress: SATSUMA_POOL_USDC_E_CTUSD,
         routerAddress: SATSUMA_SWAP_ROUTER,
+        priceImpact: this.computePriceImpact(
+          tokenIn,
+          tokenOut,
+          BigNumber.from(amountIn),
+          amountOut,
+          BigNumber.from(state.price),
+        ),
       };
     } catch (err) {
       this.logger.debug(
         { err: err instanceof Error ? err.message : err, tokenIn, tokenOut },
-        "Satsuma QuoterV2 reverted",
+        "Satsuma quote or pool state read reverted",
       );
       return null;
     }
+  }
+
+  /**
+   * Price impact as `(expected - actual) / expected`, in percent with 2
+   * decimals. `expected` is the zero-impact output derived from the pool's
+   * spot sqrt-price (`sqrtPriceX96`):
+   *
+   *   priceRatio (token1 per token0) = sqrtPriceX96^2 / 2^192
+   *   token1_out = token0_in * priceRatio
+   *   token0_out = token1_in / priceRatio
+   *
+   * Token ordering follows the Uniswap/Algebra convention: token0 is the
+   * lexicographically smaller address. Both currently supported tokens
+   * (USDC.e, ctUSD) have 6 decimals, so no decimal scaling is applied; if
+   * `isSupported()` is widened to mixed-decimal pairs, this needs to take
+   * decimals into account.
+   *
+   * Returns "0.00" if `sqrtPriceX96` or the expected output is zero so the
+   * caller still receives a well-formed string.
+   */
+  private computePriceImpact(
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: BigNumber,
+    amountOut: BigNumber,
+    sqrtPriceX96: BigNumber,
+  ): string {
+    if (sqrtPriceX96.isZero() || amountIn.isZero()) {
+      return "0.00";
+    }
+    const priceX192 = sqrtPriceX96.mul(sqrtPriceX96);
+    const tokenInIsToken0 = tokenIn.toLowerCase() < tokenOut.toLowerCase();
+    const expectedOut = tokenInIsToken0
+      ? amountIn.mul(priceX192).div(Q192)
+      : amountIn.mul(Q192).div(priceX192);
+    if (expectedOut.isZero()) {
+      return "0.00";
+    }
+    const bps = expectedOut.sub(amountOut).mul(10_000).div(expectedOut);
+    return (bps.toNumber() / 100).toFixed(2);
   }
 
   poolAddress(): string {
