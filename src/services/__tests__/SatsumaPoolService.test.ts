@@ -107,6 +107,118 @@ describe("SatsumaPoolService.quoteExactInput()", () => {
     );
     expect(result).toBeNull();
   });
+
+  describe("priceImpact", () => {
+    const quoterIface = new ethers.utils.Interface([
+      "function quoteExactInputSingle((address tokenIn, address tokenOut, address deployer, uint256 amountIn, uint160 limitSqrtPrice)) returns (uint256 amountOut, uint160 limitSqrtPriceAfter, uint32 initializedTicksCrossed, uint256 gasEstimate, uint16 fee)",
+    ]);
+
+    // Builds a provider whose eth_call resolves the real and probe quotes
+    // according to a caller-supplied (amountIn -> amountOut) map.
+    function buildProvider(outputs: Record<string, string>) {
+      const provider = new ethers.providers.StaticJsonRpcProvider(
+        "http://example.invalid",
+        { name: "citrea", chainId: ChainId.CITREA_MAINNET },
+      );
+      jest
+        .spyOn(provider, "send")
+        .mockImplementation(async (method, params) => {
+          if (method !== "eth_call") {
+            throw new Error(`Unexpected RPC call: ${method}`);
+          }
+          const [tx] = params as [{ data: string }];
+          const decoded = quoterIface.decodeFunctionData(
+            "quoteExactInputSingle",
+            tx.data,
+          );
+          const amountIn = (decoded[0].amountIn as ethers.BigNumber).toString();
+          const out = outputs[amountIn];
+          if (out === undefined) {
+            throw new Error(`Unexpected amountIn: ${amountIn}`);
+          }
+          return quoterIface.encodeFunctionResult("quoteExactInputSingle", [
+            ethers.BigNumber.from(out),
+            0,
+            0,
+            ethers.BigNumber.from("100000"),
+            500,
+          ]);
+        });
+      return provider;
+    }
+
+    it("derives real price impact from probe + actual quotes", async () => {
+      // Reproduces the issue #764 trade: 3,003.416087 USDC.e -> 1,756.651830
+      // ctUSD on a pool whose mid-price (1 USDC.e -> 1 ctUSD) is essentially
+      // 1:1. Expected impact ≈ (3003.416087 - 1756.651830) / 3003.416087
+      // ≈ 41.51%.
+      const provider = buildProvider({
+        "1000000": "1000000",
+        "3003416087": "1756651830",
+      });
+      service = new SatsumaPoolService(
+        new Map([[ChainId.CITREA_MAINNET, provider]]),
+        mockLogger,
+      );
+
+      const result = await service.quoteExactInput(
+        ChainId.CITREA_MAINNET,
+        USDC_E,
+        CTUSD,
+        "3003416087",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.amountOut).toBe("1756651830");
+      expect(result!.priceImpact).toBe("41.51");
+    });
+
+    it("reports a small, non-zero impact for routine swaps", async () => {
+      // 100 USDC.e -> 99.95 ctUSD (mid-price 1:1) -> 0.05% impact
+      const provider = buildProvider({
+        "1000000": "1000000",
+        "100000000": "99950000",
+      });
+      service = new SatsumaPoolService(
+        new Map([[ChainId.CITREA_MAINNET, provider]]),
+        mockLogger,
+      );
+
+      const result = await service.quoteExactInput(
+        ChainId.CITREA_MAINNET,
+        USDC_E,
+        CTUSD,
+        "100000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.priceImpact).toBe("0.05");
+    });
+
+    it("never falls back to the legacy hardcoded 0.05 / 0.30 strings", async () => {
+      // The bug we're fixing: legacy code returned "0.05" regardless of the
+      // actual trade. Use a trade where the real impact is decisively *not*
+      // 0.05% (or 0.30%) so this test would have failed under the old code.
+      const provider = buildProvider({
+        "1000000": "1000000",
+        "3003416087": "1756651830",
+      });
+      service = new SatsumaPoolService(
+        new Map([[ChainId.CITREA_MAINNET, provider]]),
+        mockLogger,
+      );
+
+      const result = await service.quoteExactInput(
+        ChainId.CITREA_MAINNET,
+        USDC_E,
+        CTUSD,
+        "3003416087",
+      );
+
+      expect(result!.priceImpact).not.toBe("0.05");
+      expect(result!.priceImpact).not.toBe("0.30");
+    });
+  });
 });
 
 describe("SatsumaPoolService.buildExactInputSingleCalldata()", () => {

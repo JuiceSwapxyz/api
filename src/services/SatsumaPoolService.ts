@@ -36,7 +36,14 @@ export interface SatsumaQuoteResult {
   gasEstimate: string;
   poolAddress: string;
   routerAddress: string;
+  /** Price impact as a percentage string, e.g. "0.42". May be negative. */
+  priceImpact: string;
 }
+
+// 1 token of the input asset, used as a near-zero-impact reference quote so
+// we can treat its output/input ratio as the pool's mid-price. Both supported
+// tokens (USDC.e, ctUSD) have 6 decimals.
+const MID_PRICE_PROBE_AMOUNT = "1000000";
 
 export class SatsumaPoolService {
   private readonly providersMap: Map<ChainId, providers.StaticJsonRpcProvider>;
@@ -84,19 +91,42 @@ export class SatsumaPoolService {
     );
 
     try {
-      const result = await quoter.callStatic.quoteExactInputSingle({
-        tokenIn,
-        tokenOut,
-        deployer: ethers.constants.AddressZero,
-        amountIn: BigNumber.from(amountIn),
-        limitSqrtPrice: 0,
-      });
+      // Quote the real trade and a tiny reference trade in parallel. The
+      // reference trade approximates the pool's mid-price (zero-slippage
+      // execution rate) and is used to derive a real price impact instead of
+      // returning a hardcoded value.
+      const probeAmount = BigNumber.from(MID_PRICE_PROBE_AMOUNT);
+      const [result, probeResult] = await Promise.all([
+        quoter.callStatic.quoteExactInputSingle({
+          tokenIn,
+          tokenOut,
+          deployer: ethers.constants.AddressZero,
+          amountIn: BigNumber.from(amountIn),
+          limitSqrtPrice: 0,
+        }),
+        quoter.callStatic.quoteExactInputSingle({
+          tokenIn,
+          tokenOut,
+          deployer: ethers.constants.AddressZero,
+          amountIn: probeAmount,
+          limitSqrtPrice: 0,
+        }),
+      ]);
+
+      const amountOut = BigNumber.from(result.amountOut);
+      const probeOut = BigNumber.from(probeResult.amountOut);
 
       return {
-        amountOut: BigNumber.from(result.amountOut).toString(),
+        amountOut: amountOut.toString(),
         gasEstimate: BigNumber.from(result.gasEstimate).toString(),
         poolAddress: SATSUMA_POOL_USDC_E_CTUSD,
         routerAddress: SATSUMA_SWAP_ROUTER,
+        priceImpact: this.computePriceImpact(
+          BigNumber.from(amountIn),
+          amountOut,
+          probeAmount,
+          probeOut,
+        ),
       };
     } catch (err) {
       this.logger.debug(
@@ -105,6 +135,31 @@ export class SatsumaPoolService {
       );
       return null;
     }
+  }
+
+  /**
+   * Price impact as `(expected - actual) / expected`, expressed as a
+   * percentage with 2 decimals. `expected` is derived from a small reference
+   * quote whose own impact is treated as negligible (≈$0.000001 of slippage
+   * for the actual Satsuma USDC.e/ctUSD pool today). Returns "0.00" if the
+   * probe yields no output (degenerate path) so the caller still has a
+   * truthy, well-formed string.
+   */
+  private computePriceImpact(
+    amountIn: BigNumber,
+    amountOut: BigNumber,
+    probeIn: BigNumber,
+    probeOut: BigNumber,
+  ): string {
+    if (probeOut.isZero() || amountIn.isZero()) {
+      return "0.00";
+    }
+    const expectedOut = amountIn.mul(probeOut).div(probeIn);
+    if (expectedOut.isZero()) {
+      return "0.00";
+    }
+    const bps = expectedOut.sub(amountOut).mul(10_000).div(expectedOut);
+    return (bps.toNumber() / 100).toFixed(2);
   }
 
   poolAddress(): string {
