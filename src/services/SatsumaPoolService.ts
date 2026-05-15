@@ -31,6 +31,14 @@ const SWAP_ROUTER_ABI = [
   "function exactInputSingle((address tokenIn, address tokenOut, address deployer, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 limitSqrtPrice)) payable returns (uint256 amountOut)",
 ];
 
+// Algebra Integral v1.9 pool ABI — `price` is the current sqrt(token1/token0)
+// in Q64.96, the canonical zero-impact mid-price for the pool.
+const POOL_ABI = [
+  "function globalState() external view returns (uint160 price, int24 tick, uint16 lastFee, uint8 pluginConfig, uint16 communityFee, bool unlocked)",
+];
+
+const Q192 = BigNumber.from(2).pow(192);
+
 export interface SatsumaQuoteResult {
   amountOut: string;
   gasEstimate: string;
@@ -39,11 +47,6 @@ export interface SatsumaQuoteResult {
   /** Price impact as a percentage string, e.g. "0.42". May be negative. */
   priceImpact: string;
 }
-
-// 1 token of the input asset, used as a near-zero-impact reference quote so
-// we can treat its output/input ratio as the pool's mid-price. Both supported
-// tokens (USDC.e, ctUSD) have 6 decimals.
-const MID_PRICE_PROBE_AMOUNT = "1000000";
 
 export class SatsumaPoolService {
   private readonly providersMap: Map<ChainId, providers.StaticJsonRpcProvider>;
@@ -89,14 +92,18 @@ export class SatsumaPoolService {
       QUOTER_V2_ABI,
       provider,
     );
+    const pool = new ethers.Contract(
+      SATSUMA_POOL_USDC_E_CTUSD,
+      POOL_ABI,
+      provider,
+    );
 
     try {
-      // Quote the real trade and a tiny reference trade in parallel. The
-      // reference trade approximates the pool's mid-price (zero-slippage
-      // execution rate) and is used to derive a real price impact instead of
-      // returning a hardcoded value.
-      const probeAmount = BigNumber.from(MID_PRICE_PROBE_AMOUNT);
-      const [result, probeResult] = await Promise.all([
+      // Quote the real trade and read the pool's mid-price in parallel.
+      // `globalState().price` is the canonical sqrt(token1/token0) Q64.96 —
+      // the zero-impact spot price the trade would execute at if liquidity
+      // were infinite. We use it to derive the trade's true price impact.
+      const [result, state] = await Promise.all([
         quoter.callStatic.quoteExactInputSingle({
           tokenIn,
           tokenOut,
@@ -104,17 +111,10 @@ export class SatsumaPoolService {
           amountIn: BigNumber.from(amountIn),
           limitSqrtPrice: 0,
         }),
-        quoter.callStatic.quoteExactInputSingle({
-          tokenIn,
-          tokenOut,
-          deployer: ethers.constants.AddressZero,
-          amountIn: probeAmount,
-          limitSqrtPrice: 0,
-        }),
+        pool.callStatic.globalState(),
       ]);
 
       const amountOut = BigNumber.from(result.amountOut);
-      const probeOut = BigNumber.from(probeResult.amountOut);
 
       return {
         amountOut: amountOut.toString(),
@@ -122,39 +122,55 @@ export class SatsumaPoolService {
         poolAddress: SATSUMA_POOL_USDC_E_CTUSD,
         routerAddress: SATSUMA_SWAP_ROUTER,
         priceImpact: this.computePriceImpact(
+          tokenIn,
+          tokenOut,
           BigNumber.from(amountIn),
           amountOut,
-          probeAmount,
-          probeOut,
+          BigNumber.from(state.price),
         ),
       };
     } catch (err) {
       this.logger.debug(
         { err: err instanceof Error ? err.message : err, tokenIn, tokenOut },
-        "Satsuma QuoterV2 reverted",
+        "Satsuma quote or pool state read reverted",
       );
       return null;
     }
   }
 
   /**
-   * Price impact as `(expected - actual) / expected`, expressed as a
-   * percentage with 2 decimals. `expected` is derived from a small reference
-   * quote whose own impact is treated as negligible (≈$0.000001 of slippage
-   * for the actual Satsuma USDC.e/ctUSD pool today). Returns "0.00" if the
-   * probe yields no output (degenerate path) so the caller still has a
-   * truthy, well-formed string.
+   * Price impact as `(expected - actual) / expected`, in percent with 2
+   * decimals. `expected` is the zero-impact output derived from the pool's
+   * spot sqrt-price (`sqrtPriceX96`):
+   *
+   *   priceRatio (token1 per token0) = sqrtPriceX96^2 / 2^192
+   *   token1_out = token0_in * priceRatio
+   *   token0_out = token1_in / priceRatio
+   *
+   * Token ordering follows the Uniswap/Algebra convention: token0 is the
+   * lexicographically smaller address. Both currently supported tokens
+   * (USDC.e, ctUSD) have 6 decimals, so no decimal scaling is applied; if
+   * `isSupported()` is widened to mixed-decimal pairs, this needs to take
+   * decimals into account.
+   *
+   * Returns "0.00" if `sqrtPriceX96` or the expected output is zero so the
+   * caller still receives a well-formed string.
    */
   private computePriceImpact(
+    tokenIn: string,
+    tokenOut: string,
     amountIn: BigNumber,
     amountOut: BigNumber,
-    probeIn: BigNumber,
-    probeOut: BigNumber,
+    sqrtPriceX96: BigNumber,
   ): string {
-    if (probeOut.isZero() || amountIn.isZero()) {
+    if (sqrtPriceX96.isZero() || amountIn.isZero()) {
       return "0.00";
     }
-    const expectedOut = amountIn.mul(probeOut).div(probeIn);
+    const priceX192 = sqrtPriceX96.mul(sqrtPriceX96);
+    const tokenInIsToken0 = tokenIn.toLowerCase() < tokenOut.toLowerCase();
+    const expectedOut = tokenInIsToken0
+      ? amountIn.mul(priceX192).div(Q192)
+      : amountIn.mul(Q192).div(priceX192);
     if (expectedOut.isZero()) {
       return "0.00";
     }
