@@ -54,6 +54,19 @@ const calculateTxValue = (
   return ethers.BigNumber.from(amount);
 };
 
+function sendGatewayDepositDisabled(
+  res: Response,
+  log: Logger,
+  context: Record<string, unknown>,
+): void {
+  log.warn(context, "Gateway LP deposit disabled");
+  res.status(404).json({
+    error: "GATEWAY_DEPOSIT_DISABLED",
+    detail:
+      "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
+  });
+}
+
 type IndependentToken = "TOKEN_0" | "TOKEN_1";
 
 interface PoolInfo {
@@ -530,6 +543,40 @@ async function handleGatewayLpCreate(
   // Get token addresses (user-facing, not converted)
   const token0Addr = getTokenAddress(position.pool.token0, chainId);
   const token1Addr = getTokenAddress(position.pool.token1, chainId);
+
+  const gatewayDepositToken = [token0Addr, token1Addr].find((token) =>
+    [
+      contracts.JUSD,
+      contracts.SUSD,
+      contracts.USDC,
+      contracts.USDT,
+      contracts.CTUSD,
+      contracts.JUICE,
+    ].some((candidate) => candidate?.toLowerCase() === token.toLowerCase()),
+  );
+  if (gatewayDepositToken) {
+    try {
+      await juiceGatewayService.prepareQuote(
+        chainId as ChainId,
+        gatewayDepositToken,
+        contracts.WCBTC,
+        "1",
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED") {
+        sendGatewayDepositDisabled(res, log, {
+          chainId,
+          token0: token0Addr,
+          token1: token1Addr,
+          savingsRate: (error as { savingsRate?: string }).savingsRate,
+          savingsAddress: (error as { savingsAddress?: string | null })
+            .savingsAddress,
+        });
+        return;
+      }
+      throw error;
+    }
+  }
 
   // Get internal pool tokens (JUSD → svJUSD)
   const internalToken0 = juiceGatewayService.getInternalPoolToken(

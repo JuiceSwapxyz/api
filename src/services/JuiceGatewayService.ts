@@ -23,6 +23,33 @@ const EQUITY_ABI = [
   "function calculateShares(uint256 investment) view returns (uint256)",
 ];
 
+const SAVINGS_VAULT_ABI = [
+  "function SAVINGS() view returns (address)",
+];
+const SAVINGS_ABI = [
+  "function currentRatePPM() view returns (uint24)",
+];
+const SAVINGS_RATE_CACHE_TTL_MS = 15_000;
+
+class GatewayDepositDisabledError extends Error {
+  code = "GATEWAY_DEPOSIT_DISABLED";
+  chainId: ChainId;
+  savingsRate: string;
+  savingsAddress: string | null;
+
+  constructor(
+    chainId: ChainId,
+    savingsRate: string,
+    savingsAddress: string | null,
+  ) {
+    super("JUSD savings rate is zero; svJUSD deposits are disabled");
+    this.name = "GatewayDepositDisabledError";
+    this.chainId = chainId;
+    this.savingsRate = savingsRate;
+    this.savingsAddress = savingsAddress;
+  }
+}
+
 export interface GatewayQuoteResult {
   internalTokenIn: string;
   internalTokenOut: string;
@@ -120,6 +147,11 @@ export class JuiceGatewayService {
   private logger: Logger;
   private gatewayContracts: Map<ChainId, ethers.Contract> = new Map();
   private equityContracts: Map<ChainId, ethers.Contract> = new Map();
+  private savingsVaultContracts: Map<ChainId, ethers.Contract> = new Map();
+  private savingsRateCache: Map<
+    ChainId,
+    { rate: ethers.BigNumber; fetchedAt: number; address: string | null }
+  > = new Map();
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
@@ -153,7 +185,100 @@ export class JuiceGatewayService {
       chainId,
       new ethers.Contract(contracts.JUICE, EQUITY_ABI, provider),
     );
+    this.savingsVaultContracts.set(
+      chainId,
+      new ethers.Contract(contracts.SV_JUSD, SAVINGS_VAULT_ABI, provider),
+    );
     this.logger.info({ chainId }, "JuiceDollar contracts initialized");
+  }
+
+  private async getSavingsRate(chainId: ChainId): Promise<{
+    rate: ethers.BigNumber;
+    address: string | null;
+  }> {
+    const cached = this.savingsRateCache.get(chainId);
+    if (cached && Date.now() - cached.fetchedAt < SAVINGS_RATE_CACHE_TTL_MS) {
+      return { rate: cached.rate, address: cached.address };
+    }
+
+    const vaultAddress = this.getSvJusdAddress(chainId);
+    const vaultContract = this.savingsVaultContracts.get(chainId);
+    if (!vaultContract || !vaultContract.provider) {
+      return { rate: ethers.constants.One, address: null };
+    }
+
+    let savingsAddress: string | null = null;
+    let rate: ethers.BigNumber = ethers.constants.One;
+    try {
+      const probedSavingsAddress = await vaultContract.SAVINGS();
+      savingsAddress = probedSavingsAddress;
+      const savingsContract = new ethers.Contract(
+        probedSavingsAddress,
+        SAVINGS_ABI,
+        vaultContract.provider,
+      );
+      rate = ethers.BigNumber.from(await savingsContract.currentRatePPM());
+    } catch (error) {
+      this.logger.warn(
+        { chainId, savingsVaultAddress: vaultAddress, savingsAddress, error },
+        "Savings currentRatePPM probe failed; allowing Gateway route",
+      );
+    }
+
+    this.savingsRateCache.set(chainId, {
+      rate,
+      fetchedAt: Date.now(),
+      address: savingsAddress,
+    });
+    return { rate, address: savingsAddress };
+  }
+
+  private async rejectIfJusdDepositDisabled(chainId: ChainId): Promise<void> {
+    const savings = await this.getSavingsRate(chainId);
+    if (!savings.rate.isZero()) return;
+
+    this.logger.warn(
+      {
+        chainId,
+        savingsRate: savings.rate.toString(),
+        savingsAddress: savings.address,
+      },
+      "Gateway JUSD deposit blocked because Savings rate is zero",
+    );
+    throw new GatewayDepositDisabledError(
+      chainId,
+      savings.rate.toString(),
+      savings.address,
+    );
+  }
+
+  private routeRequiresJusdDeposit(
+    chainId: ChainId,
+    tokenIn: string,
+    tokenOut: string,
+    routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN",
+  ): boolean {
+    if (isSvJusdAddress(chainId, tokenIn)) return false;
+
+    const isUsdOut = isUsdToken(chainId, tokenOut);
+    const isJuiceIn = isJuiceAddress(chainId, tokenIn);
+    const isJuiceOut = isJuiceAddress(chainId, tokenOut);
+    const isJusdIn = isJusdAddress(chainId, tokenIn);
+    const isBridgedIn = isBridgedStablecoin(chainId, tokenIn);
+
+    if (routingType === "GATEWAY_JUICE_IN") {
+      return isJuiceIn && !isJusdAddress(chainId, tokenOut);
+    }
+
+    if (routingType === "GATEWAY_JUICE_OUT") {
+      return false;
+    }
+
+    if ((isJusdIn || isBridgedIn) && !isUsdOut && !isJuiceOut) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -560,6 +685,10 @@ export class JuiceGatewayService {
     const contracts = getChainContracts(chainId);
     if (!contracts) return null;
 
+    if (this.routeRequiresJusdDeposit(chainId, tokenIn, tokenOut, routingType)) {
+      await this.rejectIfJusdDepositDisabled(chainId);
+    }
+
     let internalTokenIn = tokenIn;
     let internalTokenOut = tokenOut;
     let internalAmountIn = amountIn;
@@ -769,7 +898,8 @@ export class JuiceGatewayService {
       case "GATEWAY_JUICE_IN": {
         // JUICE can only be swapped directly to JUSD
         // Multi-hop swaps (JUICE → X where X is not JUSD) are not supported
-        // Users must manually redeem JUICE for JUSD first, then swap JUSD → X
+        // when Savings deposits are enabled. When disabled, the guard above
+        // returns a structured error instead of calldata that will revert.
         if (!isJusdAddress(chainId, tokenOut)) {
           return null; // Signal unsupported - will fall through to NO_ROUTE
         }
@@ -870,7 +1000,14 @@ export class JuiceGatewayService {
     if (!hasJuiceDollarIntegration(chainId)) {
       return false;
     }
-    return isJusdAddress(chainId, tokenA) || isJusdAddress(chainId, tokenB);
+    return (
+      isJusdAddress(chainId, tokenA) ||
+      isJusdAddress(chainId, tokenB) ||
+      isBridgedStablecoin(chainId, tokenA) ||
+      isBridgedStablecoin(chainId, tokenB) ||
+      isJuiceAddress(chainId, tokenA) ||
+      isJuiceAddress(chainId, tokenB)
+    );
   }
 
   /**
@@ -937,13 +1074,17 @@ export class JuiceGatewayService {
 
   /**
    * Convert token address to internal pool token
-   * JUSD → svJUSD for LP operations
+   * JUSD/bridged stablecoin/JUICE → svJUSD for LP operations
    */
   getInternalPoolToken(chainId: number, token: string): string {
     const contracts = getChainContracts(chainId);
     if (!contracts) return token;
 
-    if (isJusdAddress(chainId, token)) {
+    if (
+      isJusdAddress(chainId, token) ||
+      isBridgedStablecoin(chainId, token) ||
+      isJuiceAddress(chainId, token)
+    ) {
       return contracts.SV_JUSD;
     }
     return token;

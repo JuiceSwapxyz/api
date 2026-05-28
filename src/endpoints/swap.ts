@@ -757,6 +757,36 @@ async function handleGatewaySwap(
       ],
     });
   } catch (error) {
+    const gatewayError = error as {
+      code?: string;
+      message?: string;
+      savingsRate?: string;
+      savingsAddress?: string | null;
+    };
+    if (gatewayError.code === "GATEWAY_DEPOSIT_DISABLED") {
+      const tokenIn = body.tokenIn || body.tokenInAddress!;
+      const tokenOut = body.tokenOut || body.tokenOutAddress!;
+      const chainId = (body.chainId || body.tokenInChainId) as ChainId;
+      log.warn(
+        {
+          routingType,
+          tokenIn,
+          tokenOut,
+          chainId,
+          savingsRate: gatewayError.savingsRate,
+          savingsAddress: gatewayError.savingsAddress,
+        },
+        "Gateway deposit disabled",
+      );
+      res.status(404).json({
+        error: "GATEWAY_DEPOSIT_DISABLED",
+        detail:
+          gatewayError.message ||
+          "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
+      });
+      return;
+    }
+
     // Bridge liquidity error - fall through to classic V3 routing
     // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
     if (error instanceof BridgeLiquidityError) {
