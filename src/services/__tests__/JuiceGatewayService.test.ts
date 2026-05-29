@@ -23,6 +23,13 @@ describe("JuiceGatewayService.prepareQuote()", () => {
   const SV_JUSD = contracts.SV_JUSD;
   const USDC = contracts.USDC;
   const WCBTC = contracts.WCBTC;
+  const SAVINGS = "0x0000000000000000000000000000000000000001";
+  const BRIDGED_STABLES = [
+    ["SUSD", contracts.SUSD],
+    ["USDC", contracts.USDC],
+    ["USDT", contracts.USDT],
+    ["CTUSD", contracts.CTUSD],
+  ].filter(([, address]) => Boolean(address));
 
   beforeEach(() => {
     // Create service with empty providers (no RPC calls will be made)
@@ -178,5 +185,136 @@ describe("JuiceGatewayService.prepareQuote()", () => {
       expect(result!.routingType).toBe("GATEWAY_JUSD");
       expect(result!.internalTokenOut).toBe(SV_JUSD);
     });
+  });
+
+  describe("Savings disabled deposit gate", () => {
+    beforeEach(() => {
+      service.setSavingsRateOverride(chainId, 0, SAVINGS);
+    });
+
+    it.each([
+      ["JUSD -> cBTC", JUSD, WCBTC],
+      ["JUSD -> svJUSD", JUSD, SV_JUSD],
+      ["JUICE -> cBTC", JUICE, WCBTC],
+    ])(
+      "rejects %s with GATEWAY_DEPOSIT_DISABLED",
+      async (_name, input, output) => {
+        await expect(
+          service.prepareQuote(chainId, input, output, "1000000000000000000"),
+        ).rejects.toMatchObject({
+          code: "GATEWAY_DEPOSIT_DISABLED",
+          savingsRate: "0",
+          savingsAddress: SAVINGS,
+        });
+      },
+    );
+
+    it.each(BRIDGED_STABLES)(
+      "rejects %s -> cBTC with GATEWAY_DEPOSIT_DISABLED",
+      async (_symbol, bridgedToken) => {
+        await expect(
+          service.prepareQuote(
+            chainId,
+            bridgedToken,
+            WCBTC,
+            "1000000000000000000",
+          ),
+        ).rejects.toMatchObject({
+          code: "GATEWAY_DEPOSIT_DISABLED",
+          savingsRate: "0",
+          savingsAddress: SAVINGS,
+        });
+      },
+    );
+
+    it.each(BRIDGED_STABLES)(
+      "rejects %s -> svJUSD with GATEWAY_DEPOSIT_DISABLED",
+      async (_symbol, bridgedToken) => {
+        await expect(
+          service.prepareQuote(
+            chainId,
+            bridgedToken,
+            SV_JUSD,
+            "1000000000000000000",
+          ),
+        ).rejects.toMatchObject({
+          code: "GATEWAY_DEPOSIT_DISABLED",
+          savingsRate: "0",
+          savingsAddress: SAVINGS,
+        });
+      },
+    );
+
+    it("exposes the same gate for swap calldata builders", async () => {
+      await expect(
+        service.rejectIfRouteRequiresJusdDepositDisabled(
+          chainId,
+          JUICE,
+          WCBTC,
+          "GATEWAY_JUICE_IN",
+        ),
+      ).rejects.toMatchObject({
+        code: "GATEWAY_DEPOSIT_DISABLED",
+      });
+    });
+
+    it("keeps cBTC -> JUSD available", async () => {
+      const result = await service.prepareQuote(
+        chainId,
+        WCBTC,
+        JUSD,
+        "100000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.routingType).toBe("GATEWAY_JUSD");
+      expect(result!.internalTokenOut).toBe(SV_JUSD);
+    });
+
+    it("keeps svJUSD -> cBTC available", async () => {
+      const result = await service.prepareQuote(
+        chainId,
+        SV_JUSD,
+        WCBTC,
+        "1000000000000000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.routingType).toBe("GATEWAY_JUSD");
+      expect(result!.internalTokenIn).toBe(SV_JUSD);
+    });
+
+    it("keeps JUSD -> JUICE available", async () => {
+      jest
+        .spyOn(service, "jusdToJuice")
+        .mockResolvedValue("950000000000000000");
+
+      const result = await service.prepareQuote(
+        chainId,
+        JUSD,
+        JUICE,
+        "1000000000000000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.isDirectConversion).toBe(true);
+      expect(result!.expectedOutput).toBe("950000000000000000");
+    });
+  });
+
+  it("allows deposit routes again when the Savings rate is non-zero", async () => {
+    service.setSavingsRateOverride(chainId, 100000, SAVINGS);
+    jest.spyOn(service, "jusdToSvJusd").mockResolvedValue("970000000000000000");
+
+    const result = await service.prepareQuote(
+      chainId,
+      JUSD,
+      WCBTC,
+      "1000000000000000000",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.internalTokenIn).toBe(SV_JUSD);
+    expect(result!.internalAmountIn).toBe("970000000000000000");
   });
 });

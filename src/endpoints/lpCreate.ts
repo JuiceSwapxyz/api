@@ -224,6 +224,42 @@ export function createLpCreateHandler(
         }
       }
 
+      const token0Addr = getTokenAddress(position.pool.token0, chainId);
+      const token1Addr = getTokenAddress(position.pool.token1, chainId);
+
+      if (
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId) &&
+        juiceGatewayService.detectLpGatewayRouting(
+          chainId,
+          token0Addr,
+          token1Addr,
+        )
+      ) {
+        try {
+          await juiceGatewayService.rejectIfLpRouteRequiresJusdDepositDisabled(
+            chainId as ChainId,
+            token0Addr,
+            token1Addr,
+          );
+        } catch (error) {
+          if (
+            (error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED"
+          ) {
+            sendGatewayDepositDisabled(res, log, {
+              chainId,
+              token0: token0Addr,
+              token1: token1Addr,
+              savingsRate: (error as { savingsRate?: string }).savingsRate,
+              savingsAddress: (error as { savingsAddress?: string | null })
+                .savingsAddress,
+            });
+            return;
+          }
+          throw error;
+        }
+      }
+
       const provider = routerService.getProvider(chainId);
       if (!provider) {
         log.debug(
@@ -245,9 +281,6 @@ export function createLpCreateHandler(
         });
         return;
       }
-
-      const token0Addr = getTokenAddress(position.pool.token0, chainId);
-      const token1Addr = getTokenAddress(position.pool.token1, chainId);
 
       // ============================================
       // Check for Gateway LP routing (JUSD involved)
@@ -543,40 +576,6 @@ async function handleGatewayLpCreate(
   // Get token addresses (user-facing, not converted)
   const token0Addr = getTokenAddress(position.pool.token0, chainId);
   const token1Addr = getTokenAddress(position.pool.token1, chainId);
-
-  const gatewayDepositToken = [token0Addr, token1Addr].find((token) =>
-    [
-      contracts.JUSD,
-      contracts.SUSD,
-      contracts.USDC,
-      contracts.USDT,
-      contracts.CTUSD,
-      contracts.JUICE,
-    ].some((candidate) => candidate?.toLowerCase() === token.toLowerCase()),
-  );
-  if (gatewayDepositToken) {
-    try {
-      await juiceGatewayService.prepareQuote(
-        chainId as ChainId,
-        gatewayDepositToken,
-        contracts.WCBTC,
-        "1",
-      );
-    } catch (error) {
-      if ((error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED") {
-        sendGatewayDepositDisabled(res, log, {
-          chainId,
-          token0: token0Addr,
-          token1: token1Addr,
-          savingsRate: (error as { savingsRate?: string }).savingsRate,
-          savingsAddress: (error as { savingsAddress?: string | null })
-            .savingsAddress,
-        });
-        return;
-      }
-      throw error;
-    }
-  }
 
   // Get internal pool tokens (JUSD → svJUSD)
   const internalToken0 = juiceGatewayService.getInternalPoolToken(

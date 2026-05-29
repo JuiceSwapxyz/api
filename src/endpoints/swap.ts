@@ -440,6 +440,13 @@ async function handleGatewaySwap(
       return;
     }
 
+    await juiceGatewayService.rejectIfRouteRequiresJusdDepositDisabled(
+      chainId,
+      tokenIn,
+      tokenOut,
+      routingType,
+    );
+
     // Get RPC provider for gas prices
     const provider = routerService.getProvider(chainId);
     if (!provider) {

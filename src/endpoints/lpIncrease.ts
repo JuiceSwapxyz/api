@@ -148,6 +148,43 @@ export function createLpIncreaseHandler(
         return;
       }
 
+      // Get user-facing token addresses (before JUSD→svJUSD mapping)
+      const userToken0Addr = getTokenAddress(position.pool.token0, chainId);
+      const userToken1Addr = getTokenAddress(position.pool.token1, chainId);
+
+      if (
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId) &&
+        juiceGatewayService.detectLpGatewayRouting(
+          chainId,
+          userToken0Addr,
+          userToken1Addr,
+        )
+      ) {
+        try {
+          await juiceGatewayService.rejectIfLpRouteRequiresJusdDepositDisabled(
+            chainId as ChainId,
+            userToken0Addr,
+            userToken1Addr,
+          );
+        } catch (error) {
+          if (
+            (error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED"
+          ) {
+            sendGatewayDepositDisabled(res, log, {
+              chainId,
+              token0: userToken0Addr,
+              token1: userToken1Addr,
+              savingsRate: (error as { savingsRate?: string }).savingsRate,
+              savingsAddress: (error as { savingsAddress?: string | null })
+                .savingsAddress,
+            });
+            return;
+          }
+          throw error;
+        }
+      }
+
       const ctx = await getV3LpContext({
         routerService,
         logger: log,
@@ -170,10 +207,6 @@ export function createLpIncreaseHandler(
         tickLower,
         tickUpper,
       } = ctx.data;
-
-      // Get user-facing token addresses (before JUSD→svJUSD mapping)
-      const userToken0Addr = getTokenAddress(position.pool.token0, chainId);
-      const userToken1Addr = getTokenAddress(position.pool.token1, chainId);
 
       // Check for Gateway routing (JUSD involved)
       if (
@@ -371,40 +404,6 @@ async function handleGatewayLpIncrease(params: {
     userToken0Addr.toLowerCase() === contracts.JUSD.toLowerCase();
   const isToken1Jusd =
     userToken1Addr.toLowerCase() === contracts.JUSD.toLowerCase();
-
-  const gatewayDepositToken = [userToken0Addr, userToken1Addr].find((token) =>
-    [
-      contracts.JUSD,
-      contracts.SUSD,
-      contracts.USDC,
-      contracts.USDT,
-      contracts.CTUSD,
-      contracts.JUICE,
-    ].some((candidate) => candidate?.toLowerCase() === token.toLowerCase()),
-  );
-  if (gatewayDepositToken) {
-    try {
-      await juiceGatewayService.prepareQuote(
-        chainId as ChainId,
-        gatewayDepositToken,
-        contracts.WCBTC,
-        "1",
-      );
-    } catch (error) {
-      if ((error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED") {
-        sendGatewayDepositDisabled(res, log, {
-          chainId,
-          token0: userToken0Addr,
-          token1: userToken1Addr,
-          savingsRate: (error as { savingsRate?: string }).savingsRate,
-          savingsAddress: (error as { savingsAddress?: string | null })
-            .savingsAddress,
-        });
-        return;
-      }
-      throw error;
-    }
-  }
 
   // Convert independent amount to svJUSD for position calculation
   let internalIndependentAmount = independentAmount;

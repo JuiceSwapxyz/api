@@ -6,6 +6,7 @@ import {
   ExploreStatsService,
   TransactionStatsResponse,
 } from "../../services/ExploreStatsService";
+import { JuiceGatewayService } from "../../services/JuiceGatewayService";
 import { getChainName } from "../../config/chains";
 
 let quoteHandler: any;
@@ -20,8 +21,9 @@ export function initializeResolvers(
   routerService: any,
   logger: Logger,
   exploreStats?: ExploreStatsService,
+  juiceGatewayService?: JuiceGatewayService,
 ) {
-  quoteHandler = createQuoteHandler(routerService, logger);
+  quoteHandler = createQuoteHandler(routerService, logger, juiceGatewayService);
   swapsHandler = createSwapsHandler(routerService, logger);
   exploreStatsService = exploreStats ?? null;
 }

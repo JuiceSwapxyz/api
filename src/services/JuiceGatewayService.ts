@@ -12,6 +12,7 @@ import {
   ChainContracts,
 } from "../config/contracts";
 import { JuiceSwapGatewayAbi } from "../abi/JuiceSwapGateway";
+import { SavingsRateProbe } from "./SavingsRateProbe";
 
 /**
  * ABI fragments for JUICE Equity contract
@@ -22,14 +23,6 @@ const EQUITY_ABI = [
   "function calculateProceeds(uint256 shares) view returns (uint256)",
   "function calculateShares(uint256 investment) view returns (uint256)",
 ];
-
-const SAVINGS_VAULT_ABI = [
-  "function SAVINGS() view returns (address)",
-];
-const SAVINGS_ABI = [
-  "function currentRatePPM() view returns (uint24)",
-];
-const SAVINGS_RATE_CACHE_TTL_MS = 15_000;
 
 class GatewayDepositDisabledError extends Error {
   code = "GATEWAY_DEPOSIT_DISABLED";
@@ -147,17 +140,16 @@ export class JuiceGatewayService {
   private logger: Logger;
   private gatewayContracts: Map<ChainId, ethers.Contract> = new Map();
   private equityContracts: Map<ChainId, ethers.Contract> = new Map();
-  private savingsVaultContracts: Map<ChainId, ethers.Contract> = new Map();
-  private savingsRateCache: Map<
-    ChainId,
-    { rate: ethers.BigNumber; fetchedAt: number; address: string | null }
-  > = new Map();
+  private savingsRateProbe: SavingsRateProbe;
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
     logger: Logger,
+    savingsRateProbe?: SavingsRateProbe,
   ) {
     this.logger = logger.child({ service: "JuiceGatewayService" });
+    this.savingsRateProbe =
+      savingsRateProbe ?? new SavingsRateProbe(this.logger);
 
     // Initialize contracts for chains with JuiceDollar integration
     for (const [chainId, provider] of providers) {
@@ -185,52 +177,30 @@ export class JuiceGatewayService {
       chainId,
       new ethers.Contract(contracts.JUICE, EQUITY_ABI, provider),
     );
-    this.savingsVaultContracts.set(
-      chainId,
-      new ethers.Contract(contracts.SV_JUSD, SAVINGS_VAULT_ABI, provider),
-    );
+    this.savingsRateProbe.registerVault(chainId, contracts.SV_JUSD, provider);
     this.logger.info({ chainId }, "JuiceDollar contracts initialized");
+  }
+
+  setSavingsRateOverride(
+    chainId: ChainId,
+    rate: ethers.BigNumberish,
+    savingsAddress: string | null = null,
+  ): void {
+    this.savingsRateProbe.setOverride(chainId, rate, savingsAddress);
+  }
+
+  clearSavingsRateOverride(chainId?: ChainId): void {
+    this.savingsRateProbe.clearOverride(chainId);
   }
 
   private async getSavingsRate(chainId: ChainId): Promise<{
     rate: ethers.BigNumber;
     address: string | null;
   }> {
-    const cached = this.savingsRateCache.get(chainId);
-    if (cached && Date.now() - cached.fetchedAt < SAVINGS_RATE_CACHE_TTL_MS) {
-      return { rate: cached.rate, address: cached.address };
-    }
-
-    const vaultAddress = this.getSvJusdAddress(chainId);
-    const vaultContract = this.savingsVaultContracts.get(chainId);
-    if (!vaultContract || !vaultContract.provider) {
-      return { rate: ethers.constants.One, address: null };
-    }
-
-    let savingsAddress: string | null = null;
-    let rate: ethers.BigNumber = ethers.constants.One;
-    try {
-      const probedSavingsAddress = await vaultContract.SAVINGS();
-      savingsAddress = probedSavingsAddress;
-      const savingsContract = new ethers.Contract(
-        probedSavingsAddress,
-        SAVINGS_ABI,
-        vaultContract.provider,
-      );
-      rate = ethers.BigNumber.from(await savingsContract.currentRatePPM());
-    } catch (error) {
-      this.logger.warn(
-        { chainId, savingsVaultAddress: vaultAddress, savingsAddress, error },
-        "Savings currentRatePPM probe failed; allowing Gateway route",
-      );
-    }
-
-    this.savingsRateCache.set(chainId, {
-      rate,
-      fetchedAt: Date.now(),
-      address: savingsAddress,
-    });
-    return { rate, address: savingsAddress };
+    return this.savingsRateProbe.getCurrentRate(
+      chainId,
+      this.getSvJusdAddress(chainId),
+    );
   }
 
   private async rejectIfJusdDepositDisabled(chainId: ChainId): Promise<void> {
@@ -260,9 +230,12 @@ export class JuiceGatewayService {
   ): boolean {
     if (isSvJusdAddress(chainId, tokenIn)) return false;
 
-    const isUsdOut = isUsdToken(chainId, tokenOut);
-    const isJuiceIn = isJuiceAddress(chainId, tokenIn);
     const isJuiceOut = isJuiceAddress(chainId, tokenOut);
+    const isDirectUsdOrJuiceOut =
+      isJusdAddress(chainId, tokenOut) ||
+      isBridgedStablecoin(chainId, tokenOut) ||
+      isJuiceOut;
+    const isJuiceIn = isJuiceAddress(chainId, tokenIn);
     const isJusdIn = isJusdAddress(chainId, tokenIn);
     const isBridgedIn = isBridgedStablecoin(chainId, tokenIn);
 
@@ -274,11 +247,42 @@ export class JuiceGatewayService {
       return false;
     }
 
-    if ((isJusdIn || isBridgedIn) && !isUsdOut && !isJuiceOut) {
+    if ((isJusdIn || isBridgedIn) && !isDirectUsdOrJuiceOut) {
       return true;
     }
 
     return false;
+  }
+
+  async rejectIfRouteRequiresJusdDepositDisabled(
+    chainId: ChainId,
+    tokenIn: string,
+    tokenOut: string,
+    routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN",
+  ): Promise<void> {
+    if (
+      this.routeRequiresJusdDeposit(chainId, tokenIn, tokenOut, routingType)
+    ) {
+      await this.rejectIfJusdDepositDisabled(chainId);
+    }
+  }
+
+  async rejectIfLpRouteRequiresJusdDepositDisabled(
+    chainId: ChainId,
+    tokenA: string,
+    tokenB: string,
+  ): Promise<void> {
+    const requiresDeposit =
+      isJusdAddress(chainId, tokenA) ||
+      isJusdAddress(chainId, tokenB) ||
+      isBridgedStablecoin(chainId, tokenA) ||
+      isBridgedStablecoin(chainId, tokenB) ||
+      isJuiceAddress(chainId, tokenA) ||
+      isJuiceAddress(chainId, tokenB);
+
+    if (requiresDeposit) {
+      await this.rejectIfJusdDepositDisabled(chainId);
+    }
   }
 
   /**
@@ -685,9 +689,12 @@ export class JuiceGatewayService {
     const contracts = getChainContracts(chainId);
     if (!contracts) return null;
 
-    if (this.routeRequiresJusdDeposit(chainId, tokenIn, tokenOut, routingType)) {
-      await this.rejectIfJusdDepositDisabled(chainId);
-    }
+    await this.rejectIfRouteRequiresJusdDepositDisabled(
+      chainId,
+      tokenIn,
+      tokenOut,
+      routingType,
+    );
 
     let internalTokenIn = tokenIn;
     let internalTokenOut = tokenOut;

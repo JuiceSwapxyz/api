@@ -286,6 +286,90 @@ export function createQuoteHandler(
         return;
       }
 
+      // Native wrap/unwrap quotes are safe to serve from cache; Gateway gating
+      // only applies to non-launchpad JuiceDollar routes.
+      const wrappedAddress = nativeOnChain(chainId).wrapped.address;
+      const isWrapOperation =
+        (isNativeCurrency(tokenIn) &&
+          tokenOut.toLowerCase() === wrappedAddress.toLowerCase()) ||
+        (isNativeCurrency(tokenOut) &&
+          tokenIn.toLowerCase() === wrappedAddress.toLowerCase());
+
+      // ============================================
+      // Check for Launchpad Tokens FIRST
+      // ============================================
+      // Launchpad tokens ALWAYS use V2 pools with JUSD directly (not svJUSD)
+      // They must BYPASS Gateway routing entirely
+      let isGraduatedIn = false;
+      let isGraduatedOut = false;
+      let hasLaunchpadToken = false;
+      if (!isWrapOperation) {
+        [isGraduatedIn, isGraduatedOut] = await Promise.all([
+          isGraduatedLaunchpadToken(chainId, tokenIn),
+          isGraduatedLaunchpadToken(chainId, tokenOut),
+        ]);
+        hasLaunchpadToken = isGraduatedIn || isGraduatedOut;
+
+        if (hasLaunchpadToken) {
+          log.debug(
+            { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
+            "Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD",
+          );
+        }
+      }
+
+      if (
+        !isWrapOperation &&
+        !hasLaunchpadToken &&
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId)
+      ) {
+        const routingType = juiceGatewayService.detectRoutingType(
+          chainId,
+          tokenIn,
+          tokenOut,
+        );
+
+        if (routingType) {
+          try {
+            await juiceGatewayService.rejectIfRouteRequiresJusdDepositDisabled(
+              chainId,
+              tokenIn,
+              tokenOut,
+              routingType,
+            );
+          } catch (error) {
+            const gatewayError = error as {
+              code?: string;
+              message?: string;
+              savingsRate?: string;
+              savingsAddress?: string | null;
+            };
+            if (gatewayError.code === "GATEWAY_DEPOSIT_DISABLED") {
+              log.warn(
+                {
+                  routingType,
+                  tokenIn,
+                  tokenOut,
+                  chainId,
+                  savingsRate: gatewayError.savingsRate,
+                  savingsAddress: gatewayError.savingsAddress,
+                },
+                "Gateway deposit disabled",
+              );
+              res.status(404).json({
+                error: "GATEWAY_DEPOSIT_DISABLED",
+                detail:
+                  gatewayError.message ||
+                  "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
+              });
+              return;
+            }
+            throw error;
+          }
+        }
+      }
+
       // Fetch token decimals from token lists if not provided (matches develop behavior)
       let tokenInDecimals = body.tokenInDecimals;
       let tokenOutDecimals = body.tokenOutDecimals;
@@ -376,13 +460,6 @@ export function createQuoteHandler(
       rpcMonitor?.startRequest(requestId);
 
       // Handle native <-> wrapped token operations (cBTC <-> WCBTC)
-      const wrappedAddress = nativeOnChain(chainId).wrapped.address;
-      const isWrapOperation =
-        (isNativeCurrency(tokenIn) &&
-          tokenOut.toLowerCase() === wrappedAddress.toLowerCase()) ||
-        (isNativeCurrency(tokenOut) &&
-          tokenIn.toLowerCase() === wrappedAddress.toLowerCase());
-
       if (isWrapOperation) {
         // Return AWS-compatible WRAP response
         const wrapResponse: QuoteResponse = {
@@ -428,24 +505,6 @@ export function createQuoteHandler(
         res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
         res.json(wrapResponse);
         return;
-      }
-
-      // ============================================
-      // Check for Launchpad Tokens FIRST
-      // ============================================
-      // Launchpad tokens ALWAYS use V2 pools with JUSD directly (not svJUSD)
-      // They must BYPASS Gateway routing entirely
-      const [isGraduatedIn, isGraduatedOut] = await Promise.all([
-        isGraduatedLaunchpadToken(chainId, tokenIn),
-        isGraduatedLaunchpadToken(chainId, tokenOut),
-      ]);
-      const hasLaunchpadToken = isGraduatedIn || isGraduatedOut;
-
-      if (hasLaunchpadToken) {
-        log.debug(
-          { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
-          "Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD",
-        );
       }
 
       // ============================================
