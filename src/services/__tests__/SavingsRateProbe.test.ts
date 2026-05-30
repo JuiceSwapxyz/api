@@ -201,6 +201,40 @@ describe("SavingsRateProbe", () => {
     expect(currentRatePPM).toHaveBeenCalledTimes(2);
   });
 
+  it("coalesces concurrent cold-cache callers into one probe (no thundering herd)", async () => {
+    const savings = jest.fn().mockResolvedValue(savingsAddress);
+    const currentRatePPM = jest.fn().mockResolvedValue(42);
+    const factory: SavingsRateContractFactory = (address, abi, provider) => {
+      if (abi[0].includes("SAVINGS()")) {
+        return { provider, SAVINGS: savings } as unknown as ethers.Contract;
+      }
+      return {
+        provider,
+        currentRatePPM,
+      } as unknown as ethers.Contract;
+    };
+    const probe = new SavingsRateProbe(createMockLogger(), {
+      ttlMs: 60_000,
+      contractFactory: factory,
+    });
+
+    probe.registerVault(chainId, vaultAddress, {} as ethers.providers.Provider);
+
+    // Three first-callers race before the cache is warm; they must share one
+    // SAVINGS()+currentRatePPM() probe rather than each firing its own.
+    const [a, b, c] = await Promise.all([
+      probe.getCurrentRate(chainId, vaultAddress),
+      probe.getCurrentRate(chainId, vaultAddress),
+      probe.getCurrentRate(chainId, vaultAddress),
+    ]);
+
+    expect(a.rate.toString()).toBe("42");
+    expect(b.rate.toString()).toBe("42");
+    expect(c.rate.toString()).toBe("42");
+    expect(savings).toHaveBeenCalledTimes(1);
+    expect(currentRatePPM).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes the override rate through the metrics gauge", async () => {
     const probe = new SavingsRateProbe(createMockLogger());
 
@@ -217,6 +251,9 @@ describe("SavingsRateProbe", () => {
     );
 
     probe.clearOverride(chainId);
+
+    // The override-seeded gauge value is dropped, not left stale at 0.
+    expect(probe.getMetrics().currentRatePpm[String(chainId)]).toBeUndefined();
 
     // No vault registered after clearing → fail-open rate of 1.
     const result = await probe.getCurrentRate(chainId, vaultAddress);

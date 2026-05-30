@@ -43,7 +43,7 @@ export class SavingsRateProbe {
     ChainId,
     { rate: ethers.BigNumber; address: string | null }
   > = new Map();
-  private inFlight: Map<ChainId, Promise<void>> = new Map();
+  private inFlight: Map<ChainId, Promise<SavingsRateProbeResult>> = new Map();
   private probeFailures = 0;
   private ratePpmByChain: Map<ChainId, number> = new Map();
 
@@ -79,10 +79,17 @@ export class SavingsRateProbe {
 
   clearOverride(chainId?: ChainId): void {
     if (chainId === undefined) {
+      // Drop the override-seeded gauge values too so /metrics never reports a
+      // stale forced rate after the override is lifted.
+      for (const overriddenChain of this.overrides.keys()) {
+        this.ratePpmByChain.delete(overriddenChain);
+      }
       this.overrides.clear();
       return;
     }
-    this.overrides.delete(chainId);
+    if (this.overrides.delete(chainId)) {
+      this.ratePpmByChain.delete(chainId);
+    }
   }
 
   /**
@@ -103,7 +110,11 @@ export class SavingsRateProbe {
    * Used by tests and for graceful diagnostics; production callers never await it.
    */
   async idle(): Promise<void> {
-    await Promise.all(Array.from(this.inFlight.values()));
+    await Promise.all(
+      Array.from(this.inFlight.values()).map((task) =>
+        task.catch(() => undefined),
+      ),
+    );
   }
 
   async getCurrentRate(
@@ -137,27 +148,39 @@ export class SavingsRateProbe {
     if (cached) {
       // Stale-while-revalidate: hand back the stale rate immediately and
       // refresh in the background so request latency never pays for the probe.
-      this.scheduleRefresh(chainId, vaultContract, savingsVaultAddress);
+      void this.getOrStartRefresh(
+        chainId,
+        vaultContract,
+        savingsVaultAddress,
+      ).catch(() => undefined);
       return { rate: cached.rate, address: cached.address };
     }
 
-    // Cold cache: block on the first probe so the caller gets a real answer.
-    return this.refresh(chainId, vaultContract, savingsVaultAddress);
+    // Cold cache: coalesce concurrent first-callers onto one shared probe so
+    // a burst of startup requests can't stampede the RPC (thundering herd).
+    return this.getOrStartRefresh(
+      chainId,
+      vaultContract,
+      savingsVaultAddress,
+    );
   }
 
-  private scheduleRefresh(
+  private getOrStartRefresh(
     chainId: ChainId,
     vaultContract: ethers.Contract,
     savingsVaultAddress: string | null,
-  ): void {
-    if (this.inFlight.has(chainId)) return;
-    const task = this.refresh(chainId, vaultContract, savingsVaultAddress)
-      .then(() => undefined)
-      .catch(() => undefined)
-      .finally(() => {
-        this.inFlight.delete(chainId);
-      });
+  ): Promise<SavingsRateProbeResult> {
+    const existing = this.inFlight.get(chainId);
+    if (existing) return existing;
+    const task = this.refresh(
+      chainId,
+      vaultContract,
+      savingsVaultAddress,
+    ).finally(() => {
+      this.inFlight.delete(chainId);
+    });
     this.inFlight.set(chainId, task);
+    return task;
   }
 
   private async refresh(
