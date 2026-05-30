@@ -208,4 +208,28 @@ describe("SavingsRateProbe", () => {
 
     expect(probe.getMetrics().currentRatePpm[String(chainId)]).toBe(0);
   });
+
+  it("clears a per-chain override and falls back to normal resolution", async () => {
+    const probe = new SavingsRateProbe(createMockLogger());
+    probe.setOverride(chainId, 0, savingsAddress);
+    expect((await probe.getCurrentRate(chainId, vaultAddress)).rate.isZero()).toBe(
+      true,
+    );
+
+    probe.clearOverride(chainId);
+
+    // No vault registered after clearing → fail-open rate of 1.
+    const result = await probe.getCurrentRate(chainId, vaultAddress);
+    expect(result.rate.eq(ethers.constants.One)).toBe(true);
+  });
+
+  it("clears every override when called without a chainId", async () => {
+    const probe = new SavingsRateProbe(createMockLogger());
+    probe.setOverride(chainId, 0, savingsAddress);
+
+    probe.clearOverride();
+
+    const result = await probe.getCurrentRate(chainId, vaultAddress);
+    expect(result.rate.eq(ethers.constants.One)).toBe(true);
+  });
 });
