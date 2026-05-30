@@ -90,12 +90,16 @@ describe("SavingsRateProbe", () => {
     probe.registerVault(chainId, vaultAddress, {} as ethers.providers.Provider);
 
     const first = await probe.getCurrentRate(chainId, vaultAddress);
+    // Stale entry is served immediately; the failing refresh runs in the
+    // background and must not overwrite the cached value.
     const second = await probe.getCurrentRate(chainId, vaultAddress);
+    await probe.idle();
 
     expect(first.rate.toString()).toBe("0");
     expect(second.rate.toString()).toBe("0");
     expect(second.address).toBe(savingsAddress);
     expect(currentRatePPM).toHaveBeenCalledTimes(2);
+    expect(probe.getMetrics().probeFailures).toBe(1);
   });
 
   it("fails closed when an initial probe fails for a registered vault", async () => {
@@ -130,5 +134,78 @@ describe("SavingsRateProbe", () => {
 
     expect(result.rate.eq(ethers.constants.One)).toBe(true);
     expect(result.address).toBeNull();
+  });
+
+  it("serves a stale rate immediately and revalidates in the background", async () => {
+    const savings = jest.fn().mockResolvedValue(savingsAddress);
+    const currentRatePPM = jest
+      .fn()
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(123);
+    const factory: SavingsRateContractFactory = (address, abi, provider) => {
+      if (abi[0].includes("SAVINGS()")) {
+        return { provider, SAVINGS: savings } as unknown as ethers.Contract;
+      }
+      return {
+        provider,
+        currentRatePPM,
+      } as unknown as ethers.Contract;
+    };
+    const probe = new SavingsRateProbe(createMockLogger(), {
+      ttlMs: 0,
+      contractFactory: factory,
+    });
+
+    probe.registerVault(chainId, vaultAddress, {} as ethers.providers.Provider);
+
+    const first = await probe.getCurrentRate(chainId, vaultAddress);
+    const second = await probe.getCurrentRate(chainId, vaultAddress);
+    await probe.idle();
+
+    // The stale (0) rate is returned synchronously; the fresh 123 only lands
+    // in the cache/gauge after the background refresh settles.
+    expect(first.rate.toString()).toBe("0");
+    expect(second.rate.toString()).toBe("0");
+    expect(currentRatePPM).toHaveBeenCalledTimes(2);
+    expect(probe.getMetrics().currentRatePpm[String(chainId)]).toBe(123);
+  });
+
+  it("coalesces concurrent background refreshes into one probe", async () => {
+    const savings = jest.fn().mockResolvedValue(savingsAddress);
+    const currentRatePPM = jest
+      .fn()
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(123);
+    const factory: SavingsRateContractFactory = (address, abi, provider) => {
+      if (abi[0].includes("SAVINGS()")) {
+        return { provider, SAVINGS: savings } as unknown as ethers.Contract;
+      }
+      return {
+        provider,
+        currentRatePPM,
+      } as unknown as ethers.Contract;
+    };
+    const probe = new SavingsRateProbe(createMockLogger(), {
+      ttlMs: 0,
+      contractFactory: factory,
+    });
+
+    probe.registerVault(chainId, vaultAddress, {} as ethers.providers.Provider);
+
+    await probe.getCurrentRate(chainId, vaultAddress); // cold blocking probe
+    await probe.getCurrentRate(chainId, vaultAddress); // schedules one refresh
+    await probe.getCurrentRate(chainId, vaultAddress); // in-flight, no extra probe
+    await probe.idle();
+
+    // 1 cold probe + 1 coalesced background refresh = 2 (never 3).
+    expect(currentRatePPM).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes the override rate through the metrics gauge", async () => {
+    const probe = new SavingsRateProbe(createMockLogger());
+
+    probe.setOverride(chainId, 0, savingsAddress);
+
+    expect(probe.getMetrics().currentRatePpm[String(chainId)]).toBe(0);
   });
 });

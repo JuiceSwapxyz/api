@@ -5,6 +5,10 @@ import JSBI from "jsbi";
 import { RouterService } from "../core/RouterService";
 import { JuiceGatewayService } from "../services/JuiceGatewayService";
 import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
+import {
   CurrencyAmount,
   Percent,
   Ether,
@@ -44,18 +48,6 @@ interface LpIncreaseRequestBody {
 const isNativeCurrencyPair = (token0: string, token1: string) =>
   token0 === ADDRESS_ZERO || token1 === ADDRESS_ZERO;
 
-function sendGatewayDepositDisabled(
-  res: Response,
-  log: Logger,
-  context: Record<string, unknown>,
-): void {
-  log.warn(context, "Gateway LP deposit disabled");
-  res.status(404).json({
-    error: "GATEWAY_DEPOSIT_DISABLED",
-    detail:
-      "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
-  });
-}
 
 /**
  * @swagger
@@ -168,16 +160,11 @@ export function createLpIncreaseHandler(
             userToken1Addr,
           );
         } catch (error) {
-          if (
-            (error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED"
-          ) {
-            sendGatewayDepositDisabled(res, log, {
+          if (isGatewayDepositDisabledError(error)) {
+            sendGatewayDepositDisabled(res, log, error, {
               chainId,
               token0: userToken0Addr,
               token1: userToken1Addr,
-              savingsRate: (error as { savingsRate?: string }).savingsRate,
-              savingsAddress: (error as { savingsAddress?: string | null })
-                .savingsAddress,
             });
             return;
           }

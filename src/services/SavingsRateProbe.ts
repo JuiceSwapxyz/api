@@ -11,6 +11,11 @@ export interface SavingsRateProbeResult {
   address: string | null;
 }
 
+export interface SavingsRateProbeMetrics {
+  probeFailures: number;
+  currentRatePpm: Record<string, number>;
+}
+
 export type SavingsRateContractFactory = (
   address: string,
   abi: string[],
@@ -22,19 +27,25 @@ interface SavingsRateProbeOptions {
   contractFactory?: SavingsRateContractFactory;
 }
 
+interface CacheEntry {
+  rate: ethers.BigNumber;
+  fetchedAt: number;
+  address: string | null;
+}
+
 export class SavingsRateProbe {
   private logger: Logger;
   private ttlMs: number;
   private contractFactory: SavingsRateContractFactory;
   private vaultContracts: Map<ChainId, ethers.Contract> = new Map();
-  private cache: Map<
-    ChainId,
-    { rate: ethers.BigNumber; fetchedAt: number; address: string | null }
-  > = new Map();
+  private cache: Map<ChainId, CacheEntry> = new Map();
   private overrides: Map<
     ChainId,
     { rate: ethers.BigNumber; address: string | null }
   > = new Map();
+  private inFlight: Map<ChainId, Promise<void>> = new Map();
+  private probeFailures = 0;
+  private ratePpmByChain: Map<ChainId, number> = new Map();
 
   constructor(logger: Logger, options: SavingsRateProbeOptions = {}) {
     this.logger = logger.child({ service: "SavingsRateProbe" });
@@ -60,11 +71,10 @@ export class SavingsRateProbe {
     rate: ethers.BigNumberish,
     address: string | null = null,
   ): void {
-    this.overrides.set(chainId, {
-      rate: ethers.BigNumber.from(rate),
-      address,
-    });
+    const rateBn = ethers.BigNumber.from(rate);
+    this.overrides.set(chainId, { rate: rateBn, address });
     this.cache.delete(chainId);
+    this.ratePpmByChain.set(chainId, rateBn.toNumber());
   }
 
   clearOverride(chainId?: ChainId): void {
@@ -73,6 +83,27 @@ export class SavingsRateProbe {
       return;
     }
     this.overrides.delete(chainId);
+  }
+
+  /**
+   * Telemetry snapshot for the /metrics endpoint.
+   * - probeFailures: number of failed currentRatePPM probes since startup.
+   * - currentRatePpm: last observed savings rate per chainId.
+   */
+  getMetrics(): SavingsRateProbeMetrics {
+    const currentRatePpm: Record<string, number> = {};
+    for (const [chainId, rate] of this.ratePpmByChain) {
+      currentRatePpm[String(chainId)] = rate;
+    }
+    return { probeFailures: this.probeFailures, currentRatePpm };
+  }
+
+  /**
+   * Resolve once every in-flight background refresh has settled.
+   * Used by tests and for graceful diagnostics; production callers never await it.
+   */
+  async idle(): Promise<void> {
+    await Promise.all(Array.from(this.inFlight.values()));
   }
 
   async getCurrentRate(
@@ -91,9 +122,50 @@ export class SavingsRateProbe {
 
     const vaultContract = this.vaultContracts.get(chainId);
     if (!vaultContract || !vaultContract.provider) {
+      if (cached) {
+        return { rate: cached.rate, address: cached.address };
+      }
+      // Fail open: no integration vault registered, so we cannot prove the
+      // rate is zero. Blocking here would brick still-working chains.
+      this.logger.warn(
+        { chainId, savingsVaultAddress },
+        "Savings vault not registered; allowing Gateway deposit route (fail-open)",
+      );
       return { rate: ethers.constants.One, address: null };
     }
 
+    if (cached) {
+      // Stale-while-revalidate: hand back the stale rate immediately and
+      // refresh in the background so request latency never pays for the probe.
+      this.scheduleRefresh(chainId, vaultContract, savingsVaultAddress);
+      return { rate: cached.rate, address: cached.address };
+    }
+
+    // Cold cache: block on the first probe so the caller gets a real answer.
+    return this.refresh(chainId, vaultContract, savingsVaultAddress);
+  }
+
+  private scheduleRefresh(
+    chainId: ChainId,
+    vaultContract: ethers.Contract,
+    savingsVaultAddress: string | null,
+  ): void {
+    if (this.inFlight.has(chainId)) return;
+    const task = this.refresh(chainId, vaultContract, savingsVaultAddress)
+      .then(() => undefined)
+      .catch(() => undefined)
+      .finally(() => {
+        this.inFlight.delete(chainId);
+      });
+    this.inFlight.set(chainId, task);
+  }
+
+  private async refresh(
+    chainId: ChainId,
+    vaultContract: ethers.Contract,
+    savingsVaultAddress: string | null,
+  ): Promise<SavingsRateProbeResult> {
+    const cached = this.cache.get(chainId);
     let savingsAddress: string | null = null;
     let rate: ethers.BigNumber;
     try {
@@ -106,6 +178,7 @@ export class SavingsRateProbe {
       );
       rate = ethers.BigNumber.from(await savingsContract.currentRatePPM());
     } catch (error) {
+      this.probeFailures += 1;
       if (cached) {
         this.logger.warn(
           {
@@ -133,6 +206,7 @@ export class SavingsRateProbe {
       fetchedAt: Date.now(),
       address: savingsAddress,
     });
+    this.ratePpmByChain.set(chainId, rate.toNumber());
     return { rate, address: savingsAddress };
   }
 }

@@ -780,6 +780,7 @@ async function bootstrap() {
       trackedUsers,
       uniqueIps: uniqueIpResult.length,
       quoteCache: quoteCache.getStats(),
+      gateway: juiceGatewayService.getMetrics(),
     });
   });
 

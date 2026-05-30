@@ -141,6 +141,7 @@ export class JuiceGatewayService {
   private gatewayContracts: Map<ChainId, ethers.Contract> = new Map();
   private equityContracts: Map<ChainId, ethers.Contract> = new Map();
   private savingsRateProbe: SavingsRateProbe;
+  private blockedDeposits: Map<string, number> = new Map();
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
@@ -203,13 +204,23 @@ export class JuiceGatewayService {
     );
   }
 
-  private async rejectIfJusdDepositDisabled(chainId: ChainId): Promise<void> {
+  private async rejectIfJusdDepositDisabled(
+    chainId: ChainId,
+    routeShape: string,
+  ): Promise<void> {
     const savings = await this.getSavingsRate(chainId);
     if (!savings.rate.isZero()) return;
+
+    const counterKey = `${chainId}:${routeShape}`;
+    this.blockedDeposits.set(
+      counterKey,
+      (this.blockedDeposits.get(counterKey) ?? 0) + 1,
+    );
 
     this.logger.warn(
       {
         chainId,
+        routeShape,
         savingsRate: savings.rate.toString(),
         savingsAddress: savings.address,
       },
@@ -220,6 +231,22 @@ export class JuiceGatewayService {
       savings.rate.toString(),
       savings.address,
     );
+  }
+
+  /**
+   * Telemetry snapshot for the /metrics endpoint:
+   * - blockedDeposits: count of deposit-route rejections keyed by
+   *   `<chainId>:<routeShape>` (route shape = routing type, or "LP").
+   * - savingsRate: the SavingsRateProbe gauge/failure counters.
+   */
+  getMetrics(): {
+    blockedDeposits: Record<string, number>;
+    savingsRate: ReturnType<SavingsRateProbe["getMetrics"]>;
+  } {
+    return {
+      blockedDeposits: Object.fromEntries(this.blockedDeposits),
+      savingsRate: this.savingsRateProbe.getMetrics(),
+    };
   }
 
   private routeRequiresJusdDeposit(
@@ -263,7 +290,7 @@ export class JuiceGatewayService {
     if (
       this.routeRequiresJusdDeposit(chainId, tokenIn, tokenOut, routingType)
     ) {
-      await this.rejectIfJusdDepositDisabled(chainId);
+      await this.rejectIfJusdDepositDisabled(chainId, routingType);
     }
   }
 
@@ -281,7 +308,7 @@ export class JuiceGatewayService {
       isJuiceAddress(chainId, tokenB);
 
     if (requiresDeposit) {
-      await this.rejectIfJusdDepositDisabled(chainId);
+      await this.rejectIfJusdDepositDisabled(chainId, "LP");
     }
   }
 

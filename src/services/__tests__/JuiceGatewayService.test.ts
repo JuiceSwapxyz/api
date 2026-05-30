@@ -258,6 +258,16 @@ describe("JuiceGatewayService.prepareQuote()", () => {
       });
     });
 
+    it("counts blocked deposits and exposes the rate in the metrics snapshot", async () => {
+      await expect(
+        service.prepareQuote(chainId, JUSD, WCBTC, "1000000000000000000"),
+      ).rejects.toMatchObject({ code: "GATEWAY_DEPOSIT_DISABLED" });
+
+      const metrics = service.getMetrics();
+      expect(metrics.blockedDeposits[`${chainId}:GATEWAY_JUSD`]).toBe(1);
+      expect(metrics.savingsRate.currentRatePpm[String(chainId)]).toBe(0);
+    });
+
     it("keeps cBTC -> JUSD available", async () => {
       const result = await service.prepareQuote(
         chainId,

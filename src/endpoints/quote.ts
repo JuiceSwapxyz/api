@@ -18,6 +18,10 @@ import {
   hasJuiceDollarIntegration,
 } from "../config/contracts";
 import { isGraduatedLaunchpadToken } from "../services/LaunchpadTokenService";
+import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
 import Logger from "bunyan";
 
 // Helper functions for AWS-compatible response formatting
@@ -339,29 +343,12 @@ export function createQuoteHandler(
               routingType,
             );
           } catch (error) {
-            const gatewayError = error as {
-              code?: string;
-              message?: string;
-              savingsRate?: string;
-              savingsAddress?: string | null;
-            };
-            if (gatewayError.code === "GATEWAY_DEPOSIT_DISABLED") {
-              log.warn(
-                {
-                  routingType,
-                  tokenIn,
-                  tokenOut,
-                  chainId,
-                  savingsRate: gatewayError.savingsRate,
-                  savingsAddress: gatewayError.savingsAddress,
-                },
-                "Gateway deposit disabled",
-              );
-              res.status(404).json({
-                error: "GATEWAY_DEPOSIT_DISABLED",
-                detail:
-                  gatewayError.message ||
-                  "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
+            if (isGatewayDepositDisabledError(error)) {
+              sendGatewayDepositDisabled(res, log, error, {
+                routingType,
+                tokenIn,
+                tokenOut,
+                chainId,
               });
               return;
             }
@@ -773,29 +760,12 @@ export function createQuoteHandler(
             res.json(gatewayResponse);
             return;
           } catch (error) {
-            const gatewayError = error as {
-              code?: string;
-              message?: string;
-              savingsRate?: string;
-              savingsAddress?: string | null;
-            };
-            if (gatewayError.code === "GATEWAY_DEPOSIT_DISABLED") {
-              log.warn(
-                {
-                  routingType,
-                  tokenIn,
-                  tokenOut,
-                  chainId,
-                  savingsRate: gatewayError.savingsRate,
-                  savingsAddress: gatewayError.savingsAddress,
-                },
-                "Gateway deposit disabled",
-              );
-              res.status(404).json({
-                error: "GATEWAY_DEPOSIT_DISABLED",
-                detail:
-                  gatewayError.message ||
-                  "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
+            if (isGatewayDepositDisabledError(error)) {
+              sendGatewayDepositDisabled(res, log, error, {
+                routingType,
+                tokenIn,
+                tokenOut,
+                chainId,
               });
               return;
             }

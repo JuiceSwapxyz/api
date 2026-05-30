@@ -21,6 +21,10 @@ import { getPoolInstance } from "../utils/poolFactory";
 import { TICK_SPACING } from "./_shared/v3LpCommon";
 import { JuiceGatewayService } from "../services/JuiceGatewayService";
 import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
+import {
   getChainContracts,
   hasJuiceDollarIntegration,
 } from "../config/contracts";
@@ -53,19 +57,6 @@ const calculateTxValue = (
   const amount = token0 === ADDRESS_ZERO ? amount0Raw : amount1Raw;
   return ethers.BigNumber.from(amount);
 };
-
-function sendGatewayDepositDisabled(
-  res: Response,
-  log: Logger,
-  context: Record<string, unknown>,
-): void {
-  log.warn(context, "Gateway LP deposit disabled");
-  res.status(404).json({
-    error: "GATEWAY_DEPOSIT_DISABLED",
-    detail:
-      "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
-  });
-}
 
 type IndependentToken = "TOKEN_0" | "TOKEN_1";
 
@@ -243,16 +234,11 @@ export function createLpCreateHandler(
             token1Addr,
           );
         } catch (error) {
-          if (
-            (error as { code?: string }).code === "GATEWAY_DEPOSIT_DISABLED"
-          ) {
-            sendGatewayDepositDisabled(res, log, {
+          if (isGatewayDepositDisabledError(error)) {
+            sendGatewayDepositDisabled(res, log, error, {
               chainId,
               token0: token0Addr,
               token1: token1Addr,
-              savingsRate: (error as { savingsRate?: string }).savingsRate,
-              savingsAddress: (error as { savingsAddress?: string | null })
-                .savingsAddress,
             });
             return;
           }

@@ -17,6 +17,10 @@ import { isGraduatedLaunchpadToken } from "../services/LaunchpadTokenService";
 import { ethers } from "ethers";
 import Logger from "bunyan";
 import { Routing } from "./quote";
+import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
 
 const BASIS_POINTS_DENOMINATOR = 10000;
 
@@ -764,32 +768,12 @@ async function handleGatewaySwap(
       ],
     });
   } catch (error) {
-    const gatewayError = error as {
-      code?: string;
-      message?: string;
-      savingsRate?: string;
-      savingsAddress?: string | null;
-    };
-    if (gatewayError.code === "GATEWAY_DEPOSIT_DISABLED") {
-      const tokenIn = body.tokenIn || body.tokenInAddress!;
-      const tokenOut = body.tokenOut || body.tokenOutAddress!;
-      const chainId = (body.chainId || body.tokenInChainId) as ChainId;
-      log.warn(
-        {
-          routingType,
-          tokenIn,
-          tokenOut,
-          chainId,
-          savingsRate: gatewayError.savingsRate,
-          savingsAddress: gatewayError.savingsAddress,
-        },
-        "Gateway deposit disabled",
-      );
-      res.status(404).json({
-        error: "GATEWAY_DEPOSIT_DISABLED",
-        detail:
-          gatewayError.message ||
-          "JUSD savings rate is zero; svJUSD deposits revert while Savings is disabled.",
+    if (isGatewayDepositDisabledError(error)) {
+      sendGatewayDepositDisabled(res, log, error, {
+        routingType,
+        tokenIn: body.tokenIn || body.tokenInAddress,
+        tokenOut: body.tokenOut || body.tokenOutAddress,
+        chainId: body.chainId || body.tokenInChainId,
       });
       return;
     }
