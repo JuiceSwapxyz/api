@@ -235,6 +235,43 @@ describe("SavingsRateProbe", () => {
     expect(currentRatePPM).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let an in-flight probe resurrect a rate after setOverride", async () => {
+    let resolveRate: (value: number) => void = () => undefined;
+    const ratePromise = new Promise<number>((resolve) => {
+      resolveRate = resolve;
+    });
+    const savings = jest.fn().mockResolvedValue(savingsAddress);
+    const currentRatePPM = jest.fn().mockReturnValue(ratePromise);
+    const factory: SavingsRateContractFactory = (address, abi, provider) => {
+      if (abi[0].includes("SAVINGS()")) {
+        return { provider, SAVINGS: savings } as unknown as ethers.Contract;
+      }
+      return {
+        provider,
+        currentRatePPM,
+      } as unknown as ethers.Contract;
+    };
+    const probe = new SavingsRateProbe(createMockLogger(), {
+      ttlMs: 60_000,
+      contractFactory: factory,
+    });
+    probe.registerVault(chainId, vaultAddress, {} as ethers.providers.Provider);
+
+    // Start a cold probe, then force an override before the probe resolves.
+    const inflight = probe.getCurrentRate(chainId, vaultAddress);
+    probe.setOverride(chainId, 0, savingsAddress);
+    resolveRate(500_000); // late probe returns a non-zero (deposit-enabled) rate
+    await inflight;
+    await probe.idle();
+
+    // Override stays authoritative for gating AND telemetry; the stale 500000
+    // must never reach the cache or the gauge.
+    expect(
+      (await probe.getCurrentRate(chainId, vaultAddress)).rate.toString(),
+    ).toBe("0");
+    expect(probe.getMetrics().currentRatePpm[String(chainId)]).toBe(0);
+  });
+
   it("exposes the override rate through the metrics gauge", async () => {
     const probe = new SavingsRateProbe(createMockLogger());
 

@@ -220,6 +220,13 @@ export class SavingsRateProbe {
       return { rate: ethers.constants.Zero, address: savingsAddress };
     }
 
+    // A probe that resolves after setOverride() must not resurrect the
+    // pre-override rate into the cache/gauge: the override is authoritative,
+    // and a stale cache entry could otherwise be served after clearOverride().
+    if (this.overrides.has(chainId)) {
+      return { rate, address: savingsAddress };
+    }
+
     this.cache.set(chainId, {
       rate,
       fetchedAt: Date.now(),
