@@ -246,9 +246,9 @@ describe("SavingsRateProbe", () => {
   it("clears a per-chain override and falls back to normal resolution", async () => {
     const probe = new SavingsRateProbe(createMockLogger());
     probe.setOverride(chainId, 0, savingsAddress);
-    expect((await probe.getCurrentRate(chainId, vaultAddress)).rate.isZero()).toBe(
-      true,
-    );
+    expect(
+      (await probe.getCurrentRate(chainId, vaultAddress)).rate.isZero(),
+    ).toBe(true);
 
     probe.clearOverride(chainId);
 

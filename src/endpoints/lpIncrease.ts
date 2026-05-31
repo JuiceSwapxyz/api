@@ -48,7 +48,6 @@ interface LpIncreaseRequestBody {
 const isNativeCurrencyPair = (token0: string, token1: string) =>
   token0 === ADDRESS_ZERO || token1 === ADDRESS_ZERO;
 
-
 /**
  * @swagger
  * /v1/lp/increase:

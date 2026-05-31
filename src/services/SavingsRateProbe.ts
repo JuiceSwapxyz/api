@@ -158,11 +158,7 @@ export class SavingsRateProbe {
 
     // Cold cache: coalesce concurrent first-callers onto one shared probe so
     // a burst of startup requests can't stampede the RPC (thundering herd).
-    return this.getOrStartRefresh(
-      chainId,
-      vaultContract,
-      savingsVaultAddress,
-    );
+    return this.getOrStartRefresh(chainId, vaultContract, savingsVaultAddress);
   }
 
   private getOrStartRefresh(
