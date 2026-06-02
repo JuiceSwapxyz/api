@@ -639,6 +639,9 @@
  *         address:
  *           type: string
  *           description: Token contract address
+ *         factory:
+ *           type: string
+ *           description: Factory contract that created the token
  *         chainId:
  *           type: integer
  *           description: Chain ID
@@ -690,6 +693,25 @@
  *           type: string
  *           nullable: true
  *           description: Last trade timestamp
+ *         devBuyEnabled:
+ *           type: boolean
+ *           description: Whether the creator executed an atomic dev buy at launch
+ *         devBuyBaseAmount:
+ *           type: string
+ *           nullable: true
+ *           description: Dev buy base asset amount (wei as string)
+ *         devBuyTokenAmount:
+ *           type: string
+ *           nullable: true
+ *           description: Dev buy token amount (wei as string)
+ *         devBuyTxHash:
+ *           type: string
+ *           nullable: true
+ *           description: Transaction hash for the dev buy
+ *         devBuyAtBlock:
+ *           type: string
+ *           nullable: true
+ *           description: Block number where the dev buy executed
  *
  *     LaunchpadTrade:
  *       type: object
@@ -706,6 +728,9 @@
  *         isBuy:
  *           type: boolean
  *           description: Whether this is a buy (true) or sell (false)
+ *         isDevBuy:
+ *           type: boolean
+ *           description: Whether this buy was the creator's atomic launch dev buy
  *         baseAmount:
  *           type: string
  *           description: Base asset amount (wei as string)
