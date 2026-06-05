@@ -47,6 +47,14 @@ import {
   createNFTSignatureHandler,
   createFirstSqueezerEligibilityHandler,
 } from "./endpoints/firstSqueezerCampaign";
+import {
+  createJuicerProgressHandler,
+  createJuicerSpendHandler,
+  createJuicerTwitterMarkFollowedHandler,
+  createJuicerDiscordStartHandler,
+  createJuicerDiscordCallbackHandler,
+  createJuicerNftSignatureHandler,
+} from "./endpoints/juicerCampaign";
 import { quoteLimiter, generalLimiter } from "./middleware/rateLimiter";
 import {
   validateBody,
@@ -327,6 +335,14 @@ async function bootstrap() {
   const handleNFTSignature = createNFTSignatureHandler(logger);
   const handleFirstSqueezerEligibility =
     createFirstSqueezerEligibilityHandler(logger);
+  const handleJuicerProgress = createJuicerProgressHandler(logger);
+  const handleJuicerSpend = createJuicerSpendHandler(logger);
+  const handleJuicerTwitterMarkFollowed =
+    createJuicerTwitterMarkFollowedHandler(logger);
+  const handleJuicerDiscordStart = createJuicerDiscordStartHandler(logger);
+  const handleJuicerDiscordCallback =
+    createJuicerDiscordCallbackHandler(logger);
+  const handleJuicerNftSignature = createJuicerNftSignatureHandler(logger);
   const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress =
     createValidateLightningAddressHandler(logger);
@@ -644,6 +660,34 @@ async function bootstrap() {
     "/v1/campaigns/first-squeezer/eligibility",
     generalLimiter,
     handleFirstSqueezerEligibility,
+  );
+
+  // Juicer NFT campaign endpoints
+  app.get(
+    "/v1/campaigns/juicer/progress",
+    generalLimiter,
+    handleJuicerProgress,
+  );
+  app.post("/v1/campaigns/juicer/spend", generalLimiter, handleJuicerSpend);
+  app.post(
+    "/v1/campaigns/juicer/twitter/mark-followed",
+    generalLimiter,
+    handleJuicerTwitterMarkFollowed,
+  );
+  app.get(
+    "/v1/campaigns/juicer/discord/start",
+    generalLimiter,
+    handleJuicerDiscordStart,
+  );
+  app.get(
+    "/v1/campaigns/juicer/discord/callback",
+    generalLimiter,
+    handleJuicerDiscordCallback,
+  );
+  app.get(
+    "/v1/campaigns/juicer/nft/signature",
+    generalLimiter,
+    handleJuicerNftSignature,
   );
 
   // Bridge Swap endpoints
