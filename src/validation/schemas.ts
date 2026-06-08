@@ -367,6 +367,39 @@ export type LaunchpadRecentTradesQuery = z.infer<
   typeof LaunchpadRecentTradesQuerySchema
 >;
 
+export const LaunchpadTokenAddressParamsSchema = z.object({
+  address: AddressSchema,
+});
+
+function optionalEpochSeconds(min: number) {
+  return z.preprocess(
+    (val) => (val === "" || val === null ? Number.NaN : val),
+    z.coerce.number().int().min(min).optional(),
+  );
+}
+
+export const LaunchpadCandlesQuerySchema = z
+  .object({
+    chainId: z.coerce.number().int().default(4114).pipe(RoutingChainIdSchema),
+    interval: z.enum(["1m", "5m", "15m", "1h", "4h", "1d"]).default("5m"),
+    from: optionalEpochSeconds(0),
+    to: optionalEpochSeconds(1),
+    limit: z.coerce.number().int().min(1).max(1500).default(1000),
+    currency: z.literal("base").default("base"),
+    fill: z.enum(["none", "last"]).optional().default("none"),
+    trader: AddressSchema.optional(),
+  })
+  .refine(
+    (data) =>
+      data.from === undefined || data.to === undefined || data.from < data.to,
+    {
+      message: "from must be less than to",
+      path: ["from"],
+    },
+  );
+
+export type LaunchpadCandlesQuery = z.infer<typeof LaunchpadCandlesQuerySchema>;
+
 // Lightning address validation schema
 export const LightningAddressRequestSchema = z.object({
   lnLikeAddress: z

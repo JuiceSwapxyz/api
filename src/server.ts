@@ -27,6 +27,7 @@ import {
   createLaunchpadStatsHandler,
   createLaunchpadRecentTradesHandler,
 } from "./endpoints/launchpad";
+import { createLaunchpadCandlesHandler } from "./endpoints/launchpadCandles";
 import {
   createUploadImageHandler,
   createUploadMetadataHandler,
@@ -74,6 +75,8 @@ import {
   LaunchpadTokensQuerySchema,
   LaunchpadTradesQuerySchema,
   LaunchpadRecentTradesQuerySchema,
+  LaunchpadCandlesQuerySchema,
+  LaunchpadTokenAddressParamsSchema,
   LightningInvoiceRequestSchema,
   LightningAddressRequestSchema,
   LaunchpadUploadMetadataSchema,
@@ -312,6 +315,7 @@ async function bootstrap() {
   const handleLaunchpadStats = createLaunchpadStatsHandler(logger);
   const handleLaunchpadRecentTrades =
     createLaunchpadRecentTradesHandler(logger);
+  const handleLaunchpadCandles = createLaunchpadCandlesHandler(logger);
   const handleUploadImage = createUploadImageHandler(logger);
   const handleUploadMetadata = createUploadMetadataHandler(logger);
 
@@ -573,6 +577,13 @@ async function bootstrap() {
     generalLimiter,
     validateQuery(LaunchpadTradesQuerySchema, logger),
     handleLaunchpadTokenTrades,
+  );
+  app.get(
+    "/v1/launchpad/token/:address/candles",
+    generalLimiter,
+    validateParams(LaunchpadTokenAddressParamsSchema, logger),
+    validateQuery(LaunchpadCandlesQuerySchema, logger),
+    handleLaunchpadCandles,
   );
   app.get("/v1/launchpad/stats", generalLimiter, handleLaunchpadStats);
   app.get(
