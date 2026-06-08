@@ -5,6 +5,10 @@ import JSBI from "jsbi";
 import { RouterService } from "../core/RouterService";
 import { JuiceGatewayService } from "../services/JuiceGatewayService";
 import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
+import {
   CurrencyAmount,
   Percent,
   Ether,
@@ -135,6 +139,34 @@ export function createLpIncreaseHandler(
         return;
       }
 
+      // Get user-facing token addresses (before JUSD→svJUSD mapping)
+      const userToken0Addr = getTokenAddress(position.pool.token0, chainId);
+      const userToken1Addr = getTokenAddress(position.pool.token1, chainId);
+
+      // Deposit gate: must run for any LP route that would deposit into svJUSD
+      // (JUSD or bridged stablecoin or JUICE leg), independent of whether the
+      // route is handled by the Gateway LP path. rejectIfLpRoute... is a no-op
+      // for routes that don't touch a deposit token.
+      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
+        try {
+          await juiceGatewayService.rejectIfLpRouteRequiresJusdDepositDisabled(
+            chainId as ChainId,
+            userToken0Addr,
+            userToken1Addr,
+          );
+        } catch (error) {
+          if (isGatewayDepositDisabledError(error)) {
+            sendGatewayDepositDisabled(res, log, error, {
+              chainId,
+              token0: userToken0Addr,
+              token1: userToken1Addr,
+            });
+            return;
+          }
+          throw error;
+        }
+      }
+
       const ctx = await getV3LpContext({
         routerService,
         logger: log,
@@ -157,10 +189,6 @@ export function createLpIncreaseHandler(
         tickLower,
         tickUpper,
       } = ctx.data;
-
-      // Get user-facing token addresses (before JUSD→svJUSD mapping)
-      const userToken0Addr = getTokenAddress(position.pool.token0, chainId);
-      const userToken1Addr = getTokenAddress(position.pool.token1, chainId);
 
       // Check for Gateway routing (JUSD involved)
       if (

@@ -340,7 +340,12 @@ async function bootstrap() {
     logger,
     svJusdPriceService,
   );
-  initializeResolvers(routerService, logger, exploreStatsService);
+  initializeResolvers(
+    routerService,
+    logger,
+    exploreStatsService,
+    juiceGatewayService,
+  );
   const handlePoolDetails = createPoolDetailsHandler(
     providers,
     logger,
@@ -775,6 +780,7 @@ async function bootstrap() {
       trackedUsers,
       uniqueIps: uniqueIpResult.length,
       quoteCache: quoteCache.getStats(),
+      gateway: juiceGatewayService.getMetrics(),
     });
   });
 

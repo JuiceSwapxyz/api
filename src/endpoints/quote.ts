@@ -18,6 +18,10 @@ import {
   hasJuiceDollarIntegration,
 } from "../config/contracts";
 import { isGraduatedLaunchpadToken } from "../services/LaunchpadTokenService";
+import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
 import Logger from "bunyan";
 
 // Helper functions for AWS-compatible response formatting
@@ -286,6 +290,73 @@ export function createQuoteHandler(
         return;
       }
 
+      // Native wrap/unwrap quotes are safe to serve from cache; Gateway gating
+      // only applies to non-launchpad JuiceDollar routes.
+      const wrappedAddress = nativeOnChain(chainId).wrapped.address;
+      const isWrapOperation =
+        (isNativeCurrency(tokenIn) &&
+          tokenOut.toLowerCase() === wrappedAddress.toLowerCase()) ||
+        (isNativeCurrency(tokenOut) &&
+          tokenIn.toLowerCase() === wrappedAddress.toLowerCase());
+
+      // ============================================
+      // Check for Launchpad Tokens FIRST
+      // ============================================
+      // Launchpad tokens ALWAYS use V2 pools with JUSD directly (not svJUSD)
+      // They must BYPASS Gateway routing entirely
+      let isGraduatedIn = false;
+      let isGraduatedOut = false;
+      let hasLaunchpadToken = false;
+      if (!isWrapOperation) {
+        [isGraduatedIn, isGraduatedOut] = await Promise.all([
+          isGraduatedLaunchpadToken(chainId, tokenIn),
+          isGraduatedLaunchpadToken(chainId, tokenOut),
+        ]);
+        hasLaunchpadToken = isGraduatedIn || isGraduatedOut;
+
+        if (hasLaunchpadToken) {
+          log.debug(
+            { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
+            "Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD",
+          );
+        }
+      }
+
+      if (
+        !isWrapOperation &&
+        !hasLaunchpadToken &&
+        juiceGatewayService &&
+        hasJuiceDollarIntegration(chainId)
+      ) {
+        const routingType = juiceGatewayService.detectRoutingType(
+          chainId,
+          tokenIn,
+          tokenOut,
+        );
+
+        if (routingType) {
+          try {
+            await juiceGatewayService.rejectIfRouteRequiresJusdDepositDisabled(
+              chainId,
+              tokenIn,
+              tokenOut,
+              routingType,
+            );
+          } catch (error) {
+            if (isGatewayDepositDisabledError(error)) {
+              sendGatewayDepositDisabled(res, log, error, {
+                routingType,
+                tokenIn,
+                tokenOut,
+                chainId,
+              });
+              return;
+            }
+            throw error;
+          }
+        }
+      }
+
       // Fetch token decimals from token lists if not provided (matches develop behavior)
       let tokenInDecimals = body.tokenInDecimals;
       let tokenOutDecimals = body.tokenOutDecimals;
@@ -376,13 +447,6 @@ export function createQuoteHandler(
       rpcMonitor?.startRequest(requestId);
 
       // Handle native <-> wrapped token operations (cBTC <-> WCBTC)
-      const wrappedAddress = nativeOnChain(chainId).wrapped.address;
-      const isWrapOperation =
-        (isNativeCurrency(tokenIn) &&
-          tokenOut.toLowerCase() === wrappedAddress.toLowerCase()) ||
-        (isNativeCurrency(tokenOut) &&
-          tokenIn.toLowerCase() === wrappedAddress.toLowerCase());
-
       if (isWrapOperation) {
         // Return AWS-compatible WRAP response
         const wrapResponse: QuoteResponse = {
@@ -428,24 +492,6 @@ export function createQuoteHandler(
         res.setHeader("X-Response-Time", `${Date.now() - startTime}ms`);
         res.json(wrapResponse);
         return;
-      }
-
-      // ============================================
-      // Check for Launchpad Tokens FIRST
-      // ============================================
-      // Launchpad tokens ALWAYS use V2 pools with JUSD directly (not svJUSD)
-      // They must BYPASS Gateway routing entirely
-      const [isGraduatedIn, isGraduatedOut] = await Promise.all([
-        isGraduatedLaunchpadToken(chainId, tokenIn),
-        isGraduatedLaunchpadToken(chainId, tokenOut),
-      ]);
-      const hasLaunchpadToken = isGraduatedIn || isGraduatedOut;
-
-      if (hasLaunchpadToken) {
-        log.debug(
-          { tokenIn, tokenOut, isGraduatedIn, isGraduatedOut },
-          "Graduated launchpad token detected - bypassing Gateway, using direct V2 routing with JUSD",
-        );
       }
 
       // ============================================
@@ -714,6 +760,16 @@ export function createQuoteHandler(
             res.json(gatewayResponse);
             return;
           } catch (error) {
+            if (isGatewayDepositDisabledError(error)) {
+              sendGatewayDepositDisabled(res, log, error, {
+                routingType,
+                tokenIn,
+                tokenOut,
+                chainId,
+              });
+              return;
+            }
+
             // Bridge liquidity error - fall through to classic V3 routing
             // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
             if (error instanceof BridgeLiquidityError) {

@@ -17,6 +17,10 @@ import { isGraduatedLaunchpadToken } from "../services/LaunchpadTokenService";
 import { ethers } from "ethers";
 import Logger from "bunyan";
 import { Routing } from "./quote";
+import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
 
 const BASIS_POINTS_DENOMINATOR = 10000;
 
@@ -440,6 +444,13 @@ async function handleGatewaySwap(
       return;
     }
 
+    await juiceGatewayService.rejectIfRouteRequiresJusdDepositDisabled(
+      chainId,
+      tokenIn,
+      tokenOut,
+      routingType,
+    );
+
     // Get RPC provider for gas prices
     const provider = routerService.getProvider(chainId);
     if (!provider) {
@@ -757,6 +768,16 @@ async function handleGatewaySwap(
       ],
     });
   } catch (error) {
+    if (isGatewayDepositDisabledError(error)) {
+      sendGatewayDepositDisabled(res, log, error, {
+        routingType,
+        tokenIn: body.tokenIn || body.tokenInAddress,
+        tokenOut: body.tokenOut || body.tokenOutAddress,
+        chainId: body.chainId || body.tokenInChainId,
+      });
+      return;
+    }
+
     // Bridge liquidity error - fall through to classic V3 routing
     // This allows direct pools (e.g., ctUSD/USDC.e) to be used when bridge is empty
     if (error instanceof BridgeLiquidityError) {
