@@ -23,6 +23,13 @@ describe("JuiceGatewayService.prepareQuote()", () => {
   const SV_JUSD = contracts.SV_JUSD;
   const USDC = contracts.USDC;
   const WCBTC = contracts.WCBTC;
+  const SAVINGS = "0x0000000000000000000000000000000000000001";
+  const BRIDGED_STABLES = [
+    ["SUSD", contracts.SUSD],
+    ["USDC", contracts.USDC],
+    ["USDT", contracts.USDT],
+    ["CTUSD", contracts.CTUSD],
+  ].filter(([, address]) => Boolean(address));
 
   beforeEach(() => {
     // Create service with empty providers (no RPC calls will be made)
@@ -177,6 +184,194 @@ describe("JuiceGatewayService.prepareQuote()", () => {
       expect(result).not.toBeNull();
       expect(result!.routingType).toBe("GATEWAY_JUSD");
       expect(result!.internalTokenOut).toBe(SV_JUSD);
+    });
+  });
+
+  describe("Savings disabled deposit gate", () => {
+    beforeEach(() => {
+      service.setSavingsRateOverride(chainId, 0, SAVINGS);
+    });
+
+    it.each([
+      ["JUSD -> cBTC", JUSD, WCBTC],
+      ["JUSD -> svJUSD", JUSD, SV_JUSD],
+      ["JUICE -> cBTC", JUICE, WCBTC],
+    ])(
+      "rejects %s with GATEWAY_DEPOSIT_DISABLED",
+      async (_name, input, output) => {
+        await expect(
+          service.prepareQuote(chainId, input, output, "1000000000000000000"),
+        ).rejects.toMatchObject({
+          code: "GATEWAY_DEPOSIT_DISABLED",
+          savingsRate: "0",
+          savingsAddress: SAVINGS,
+        });
+      },
+    );
+
+    it.each(BRIDGED_STABLES)(
+      "rejects %s -> cBTC with GATEWAY_DEPOSIT_DISABLED",
+      async (_symbol, bridgedToken) => {
+        await expect(
+          service.prepareQuote(
+            chainId,
+            bridgedToken,
+            WCBTC,
+            "1000000000000000000",
+          ),
+        ).rejects.toMatchObject({
+          code: "GATEWAY_DEPOSIT_DISABLED",
+          savingsRate: "0",
+          savingsAddress: SAVINGS,
+        });
+      },
+    );
+
+    it.each(BRIDGED_STABLES)(
+      "rejects %s -> svJUSD with GATEWAY_DEPOSIT_DISABLED",
+      async (_symbol, bridgedToken) => {
+        await expect(
+          service.prepareQuote(
+            chainId,
+            bridgedToken,
+            SV_JUSD,
+            "1000000000000000000",
+          ),
+        ).rejects.toMatchObject({
+          code: "GATEWAY_DEPOSIT_DISABLED",
+          savingsRate: "0",
+          savingsAddress: SAVINGS,
+        });
+      },
+    );
+
+    it("exposes the same gate for swap calldata builders", async () => {
+      await expect(
+        service.rejectIfRouteRequiresJusdDepositDisabled(
+          chainId,
+          JUICE,
+          WCBTC,
+          "GATEWAY_JUICE_IN",
+        ),
+      ).rejects.toMatchObject({
+        code: "GATEWAY_DEPOSIT_DISABLED",
+      });
+    });
+
+    it("counts blocked deposits and exposes the rate in the metrics snapshot", async () => {
+      await expect(
+        service.prepareQuote(chainId, JUSD, WCBTC, "1000000000000000000"),
+      ).rejects.toMatchObject({ code: "GATEWAY_DEPOSIT_DISABLED" });
+
+      const metrics = service.getMetrics();
+      expect(metrics.blockedDeposits[`${chainId}:GATEWAY_JUSD`]).toBe(1);
+      expect(metrics.savingsRate.currentRatePpm[String(chainId)]).toBe(0);
+    });
+
+    it("keeps cBTC -> JUSD available", async () => {
+      const result = await service.prepareQuote(
+        chainId,
+        WCBTC,
+        JUSD,
+        "100000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.routingType).toBe("GATEWAY_JUSD");
+      expect(result!.internalTokenOut).toBe(SV_JUSD);
+    });
+
+    it("keeps svJUSD -> cBTC available", async () => {
+      const result = await service.prepareQuote(
+        chainId,
+        SV_JUSD,
+        WCBTC,
+        "1000000000000000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.routingType).toBe("GATEWAY_JUSD");
+      expect(result!.internalTokenIn).toBe(SV_JUSD);
+    });
+
+    it("keeps JUSD -> JUICE available", async () => {
+      jest
+        .spyOn(service, "jusdToJuice")
+        .mockResolvedValue("950000000000000000");
+
+      const result = await service.prepareQuote(
+        chainId,
+        JUSD,
+        JUICE,
+        "1000000000000000000",
+      );
+
+      expect(result).not.toBeNull();
+      expect(result!.isDirectConversion).toBe(true);
+      expect(result!.expectedOutput).toBe("950000000000000000");
+    });
+  });
+
+  it("applies the deposit gate on Citrea Testnet as well", async () => {
+    const testnetChain = ChainId.CITREA_TESTNET;
+    const testnetContracts = getChainContracts(testnetChain)!;
+    service.setSavingsRateOverride(testnetChain, 0, SAVINGS);
+
+    await expect(
+      service.prepareQuote(
+        testnetChain,
+        testnetContracts.JUSD,
+        testnetContracts.WCBTC,
+        "1000000000000000000",
+      ),
+    ).rejects.toMatchObject({
+      code: "GATEWAY_DEPOSIT_DISABLED",
+      savingsRate: "0",
+    });
+  });
+
+  it("allows deposit routes again when the Savings rate is non-zero", async () => {
+    service.setSavingsRateOverride(chainId, 100000, SAVINGS);
+    jest.spyOn(service, "jusdToSvJusd").mockResolvedValue("970000000000000000");
+
+    const result = await service.prepareQuote(
+      chainId,
+      JUSD,
+      WCBTC,
+      "1000000000000000000",
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.internalTokenIn).toBe(SV_JUSD);
+    expect(result!.internalAmountIn).toBe("970000000000000000");
+  });
+
+  describe("LP routing scope (enabled state)", () => {
+    // The Gateway LP handlers only convert literal JUSD legs to svJUSD. If
+    // detectLpGatewayRouting/getInternalPoolToken routed bridged stablecoin or
+    // JUICE legs through the Gateway LP path, those legs would be fed into the
+    // svJUSD position math with raw, unconverted amounts. These guard against
+    // re-introducing that scope creep.
+
+    it("routes JUSD LP legs through the Gateway", () => {
+      expect(service.detectLpGatewayRouting(chainId, JUSD, WCBTC)).toBe(true);
+      expect(service.detectLpGatewayRouting(chainId, WCBTC, JUSD)).toBe(true);
+      expect(service.getInternalPoolToken(chainId, JUSD)).toBe(SV_JUSD);
+    });
+
+    it("does NOT route bridged stablecoin LP legs through the Gateway", () => {
+      for (const [, address] of BRIDGED_STABLES) {
+        expect(service.detectLpGatewayRouting(chainId, address, WCBTC)).toBe(
+          false,
+        );
+        // Bridged legs must stay as themselves, never silently mapped to svJUSD.
+        expect(service.getInternalPoolToken(chainId, address)).toBe(address);
+      }
+    });
+
+    it("does NOT route JUICE LP legs through the Gateway", () => {
+      expect(service.detectLpGatewayRouting(chainId, JUICE, WCBTC)).toBe(false);
+      expect(service.getInternalPoolToken(chainId, JUICE)).toBe(JUICE);
     });
   });
 });

@@ -12,6 +12,7 @@ import {
   ChainContracts,
 } from "../config/contracts";
 import { JuiceSwapGatewayAbi } from "../abi/JuiceSwapGateway";
+import { SavingsRateProbe } from "./SavingsRateProbe";
 
 /**
  * ABI fragments for JUICE Equity contract
@@ -22,6 +23,25 @@ const EQUITY_ABI = [
   "function calculateProceeds(uint256 shares) view returns (uint256)",
   "function calculateShares(uint256 investment) view returns (uint256)",
 ];
+
+class GatewayDepositDisabledError extends Error {
+  code = "GATEWAY_DEPOSIT_DISABLED";
+  chainId: ChainId;
+  savingsRate: string;
+  savingsAddress: string | null;
+
+  constructor(
+    chainId: ChainId,
+    savingsRate: string,
+    savingsAddress: string | null,
+  ) {
+    super("JUSD savings rate is zero; svJUSD deposits are disabled");
+    this.name = "GatewayDepositDisabledError";
+    this.chainId = chainId;
+    this.savingsRate = savingsRate;
+    this.savingsAddress = savingsAddress;
+  }
+}
 
 export interface GatewayQuoteResult {
   internalTokenIn: string;
@@ -120,12 +140,17 @@ export class JuiceGatewayService {
   private logger: Logger;
   private gatewayContracts: Map<ChainId, ethers.Contract> = new Map();
   private equityContracts: Map<ChainId, ethers.Contract> = new Map();
+  private savingsRateProbe: SavingsRateProbe;
+  private blockedDeposits: Map<string, number> = new Map();
 
   constructor(
     providers: Map<ChainId, ethers.providers.StaticJsonRpcProvider>,
     logger: Logger,
+    savingsRateProbe?: SavingsRateProbe,
   ) {
     this.logger = logger.child({ service: "JuiceGatewayService" });
+    this.savingsRateProbe =
+      savingsRateProbe ?? new SavingsRateProbe(this.logger);
 
     // Initialize contracts for chains with JuiceDollar integration
     for (const [chainId, provider] of providers) {
@@ -153,7 +178,138 @@ export class JuiceGatewayService {
       chainId,
       new ethers.Contract(contracts.JUICE, EQUITY_ABI, provider),
     );
+    this.savingsRateProbe.registerVault(chainId, contracts.SV_JUSD, provider);
     this.logger.info({ chainId }, "JuiceDollar contracts initialized");
+  }
+
+  setSavingsRateOverride(
+    chainId: ChainId,
+    rate: ethers.BigNumberish,
+    savingsAddress: string | null = null,
+  ): void {
+    this.savingsRateProbe.setOverride(chainId, rate, savingsAddress);
+  }
+
+  clearSavingsRateOverride(chainId?: ChainId): void {
+    this.savingsRateProbe.clearOverride(chainId);
+  }
+
+  private async getSavingsRate(chainId: ChainId): Promise<{
+    rate: ethers.BigNumber;
+    address: string | null;
+  }> {
+    return this.savingsRateProbe.getCurrentRate(
+      chainId,
+      this.getSvJusdAddress(chainId),
+    );
+  }
+
+  private async rejectIfJusdDepositDisabled(
+    chainId: ChainId,
+    routeShape: string,
+  ): Promise<void> {
+    const savings = await this.getSavingsRate(chainId);
+    if (!savings.rate.isZero()) return;
+
+    const counterKey = `${chainId}:${routeShape}`;
+    this.blockedDeposits.set(
+      counterKey,
+      (this.blockedDeposits.get(counterKey) ?? 0) + 1,
+    );
+
+    this.logger.warn(
+      {
+        chainId,
+        routeShape,
+        savingsRate: savings.rate.toString(),
+        savingsAddress: savings.address,
+      },
+      "Gateway JUSD deposit blocked because Savings rate is zero",
+    );
+    throw new GatewayDepositDisabledError(
+      chainId,
+      savings.rate.toString(),
+      savings.address,
+    );
+  }
+
+  /**
+   * Telemetry snapshot for the /metrics endpoint:
+   * - blockedDeposits: count of deposit-route rejections keyed by
+   *   `<chainId>:<routeShape>` (route shape = routing type, or "LP").
+   * - savingsRate: the SavingsRateProbe gauge/failure counters.
+   */
+  getMetrics(): {
+    blockedDeposits: Record<string, number>;
+    savingsRate: ReturnType<SavingsRateProbe["getMetrics"]>;
+  } {
+    return {
+      blockedDeposits: Object.fromEntries(this.blockedDeposits),
+      savingsRate: this.savingsRateProbe.getMetrics(),
+    };
+  }
+
+  private routeRequiresJusdDeposit(
+    chainId: ChainId,
+    tokenIn: string,
+    tokenOut: string,
+    routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN",
+  ): boolean {
+    if (isSvJusdAddress(chainId, tokenIn)) return false;
+
+    const isJuiceOut = isJuiceAddress(chainId, tokenOut);
+    const isDirectUsdOrJuiceOut =
+      isJusdAddress(chainId, tokenOut) ||
+      isBridgedStablecoin(chainId, tokenOut) ||
+      isJuiceOut;
+    const isJuiceIn = isJuiceAddress(chainId, tokenIn);
+    const isJusdIn = isJusdAddress(chainId, tokenIn);
+    const isBridgedIn = isBridgedStablecoin(chainId, tokenIn);
+
+    if (routingType === "GATEWAY_JUICE_IN") {
+      return isJuiceIn && !isJusdAddress(chainId, tokenOut);
+    }
+
+    if (routingType === "GATEWAY_JUICE_OUT") {
+      return false;
+    }
+
+    if ((isJusdIn || isBridgedIn) && !isDirectUsdOrJuiceOut) {
+      return true;
+    }
+
+    return false;
+  }
+
+  async rejectIfRouteRequiresJusdDepositDisabled(
+    chainId: ChainId,
+    tokenIn: string,
+    tokenOut: string,
+    routingType: "GATEWAY_JUSD" | "GATEWAY_JUICE_OUT" | "GATEWAY_JUICE_IN",
+  ): Promise<void> {
+    if (
+      this.routeRequiresJusdDeposit(chainId, tokenIn, tokenOut, routingType)
+    ) {
+      await this.rejectIfJusdDepositDisabled(chainId, routingType);
+    }
+  }
+
+  async rejectIfLpRouteRequiresJusdDepositDisabled(
+    chainId: ChainId,
+    tokenA: string,
+    tokenB: string,
+  ): Promise<void> {
+    const requiresDeposit =
+      isJusdAddress(chainId, tokenA) ||
+      isJusdAddress(chainId, tokenB) ||
+      isBridgedStablecoin(chainId, tokenA) ||
+      isBridgedStablecoin(chainId, tokenB) ||
+      isJuiceAddress(chainId, tokenA) ||
+      isJuiceAddress(chainId, tokenB);
+
+    if (requiresDeposit) {
+      await this.rejectIfJusdDepositDisabled(chainId, "LP");
+    }
   }
 
   /**
@@ -560,6 +716,13 @@ export class JuiceGatewayService {
     const contracts = getChainContracts(chainId);
     if (!contracts) return null;
 
+    await this.rejectIfRouteRequiresJusdDepositDisabled(
+      chainId,
+      tokenIn,
+      tokenOut,
+      routingType,
+    );
+
     let internalTokenIn = tokenIn;
     let internalTokenOut = tokenOut;
     let internalAmountIn = amountIn;
@@ -769,7 +932,8 @@ export class JuiceGatewayService {
       case "GATEWAY_JUICE_IN": {
         // JUICE can only be swapped directly to JUSD
         // Multi-hop swaps (JUICE → X where X is not JUSD) are not supported
-        // Users must manually redeem JUICE for JUSD first, then swap JUSD → X
+        // when Savings deposits are enabled. When disabled, the guard above
+        // returns a structured error instead of calldata that will revert.
         if (!isJusdAddress(chainId, tokenOut)) {
           return null; // Signal unsupported - will fall through to NO_ROUTE
         }
@@ -859,7 +1023,16 @@ export class JuiceGatewayService {
   // ============================================
 
   /**
-   * Check if LP operation involves JUSD and should route through Gateway
+   * Check if LP operation involves JUSD and should route through Gateway.
+   *
+   * NOTE: this is intentionally JUSD-only. It is the trigger for the Gateway LP
+   * handlers (handleGatewayLpCreate/handleGatewayLpIncrease), whose amount
+   * conversion only knows how to convert literal JUSD ↔ svJUSD. Do not widen it
+   * to bridged stablecoins / JUICE without also teaching those handlers the
+   * corresponding conversions, or non-JUSD legs are fed unconverted into the
+   * svJUSD position math. The deposit gate uses its own predicate
+   * (rejectIfLpRouteRequiresJusdDepositDisabled), so it does not depend on this.
+   *
    * @returns true if either token is JUSD (requires Gateway for JUSD → svJUSD conversion)
    */
   detectLpGatewayRouting(
@@ -937,7 +1110,12 @@ export class JuiceGatewayService {
 
   /**
    * Convert token address to internal pool token
-   * JUSD → svJUSD for LP operations
+   * JUSD → svJUSD for LP operations.
+   *
+   * NOTE: JUSD-only on purpose — pairs with detectLpGatewayRouting. The LP
+   * handlers only convert amounts for literal JUSD legs, so mapping bridged
+   * stablecoins / JUICE here would route them into the svJUSD pool with raw,
+   * unconverted amounts.
    */
   getInternalPoolToken(chainId: number, token: string): string {
     const contracts = getChainContracts(chainId);

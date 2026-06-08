@@ -21,6 +21,10 @@ import { getPoolInstance } from "../utils/poolFactory";
 import { TICK_SPACING } from "./_shared/v3LpCommon";
 import { JuiceGatewayService } from "../services/JuiceGatewayService";
 import {
+  isGatewayDepositDisabledError,
+  sendGatewayDepositDisabled,
+} from "./gatewayDepositGuard";
+import {
   getChainContracts,
   hasJuiceDollarIntegration,
 } from "../config/contracts";
@@ -211,6 +215,33 @@ export function createLpCreateHandler(
         }
       }
 
+      const token0Addr = getTokenAddress(position.pool.token0, chainId);
+      const token1Addr = getTokenAddress(position.pool.token1, chainId);
+
+      // Deposit gate: must run for any LP route that would deposit into svJUSD
+      // (JUSD or bridged stablecoin or JUICE leg), independent of whether the
+      // route is handled by the Gateway LP path. rejectIfLpRoute... is a no-op
+      // for routes that don't touch a deposit token.
+      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
+        try {
+          await juiceGatewayService.rejectIfLpRouteRequiresJusdDepositDisabled(
+            chainId as ChainId,
+            token0Addr,
+            token1Addr,
+          );
+        } catch (error) {
+          if (isGatewayDepositDisabledError(error)) {
+            sendGatewayDepositDisabled(res, log, error, {
+              chainId,
+              token0: token0Addr,
+              token1: token1Addr,
+            });
+            return;
+          }
+          throw error;
+        }
+      }
+
       const provider = routerService.getProvider(chainId);
       if (!provider) {
         log.debug(
@@ -232,9 +263,6 @@ export function createLpCreateHandler(
         });
         return;
       }
-
-      const token0Addr = getTokenAddress(position.pool.token0, chainId);
-      const token1Addr = getTokenAddress(position.pool.token1, chainId);
 
       // ============================================
       // Check for Gateway LP routing (JUSD involved)

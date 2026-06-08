@@ -46,7 +46,11 @@ export class QuoteCache {
   constructor(logger?: Logger) {
     this.logger = logger;
     // Start periodic cleanup
-    setInterval(() => this.cleanup(), this.CLEANUP_INTERVAL);
+    const cleanupTimer = setInterval(
+      () => this.cleanup(),
+      this.CLEANUP_INTERVAL,
+    );
+    cleanupTimer.unref();
     if (this.logger) {
       this.logger.debug(
         "[QuoteCache] Initialized with TTL: 30s default, 60s for Citrea",
