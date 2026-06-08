@@ -345,4 +345,33 @@ describe("JuiceGatewayService.prepareQuote()", () => {
     expect(result!.internalTokenIn).toBe(SV_JUSD);
     expect(result!.internalAmountIn).toBe("970000000000000000");
   });
+
+  describe("LP routing scope (enabled state)", () => {
+    // The Gateway LP handlers only convert literal JUSD legs to svJUSD. If
+    // detectLpGatewayRouting/getInternalPoolToken routed bridged stablecoin or
+    // JUICE legs through the Gateway LP path, those legs would be fed into the
+    // svJUSD position math with raw, unconverted amounts. These guard against
+    // re-introducing that scope creep.
+
+    it("routes JUSD LP legs through the Gateway", () => {
+      expect(service.detectLpGatewayRouting(chainId, JUSD, WCBTC)).toBe(true);
+      expect(service.detectLpGatewayRouting(chainId, WCBTC, JUSD)).toBe(true);
+      expect(service.getInternalPoolToken(chainId, JUSD)).toBe(SV_JUSD);
+    });
+
+    it("does NOT route bridged stablecoin LP legs through the Gateway", () => {
+      for (const [, address] of BRIDGED_STABLES) {
+        expect(service.detectLpGatewayRouting(chainId, address, WCBTC)).toBe(
+          false,
+        );
+        // Bridged legs must stay as themselves, never silently mapped to svJUSD.
+        expect(service.getInternalPoolToken(chainId, address)).toBe(address);
+      }
+    });
+
+    it("does NOT route JUICE LP legs through the Gateway", () => {
+      expect(service.detectLpGatewayRouting(chainId, JUICE, WCBTC)).toBe(false);
+      expect(service.getInternalPoolToken(chainId, JUICE)).toBe(JUICE);
+    });
+  });
 });

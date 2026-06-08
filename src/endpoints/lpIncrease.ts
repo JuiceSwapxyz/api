@@ -143,15 +143,11 @@ export function createLpIncreaseHandler(
       const userToken0Addr = getTokenAddress(position.pool.token0, chainId);
       const userToken1Addr = getTokenAddress(position.pool.token1, chainId);
 
-      if (
-        juiceGatewayService &&
-        hasJuiceDollarIntegration(chainId) &&
-        juiceGatewayService.detectLpGatewayRouting(
-          chainId,
-          userToken0Addr,
-          userToken1Addr,
-        )
-      ) {
+      // Deposit gate: must run for any LP route that would deposit into svJUSD
+      // (JUSD or bridged stablecoin or JUICE leg), independent of whether the
+      // route is handled by the Gateway LP path. rejectIfLpRoute... is a no-op
+      // for routes that don't touch a deposit token.
+      if (juiceGatewayService && hasJuiceDollarIntegration(chainId)) {
         try {
           await juiceGatewayService.rejectIfLpRouteRequiresJusdDepositDisabled(
             chainId as ChainId,

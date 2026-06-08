@@ -1023,7 +1023,16 @@ export class JuiceGatewayService {
   // ============================================
 
   /**
-   * Check if LP operation involves JUSD and should route through Gateway
+   * Check if LP operation involves JUSD and should route through Gateway.
+   *
+   * NOTE: this is intentionally JUSD-only. It is the trigger for the Gateway LP
+   * handlers (handleGatewayLpCreate/handleGatewayLpIncrease), whose amount
+   * conversion only knows how to convert literal JUSD ↔ svJUSD. Do not widen it
+   * to bridged stablecoins / JUICE without also teaching those handlers the
+   * corresponding conversions, or non-JUSD legs are fed unconverted into the
+   * svJUSD position math. The deposit gate uses its own predicate
+   * (rejectIfLpRouteRequiresJusdDepositDisabled), so it does not depend on this.
+   *
    * @returns true if either token is JUSD (requires Gateway for JUSD → svJUSD conversion)
    */
   detectLpGatewayRouting(
@@ -1034,14 +1043,7 @@ export class JuiceGatewayService {
     if (!hasJuiceDollarIntegration(chainId)) {
       return false;
     }
-    return (
-      isJusdAddress(chainId, tokenA) ||
-      isJusdAddress(chainId, tokenB) ||
-      isBridgedStablecoin(chainId, tokenA) ||
-      isBridgedStablecoin(chainId, tokenB) ||
-      isJuiceAddress(chainId, tokenA) ||
-      isJuiceAddress(chainId, tokenB)
-    );
+    return isJusdAddress(chainId, tokenA) || isJusdAddress(chainId, tokenB);
   }
 
   /**
@@ -1108,17 +1110,18 @@ export class JuiceGatewayService {
 
   /**
    * Convert token address to internal pool token
-   * JUSD/bridged stablecoin/JUICE → svJUSD for LP operations
+   * JUSD → svJUSD for LP operations.
+   *
+   * NOTE: JUSD-only on purpose — pairs with detectLpGatewayRouting. The LP
+   * handlers only convert amounts for literal JUSD legs, so mapping bridged
+   * stablecoins / JUICE here would route them into the svJUSD pool with raw,
+   * unconverted amounts.
    */
   getInternalPoolToken(chainId: number, token: string): string {
     const contracts = getChainContracts(chainId);
     if (!contracts) return token;
 
-    if (
-      isJusdAddress(chainId, token) ||
-      isBridgedStablecoin(chainId, token) ||
-      isJuiceAddress(chainId, token)
-    ) {
+    if (isJusdAddress(chainId, token)) {
       return contracts.SV_JUSD;
     }
     return token;
