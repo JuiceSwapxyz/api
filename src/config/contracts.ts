@@ -88,16 +88,13 @@ function buildChainContracts(chainId: number): ChainContracts | null {
 const CONTRACT_MAP: Record<number, ChainContracts> = {};
 
 // Initialize supported chains
-const SUPPORTED_JUICE_CHAINS = [ChainId.CITREA_TESTNET, ChainId.CITREA_MAINNET];
+const SUPPORTED_JUICE_CHAINS = [ChainId.CITREA_MAINNET];
 for (const chainId of SUPPORTED_JUICE_CHAINS) {
   const contracts = buildChainContracts(chainId);
   if (contracts) {
     CONTRACT_MAP[chainId] = contracts;
   }
 }
-
-// Export for backwards compatibility
-export const CITREA_TESTNET_CONTRACTS = CONTRACT_MAP[ChainId.CITREA_TESTNET];
 
 /**
  * Get contract addresses for a given chain ID
@@ -241,7 +238,6 @@ export function detectJuiceDollarToken(
  */
 const TICK_LENS_ADDRESSES: Record<number, string> = {
   4114: "0xD9d430f27F922A3316d22Cd9d58558f45Dad8012",
-  5115: "0x00Ba410Bd715d0D9F9eFAbC65c7df8F0C5D4E7Eb",
 };
 
 /**

@@ -4,7 +4,6 @@ export const typeDefs = `#graphql
     ETHEREUM_SEPOLIA
     POLYGON
     CITREA_MAINNET
-    CITREA_TESTNET
   }
 
   type Query {

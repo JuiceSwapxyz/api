@@ -101,7 +101,7 @@ interface LpCreateRequestBody {
  *           example:
  *             protocol: "V3"
  *             walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
- *             chainId: 5115
+ *             chainId: 4114
  *             independentAmount: "1000000000000000000"
  *             independentToken: "TOKEN_0"
  *             position:

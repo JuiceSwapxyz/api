@@ -107,7 +107,6 @@ export class RouterService {
   // Chains that need AlphaRouter (DEX routing). Other chains only need RPC providers (bridge, gas).
   private static readonly ROUTING_CHAINS = new Set<ChainId>([
     ChainId.CITREA_MAINNET,
-    ChainId.CITREA_TESTNET,
   ]);
 
   private async initialize(): Promise<void> {
@@ -128,10 +127,7 @@ export class RouterService {
 
       // Initialize token provider with Ponder integration for Citrea
       let tokenProvider;
-      if (
-        chainId === ChainId.CITREA_TESTNET ||
-        chainId === ChainId.CITREA_MAINNET
-      ) {
+      if (chainId === ChainId.CITREA_MAINNET) {
         // Create token list provider from Ponder + static list
         const tokenListProvider = await createLocalTokenListProvider(chainId);
         // Wrap with FallbackTokenProvider to fetch unknown tokens on-chain
@@ -181,10 +177,7 @@ export class RouterService {
       let v2SubgraphProvider = undefined;
       let v2PoolProvider = undefined;
 
-      if (
-        chainId === ChainId.CITREA_TESTNET ||
-        chainId === ChainId.CITREA_MAINNET
-      ) {
+      if (chainId === ChainId.CITREA_MAINNET) {
         // V3 subgraph provider (Ponder)
         v3SubgraphProvider = new CitreaV3SubgraphProvider(this.logger, chainId);
 
@@ -221,8 +214,7 @@ export class RouterService {
           // V2QuoteProvider computes quotes off-chain using pool reserves
           ...(v2PoolProvider && { v2QuoteProvider: new V2QuoteProvider() }),
           // Enable V2 routing for Citrea chains (graduated launchpad pools)
-          ...((chainId === ChainId.CITREA_TESTNET ||
-            chainId === ChainId.CITREA_MAINNET) && { v2Supported: [chainId] }),
+          ...(chainId === ChainId.CITREA_MAINNET && { v2Supported: [chainId] }),
         }),
       );
     }

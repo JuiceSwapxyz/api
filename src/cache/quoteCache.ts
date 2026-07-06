@@ -90,10 +90,10 @@ export class QuoteCache {
   }
 
   /**
-   * Check if this is a Citrea testnet quote
+   * Check if this is a Citrea quote
    */
   private isCitreaQuote(params: any): boolean {
-    const CITREA_CHAIN_IDS = [5003, 5115]; // Citrea testnet chain IDs
+    const CITREA_CHAIN_IDS = [4114]; // Citrea chain IDs
     return (
       CITREA_CHAIN_IDS.includes(params.tokenInChainId) ||
       CITREA_CHAIN_IDS.includes(params.tokenOutChainId)

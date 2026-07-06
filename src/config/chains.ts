@@ -6,7 +6,6 @@ const CHAIN_ID_TO_CHAIN_NAME: Record<number, string> = {
   1: "ETHEREUM",
   11155111: "ETHEREUM_SEPOLIA",
   137: "POLYGON",
-  5115: "CITREA_TESTNET",
   4114: "CITREA_MAINNET",
 };
 

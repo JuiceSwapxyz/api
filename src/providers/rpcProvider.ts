@@ -17,10 +17,6 @@ function buildAlchemyUrl(chainId: ChainId): string {
   switch (chainId) {
     case ChainId.CITREA_MAINNET:
       return process.env.CITREA_4114_RPC_URL || "https://rpc.citreascan.com/";
-    case ChainId.CITREA_TESTNET:
-      return (
-        process.env.CITREA_5115_RPC_URL || "https://rpc.testnet.juiceswap.com/"
-      );
   }
 
   const alchemyKey = process.env[`ALCHEMY_${chainId}`];
@@ -56,11 +52,6 @@ const CHAIN_CONFIGS: ChainConfig[] = [
     chainId: ChainId.POLYGON,
     name: "Polygon Mainnet",
     rpcUrl: buildAlchemyUrl(ChainId.POLYGON),
-  },
-  {
-    chainId: ChainId.CITREA_TESTNET,
-    name: "Citrea Testnet",
-    rpcUrl: buildAlchemyUrl(ChainId.CITREA_TESTNET),
   },
   {
     chainId: ChainId.CITREA_MAINNET,

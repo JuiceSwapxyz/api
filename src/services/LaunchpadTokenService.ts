@@ -51,10 +51,7 @@ class LaunchpadTokenService {
     address: string,
   ): Promise<boolean> {
     // Only check for Citrea chains (where launchpad tokens exist)
-    if (
-      chainId !== ChainId.CITREA_TESTNET &&
-      chainId !== ChainId.CITREA_MAINNET
-    ) {
+    if (chainId !== ChainId.CITREA_MAINNET) {
       return false;
     }
 

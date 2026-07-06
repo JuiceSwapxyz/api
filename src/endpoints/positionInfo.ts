@@ -25,8 +25,8 @@ import { fetchV3OnchainPositionInfo } from "../utils/v3OnchainPositionInfo";
  *         name: chainId
  *         schema:
  *           type: integer
- *         example: 5115
- *         description: Chain ID (defaults to 5115 for Citrea Testnet)
+ *         example: 4114
+ *         description: Chain ID (defaults to 4114 for Citrea Mainnet)
  *       - in: query
  *         name: protocol
  *         schema:
@@ -101,7 +101,7 @@ export function createPositionInfoHandler(
     try {
       const { tokenId } = req.params;
       // Query params are validated and transformed by PositionInfoQuerySchema middleware
-      const chainId = (req.query.chainId as unknown as number) || 5115;
+      const chainId = (req.query.chainId as unknown as number) || 4114;
       const protocol = (req.query.protocol as string) || "V3";
 
       // Validate tokenId parameter

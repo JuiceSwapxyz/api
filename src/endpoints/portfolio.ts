@@ -26,8 +26,8 @@ import { portfolioCache } from "../cache/portfolioCache";
  *         name: chainId
  *         schema:
  *           type: integer
- *         example: 5115
- *         description: Chain ID (defaults to 5115 for Citrea Testnet)
+ *         example: 4114
+ *         description: Chain ID (defaults to 4114 for Citrea Mainnet)
  *     responses:
  *       200:
  *         description: Portfolio balances retrieved successfully
