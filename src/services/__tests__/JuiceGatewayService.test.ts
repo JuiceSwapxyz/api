@@ -312,24 +312,6 @@ describe("JuiceGatewayService.prepareQuote()", () => {
     });
   });
 
-  it("applies the deposit gate on Citrea Testnet as well", async () => {
-    const testnetChain = ChainId.CITREA_TESTNET;
-    const testnetContracts = getChainContracts(testnetChain)!;
-    service.setSavingsRateOverride(testnetChain, 0, SAVINGS);
-
-    await expect(
-      service.prepareQuote(
-        testnetChain,
-        testnetContracts.JUSD,
-        testnetContracts.WCBTC,
-        "1000000000000000000",
-      ),
-    ).rejects.toMatchObject({
-      code: "GATEWAY_DEPOSIT_DISABLED",
-      savingsRate: "0",
-    });
-  });
-
   it("allows deposit routes again when the Savings rate is non-zero", async () => {
     service.setSavingsRateOverride(chainId, 100000, SAVINGS);
     jest.spyOn(service, "jusdToSvJusd").mockResolvedValue("970000000000000000");

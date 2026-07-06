@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import Logger from "bunyan";
 import { citreaMainnetTokenList } from "../config/citrea-mainnet.tokenlist";
-import { citreaTestnetTokenList } from "../config/citrea-testnet.tokenlist";
 import { getJuiceswapLatestTokens } from "../lib/handlers/router-entities/getJuiceswapLatestTokens";
 
 interface Token {
@@ -16,7 +15,6 @@ interface Token {
 // Map chainId to token list
 const TOKEN_LISTS: Record<number, { tokens: Token[] }> = {
   4114: citreaMainnetTokenList as { tokens: Token[] },
-  5115: citreaTestnetTokenList as { tokens: Token[] },
 };
 
 // Tokens to hide from UI (internal vault/collateral tokens)
@@ -34,7 +32,7 @@ const HIDDEN_TOKENS = new Set(["svJUSD", "startUSD", "SUSD"]);
  *         required: true
  *         schema:
  *           type: integer
- *         example: 5115
+ *         example: 4114
  *       - in: query
  *         name: tokenIn
  *         schema:
@@ -70,7 +68,7 @@ export function createSwappableTokensHandler(logger: Logger) {
 
       const chainId = parseInt(tokenInChainId.toString());
 
-      // Get hardcoded token list for the chain (supports Citrea Mainnet 4114 and Testnet 5115)
+      // Get hardcoded token list for the chain (supports Citrea Mainnet 4114)
       const hardcodedTokenList = TOKEN_LISTS[chainId];
       const hardcodedTokens: Token[] = hardcodedTokenList?.tokens ?? [];
 

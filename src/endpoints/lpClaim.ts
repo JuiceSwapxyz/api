@@ -39,7 +39,7 @@ interface LpClaimRequestBody {
  *             protocol: "V3"
  *             tokenId: 4
  *             walletAddress: "0x79bf94059b3991c747401Ff8f5291fE4C8E4C457"
- *             chainId: 5115
+ *             chainId: 4114
  *             position:
  *               pool:
  *                 token0: "0x6a850a548fdd050e8961223ec8FfCDfacEa57E39"

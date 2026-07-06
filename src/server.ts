@@ -826,10 +826,7 @@ async function bootstrap() {
     );
 
     // Pre-warm ExploreStatsService cache so no user request hits a cold cache
-    exploreStatsService.startBackgroundRefresh([
-      ChainId.CITREA_MAINNET,
-      ChainId.CITREA_TESTNET,
-    ]);
+    exploreStatsService.startBackgroundRefresh([ChainId.CITREA_MAINNET]);
   });
 
   // Graceful shutdown

@@ -27,7 +27,7 @@ interface SwapApproveRequestBody {
  *             $ref: '#/components/schemas/SwapApproveRequest'
  *           example:
  *             walletAddress: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
- *             chainId: 5115
+ *             chainId: 4114
  *             protocol: "V3"
  *             token0: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *             token1: "0x8d0c9d1c17aE5e40ffF9bE350f57840E9E66Cd93"

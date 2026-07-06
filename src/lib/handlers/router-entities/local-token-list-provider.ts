@@ -10,10 +10,7 @@ import { getJuiceswapLatestTokens } from "./getJuiceswapLatestTokens";
 export async function createLocalTokenListProvider(chainId: ChainId) {
   const tokenCache = new NodeCache({ stdTTL: 360, useClones: false });
 
-  if (
-    chainId === ChainId.CITREA_TESTNET ||
-    chainId === ChainId.CITREA_MAINNET
-  ) {
+  if (chainId === ChainId.CITREA_MAINNET) {
     const juiceswapLatestTokens = await getJuiceswapLatestTokens(chainId);
     const map = new Map<string, any>();
 

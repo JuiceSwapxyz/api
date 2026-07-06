@@ -130,7 +130,7 @@ src/
 
 - Ethereum Mainnet (1)
 - Sepolia Testnet (11155111)
-- Citrea Testnet (5115)
+- Citrea Mainnet (4114)
 
 ## Configuration
 
@@ -144,10 +144,9 @@ NODE_ENV=production
 # RPC Providers (Alchemy API Keys)
 ALCHEMY_1=your-alchemy-api-key          # Ethereum Mainnet
 ALCHEMY_11155111=your-alchemy-api-key   # Sepolia Testnet
-ALCHEMY_5115=none                       # Citrea Testnet (uses custom RPC)
 
 # Citrea RPC URL
-CITREA_5115_RPC_URL=https://rpc.testnet.juiceswap.com
+CITREA_4114_RPC_URL=https://rpc.citreascan.com/
 
 # Cache
 CACHE_TTL_SECONDS=30
@@ -214,7 +213,7 @@ Basic monitoring is available through the `/metrics` endpoint:
     "heapTotal": 12345678,
     "heapUsed": 9876543
   },
-  "chains": [1, 11155111, 5115]
+  "chains": [1, 11155111, 4114]
 }
 ```
 

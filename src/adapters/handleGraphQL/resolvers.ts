@@ -14,7 +14,7 @@ let swapsHandler: any;
 let exploreStatsService: ExploreStatsService | null = null;
 
 const CHAIN_NAME_TO_CHAIN_ID: Record<string, number> = Object.fromEntries(
-  [1, 11155111, 137, 4114, 5115].map((id) => [getChainName(id), id]),
+  [1, 11155111, 137, 4114].map((id) => [getChainName(id), id]),
 );
 
 export function initializeResolvers(

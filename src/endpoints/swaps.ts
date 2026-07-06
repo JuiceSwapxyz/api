@@ -38,7 +38,7 @@ interface GetSwapsResponse {
  *         required: true
  *         schema:
  *           type: integer
- *         example: 5115
+ *         example: 4114
  *     responses:
  *       200:
  *         content:

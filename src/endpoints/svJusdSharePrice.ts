@@ -38,7 +38,7 @@ export interface SvJusdSharePriceErrorResponse {
  *         required: true
  *         schema:
  *           type: integer
- *         description: The chain ID to query (e.g., 5115 for Citrea Testnet)
+ *         description: The chain ID to query (e.g., 4114 for Citrea Mainnet)
  *     responses:
  *       200:
  *         description: Share price retrieved successfully
@@ -69,7 +69,7 @@ export interface SvJusdSharePriceErrorResponse {
  *                   type: boolean
  *                   description: Whether the response came from cache
  *             example:
- *               chainId: 5115
+ *               chainId: 4114
  *               sharePrice: "1020000000000000000"
  *               sharePriceDecimals: 18
  *               svJusdAddress: "0x..."

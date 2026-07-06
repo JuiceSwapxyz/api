@@ -30,7 +30,7 @@ export const ChainIdSchema = z
   .number()
   .int()
   .refine(
-    (val) => [1, 11155111, 137, 5115, 4114].includes(val),
+    (val) => [1, 11155111, 137, 4114].includes(val),
     "Unsupported chain ID",
   );
 
@@ -38,10 +38,7 @@ export const ChainIdSchema = z
 export const RoutingChainIdSchema = z
   .number()
   .int()
-  .refine(
-    (val) => [5115, 4114].includes(val),
-    "Unsupported chain ID for routing",
-  );
+  .refine((val) => [4114].includes(val), "Unsupported chain ID for routing");
 export const AmountSchema = z
   .string()
   .regex(/^[1-9]\d*$/, "Amount must be a positive non-zero integer string");
@@ -492,7 +489,7 @@ export const PositionInfoQuerySchema = z.object({
   chainId: z
     .string()
     .optional()
-    .default("5115")
+    .default("4114")
     .transform((val) => parseInt(val, 10))
     .pipe(ChainIdSchema),
   protocol: z.enum(["V2", "V3"]).optional().default("V3"),

@@ -217,9 +217,9 @@ export interface QuoteResponse {
  *           schema:
  *             $ref: '#/components/schemas/QuoteRequest'
  *           example:
- *             tokenInChainId: 5115
+ *             tokenInChainId: 4114
  *             tokenInAddress: "0x0000000000000000000000000000000000000000"
- *             tokenOutChainId: 5115
+ *             tokenOutChainId: 4114
  *             tokenOutAddress: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *             amount: "1000000000000000000"
  *             type: "EXACT_INPUT"
