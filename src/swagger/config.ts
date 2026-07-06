@@ -42,7 +42,7 @@ const options: swaggerJsdoc.Options = {
         },
         ChainId: {
           type: "integer",
-          enum: [1, 11155111, 5115],
+          enum: [1, 11155111, 4114],
         },
         Address: {
           type: "string",

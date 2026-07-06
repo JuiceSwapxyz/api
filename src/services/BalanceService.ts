@@ -1,11 +1,9 @@
 import { ethers, providers } from "ethers";
 import Logger from "bunyan";
 import { ChainId } from "@juiceswapxyz/sdk-core";
-import { citreaTestnetTokenList } from "../config/citrea-testnet.tokenlist";
 import { citreaMainnetTokenList } from "../config/citrea-mainnet.tokenlist";
 
 const TOKEN_LISTS_BY_CHAIN: { [key: number]: { tokens: any[] } } = {
-  [ChainId.CITREA_TESTNET]: citreaTestnetTokenList,
   [ChainId.CITREA_MAINNET]: citreaMainnetTokenList,
 };
 
@@ -219,16 +217,6 @@ export class BalanceService {
    * Get native currency info for the chain
    */
   private getNativeCurrencyInfo() {
-    // For Citrea Testnet
-    if (this.chainId === 5115) {
-      return {
-        name: "Citrea BTC",
-        symbol: "cBTC",
-        decimals: 18,
-        logoURI: "",
-      };
-    }
-
     if (this.chainId === 4114) {
       return {
         name: "Citrea BTC",

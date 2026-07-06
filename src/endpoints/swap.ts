@@ -101,9 +101,9 @@ async function getGasPrices(
  *           schema:
  *             $ref: '#/components/schemas/SwapRequest'
  *           example:
- *             tokenInChainId: 5115
+ *             tokenInChainId: 4114
  *             tokenInAddress: "0x8d0c9d1c17aE5e40ffF9bE350f57840E9E66Cd93"
- *             tokenOutChainId: 5115
+ *             tokenOutChainId: 4114
  *             tokenOutAddress: "0xFdB0a83d94CD65151148a131167Eb499Cb85d015"
  *             amount: "1000000000000000000"
  *             type: "exactIn"

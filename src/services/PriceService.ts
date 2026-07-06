@@ -101,7 +101,7 @@ export class PriceService {
   }
 
   private initializeKnownTokens(): void {
-    for (const chainId of [ChainId.CITREA_MAINNET, ChainId.CITREA_TESTNET]) {
+    for (const chainId of [ChainId.CITREA_MAINNET]) {
       const contracts = getChainContracts(chainId);
       const wcbtc = WETH9[chainId];
 
