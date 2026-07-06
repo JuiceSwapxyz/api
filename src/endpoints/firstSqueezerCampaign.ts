@@ -16,18 +16,20 @@ import {
  * First Squeezer Campaign - Social OAuth Endpoints (Twitter & Discord)
  */
 
+// Public Citrea Testnet RPC. The testnet chain still lives on public infra
+// after DFX's own node is decommissioned, and the historical First Squeezer
+// claim data is immutable, so the gate reads it here by default.
+const CITREA_TESTNET_PUBLIC_RPC_URL = "https://rpc.testnet.citrea.xyz";
+
 /**
  * Returns true if the wallet ran claim() on the testnet First Squeezer NFT
  * contract (Oct 2025 campaign). Used by the mainnet claim eligibility gate.
  * Throws on RPC failure — callers must fail closed, not permit claims.
  */
 async function hasClaimedTestnetNFT(walletAddress: string): Promise<boolean> {
-  if (!process.env.CITREA_5115_RPC_URL) {
-    throw new Error("CITREA_5115_RPC_URL not configured");
-  }
-  const provider = new ethers.providers.JsonRpcProvider(
-    process.env.CITREA_5115_RPC_URL,
-  );
+  const rpcUrl =
+    process.env.CITREA_5115_RPC_URL || CITREA_TESTNET_PUBLIC_RPC_URL;
+  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
   const contract = new ethers.Contract(
     FIRST_SQUEEZER_TESTNET_NFT_CONTRACT,
     ["function hasClaimed(address) view returns (bool)"],
