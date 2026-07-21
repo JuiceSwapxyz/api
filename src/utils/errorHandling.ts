@@ -6,6 +6,13 @@ export interface ClassifiedError {
   label: string;
 }
 
+// Matches this codebase's sentence-case convention ("Not found", "Bad request")
+// rather than Node's Title Case ("Not Found", "Bad Request").
+function toSentenceCase(text: string): string {
+  const lower = text.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
 export function classifyError(err: any): ClassifiedError {
   const raw = Number(err?.status ?? err?.statusCode);
   const status = Number.isInteger(raw) && raw >= 400 && raw < 600 ? raw : 500;
@@ -15,7 +22,7 @@ export function classifyError(err: any): ClassifiedError {
     status,
     isClientError,
     label: isClientError
-      ? (STATUS_CODES[status] ?? "Bad request")
+      ? toSentenceCase(STATUS_CODES[status] ?? "Bad request")
       : "Internal server error",
   };
 }

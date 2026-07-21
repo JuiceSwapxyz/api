@@ -14,7 +14,7 @@ describe("classifyError", () => {
     expect(result).toEqual({
       status: 400,
       isClientError: true,
-      label: "Bad Request",
+      label: "Bad request",
     });
   });
 
@@ -22,13 +22,13 @@ describe("classifyError", () => {
     expect(classifyError({ status: 404 })).toEqual({
       status: 404,
       isClientError: true,
-      label: "Not Found",
+      label: "Not found",
     });
 
     expect(classifyError({ statusCode: 429 })).toEqual({
       status: 429,
       isClientError: true,
-      label: "Too Many Requests",
+      label: "Too many requests",
     });
   });
 
