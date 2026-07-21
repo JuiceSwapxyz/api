@@ -4,6 +4,7 @@ import Logger from "bunyan";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./swagger/config";
+import { classifyError } from "./utils/errorHandling";
 import { RouterService } from "./core/RouterService";
 import { initializeProviders, verifyProviders } from "./providers/rpcProvider";
 import { createQuoteHandler } from "./endpoints/quote";
@@ -806,11 +807,18 @@ async function bootstrap() {
 
   // Error handler
   app.use((err: any, req: Request, res: Response, _next: any) => {
-    logger.error({ error: err, path: req.path }, "Unhandled error");
-    res.status(500).json({
-      error: "Internal server error",
+    const { status, isClientError, label } = classifyError(err);
+
+    if (isClientError) {
+      logger.warn({ error: err, path: req.path }, "Client error");
+    } else {
+      logger.error({ error: err, path: req.path }, "Unhandled error");
+    }
+
+    res.status(status).json({
+      error: label,
       detail:
-        process.env.NODE_ENV === "development"
+        isClientError || process.env.NODE_ENV === "development"
           ? err.message
           : "An error occurred",
     });
