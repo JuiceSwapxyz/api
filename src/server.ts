@@ -4,6 +4,7 @@ import Logger from "bunyan";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./swagger/config";
+import { classifyError } from "./utils/errorHandling";
 import { RouterService } from "./core/RouterService";
 import { initializeProviders, verifyProviders } from "./providers/rpcProvider";
 import { createQuoteHandler } from "./endpoints/quote";
@@ -806,8 +807,7 @@ async function bootstrap() {
 
   // Error handler
   app.use((err: any, req: Request, res: Response, _next: any) => {
-    const status = err.status || err.statusCode || 500;
-    const isClientError = status >= 400 && status < 500;
+    const { status, isClientError, label } = classifyError(err);
 
     if (isClientError) {
       logger.warn({ error: err, path: req.path }, "Client error");
@@ -816,7 +816,7 @@ async function bootstrap() {
     }
 
     res.status(status).json({
-      error: isClientError ? "Bad request" : "Internal server error",
+      error: label,
       detail:
         isClientError || process.env.NODE_ENV === "development"
           ? err.message
