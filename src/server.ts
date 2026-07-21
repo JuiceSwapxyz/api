@@ -806,11 +806,19 @@ async function bootstrap() {
 
   // Error handler
   app.use((err: any, req: Request, res: Response, _next: any) => {
-    logger.error({ error: err, path: req.path }, "Unhandled error");
-    res.status(500).json({
-      error: "Internal server error",
+    const status = err.status || err.statusCode || 500;
+    const isClientError = status >= 400 && status < 500;
+
+    if (isClientError) {
+      logger.warn({ error: err, path: req.path }, "Client error");
+    } else {
+      logger.error({ error: err, path: req.path }, "Unhandled error");
+    }
+
+    res.status(status).json({
+      error: isClientError ? "Bad request" : "Internal server error",
       detail:
-        process.env.NODE_ENV === "development"
+        isClientError || process.env.NODE_ENV === "development"
           ? err.message
           : "An error occurred",
     });
