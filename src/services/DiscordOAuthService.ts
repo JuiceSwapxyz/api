@@ -91,6 +91,7 @@ export class DiscordOAuthService {
    */
   public async generateAuthUrl(
     walletAddress: string,
+    callbackUrlOverride?: string,
   ): Promise<{ authUrl: string; state: string }> {
     // Generate state for CSRF protection
     const state = generateState();
@@ -98,11 +99,14 @@ export class DiscordOAuthService {
     // Calculate expiry time (10 minutes from now)
     const expiresAt = new Date(Date.now() + this.SESSION_EXPIRY_MS);
 
-    // Store session in database
+    // Store session in database. The callback override (if any) is persisted
+    // with the session because Discord requires the token exchange to repeat
+    // the exact redirect_uri used in the authorize step.
     await prisma.discordOAuthSession.create({
       data: {
         state,
         walletAddress,
+        callbackUrl: callbackUrlOverride ?? null,
         expiresAt,
       },
     });
@@ -111,7 +115,7 @@ export class DiscordOAuthService {
     const params = new URLSearchParams({
       response_type: "code",
       client_id: this.config.clientId,
-      redirect_uri: this.config.callbackUrl,
+      redirect_uri: callbackUrlOverride ?? this.config.callbackUrl,
       scope: this.SCOPES,
       state,
     });
@@ -155,7 +159,8 @@ export class DiscordOAuthService {
           client_secret: this.config.clientSecret,
           grant_type: "authorization_code",
           code,
-          redirect_uri: this.config.callbackUrl,
+          // Must match the redirect_uri used at authorize time (override or default).
+          redirect_uri: session.callbackUrl ?? this.config.callbackUrl,
         }),
         {
           headers: {

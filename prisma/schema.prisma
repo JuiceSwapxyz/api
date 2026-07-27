@@ -18,6 +18,7 @@ model User {
 
   // Relations
   ogCampaign      OgCampaignUser?
+  juicerCampaign  JuicerCampaignUser?
 
   @@index([address])
   @@index([ipAddressHash])
@@ -47,6 +48,46 @@ model OgCampaignUser {
   @@index([discordUserId])
 }
 
+// Juicer NFT campaign participation tracking — social verification state
+// for the "Juicer" loyalty drop. Deliberately separate from OgCampaignUser
+// (First Squeezer) so the two campaigns' verification states never bleed
+// into each other.
+model JuicerCampaignUser {
+  userId            String    @id
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Social verification - Twitter and Discord account linking
+  twitterVerifiedAt DateTime?
+  twitterUserId     String?
+  twitterUsername   String?
+  discordVerifiedAt DateTime?
+  discordUserId     String?
+  discordUsername   String?
+
+  @@index([twitterUserId])
+  @@index([discordUserId])
+}
+
+// Juice Points spend ledger. JP totals are computed on-the-fly from on-chain
+// data by the Ponder indexer (append-only, earn side); this table is the
+// authoritative off-chain SPEND side: availableJp = ponder total - SUM(amount).
+// The (walletAddress, chainId, reason) unique constraint makes spends
+// idempotent — a retried POST /spend finds the existing row instead of
+// deducting twice.
+model JpSpend {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  walletAddress String   // lowercase 0x address
+  chainId       Int
+  amount        Int      // JP deducted (positive)
+  reason        String   // e.g. "juicer_nft"
+
+  @@unique([walletAddress, chainId, reason])
+  @@index([walletAddress])
+}
+
 // Twitter OAuth session storage (replaces in-memory storage)
 // Sessions expire after 10 minutes for security
 model TwitterOAuthSession {
@@ -68,6 +109,10 @@ model DiscordOAuthSession {
   id            String   @id @default(uuid())
   state         String   @unique
   walletAddress String
+  // Optional per-flow OAuth redirect URI. When set (e.g. the Juicer campaign
+  // callback), it is used in BOTH the authorize step and the token exchange so
+  // Discord's redirect_uri match check passes. Null = use the service default.
+  callbackUrl   String?
   createdAt     DateTime @default(now())
   expiresAt     DateTime
 
