@@ -720,14 +720,16 @@ async function bootstrap() {
 
   // API Documentation (Swagger UI)
   // Type assertions needed due to @types/swagger-ui-express bundling its own @types/express
-  app.use(
-    "/swagger",
-    swaggerUi.serve as any,
-    swaggerUi.setup(swaggerSpec, {
-      customCss: ".swagger-ui .topbar { display: none }",
-      customSiteTitle: "JuiceSwap API Documentation",
-    }) as any,
-  );
+  const swaggerSetup = swaggerUi.setup(swaggerSpec, {
+    customCss: ".swagger-ui .topbar { display: none }",
+    customSiteTitle: "JuiceSwap API Documentation",
+  }) as any;
+
+  // Serve the docs page directly on the bare mount path instead of falling
+  // through to swaggerUi.serve's own directory-redirect handling, which on
+  // PRD redirects "/swagger/" back to itself in an infinite loop.
+  app.get(["/swagger", "/swagger/"], swaggerSetup);
+  app.use("/swagger", swaggerUi.serve as any, swaggerSetup);
 
   // Health check endpoints
   app.get("/healthz", (_req: Request, res: Response) => {
