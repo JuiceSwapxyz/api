@@ -263,16 +263,18 @@ async function bootstrap() {
   });
 
   // Create endpoint handlers
+  // JuiceDollar routing disabled for quote/swap: omitting juiceGatewayService
+  // makes both handlers fall back to normal Uniswap routing for every request.
   const handleQuote = createQuoteHandler(
     routerService,
     logger,
-    juiceGatewayService,
+    undefined,
     satsumaPoolService,
   );
   const handleSwap = createSwapHandler(
     routerService,
     logger,
-    juiceGatewayService,
+    undefined,
     satsumaPoolService,
   );
   const handleSwappableTokens = createSwappableTokensHandler(logger);
@@ -345,12 +347,7 @@ async function bootstrap() {
     logger,
     svJusdPriceService,
   );
-  initializeResolvers(
-    routerService,
-    logger,
-    exploreStatsService,
-    juiceGatewayService,
-  );
+  initializeResolvers(routerService, logger, exploreStatsService, undefined);
   const handlePoolDetails = createPoolDetailsHandler(
     providers,
     logger,
