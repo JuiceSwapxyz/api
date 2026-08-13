@@ -347,12 +347,7 @@ async function bootstrap() {
     logger,
     svJusdPriceService,
   );
-  initializeResolvers(
-    routerService,
-    logger,
-    exploreStatsService,
-    undefined,
-  );
+  initializeResolvers(routerService, logger, exploreStatsService, undefined);
   const handlePoolDetails = createPoolDetailsHandler(
     providers,
     logger,
