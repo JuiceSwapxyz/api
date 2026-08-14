@@ -7,6 +7,7 @@ import {
   swapStatusSuccess,
 } from "../../types/BridgeSwapsStatus";
 import { syncBridgeSwapStatuses } from "../../services/BridgeSwapStatusSyncer";
+import { BRIDGE_SWAP_ENABLED } from "../../config/swap-bridge";
 
 export function createMyBridgeSwapsSummaryHandler(logger: Logger) {
   return async function handleMyBridgeSwapsSummary(
@@ -16,7 +17,9 @@ export function createMyBridgeSwapsSummaryHandler(logger: Logger) {
     const userId = req.user!.address;
 
     try {
-      await syncBridgeSwapStatuses(userId, logger);
+      if (BRIDGE_SWAP_ENABLED) {
+        await syncBridgeSwapStatuses(userId, logger);
+      }
 
       const [
         totalPendingSwaps,
