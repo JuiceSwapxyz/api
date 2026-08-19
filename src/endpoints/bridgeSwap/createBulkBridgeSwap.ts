@@ -2,12 +2,21 @@ import { Request, Response } from "express";
 import Logger from "bunyan";
 import { prisma } from "../../db/prisma";
 import { toSwapData } from "../../utils/bridgeSwapSerialize";
+import { BRIDGE_SWAP_ENABLED } from "../../config/swap-bridge";
 
 export function createBulkBridgeSwapHandler(logger: Logger) {
   return async function handleBulkCreateBridgeSwap(
     req: Request,
     res: Response,
   ): Promise<void> {
+    if (!BRIDGE_SWAP_ENABLED) {
+      res.status(503).json({
+        error: "Service unavailable",
+        detail: "Bridge swaps are temporarily disabled.",
+      });
+      return;
+    }
+
     const startTime = Date.now();
 
     try {

@@ -5,12 +5,21 @@ import {
   serializeBridgeSwap,
   toSwapData,
 } from "../../utils/bridgeSwapSerialize";
+import { BRIDGE_SWAP_ENABLED } from "../../config/swap-bridge";
 
 export function createBridgeSwapHandler(logger: Logger) {
   return async function handleCreateBridgeSwap(
     req: Request,
     res: Response,
   ): Promise<void> {
+    if (!BRIDGE_SWAP_ENABLED) {
+      res.status(503).json({
+        error: "Service unavailable",
+        detail: "Bridge swaps are temporarily disabled.",
+      });
+      return;
+    }
+
     const startTime = Date.now();
 
     try {

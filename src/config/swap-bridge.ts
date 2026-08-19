@@ -1,5 +1,10 @@
 import { ChainId } from "@juiceswapxyz/sdk-core";
 
+// The Boltz-based swap backend and claim indexer this feature depends on
+// have been decommissioned. New swaps and status syncing are disabled until
+// a replacement backend is wired up; existing swap records remain readable.
+export const BRIDGE_SWAP_ENABLED = false;
+
 export enum BridgeAsset {
   BTC = "BTC",
   cBTC = "cBTC",

@@ -5,6 +5,7 @@ import Logger from "bunyan";
 import { computeClaimableAndRefundableEvmSwaps } from "../../services/EvmBridgeClaimRefund";
 import { computeRefundableBtcChainSwaps } from "../../services/BtcChainSwapRefund";
 import { syncBridgeSwapStatuses } from "../../services/BridgeSwapStatusSyncer";
+import { BRIDGE_SWAP_ENABLED } from "../../config/swap-bridge";
 
 export function createClaimRefundHandler(
   providerMap: Map<ChainId, providers.StaticJsonRpcProvider>,
@@ -25,7 +26,9 @@ export function createClaimRefundHandler(
     delete req.headers["if-modified-since"];
 
     try {
-      await syncBridgeSwapStatuses(userId, logger);
+      if (BRIDGE_SWAP_ENABLED) {
+        await syncBridgeSwapStatuses(userId, logger);
+      }
 
       const evm = await computeClaimableAndRefundableEvmSwaps(
         userId,
