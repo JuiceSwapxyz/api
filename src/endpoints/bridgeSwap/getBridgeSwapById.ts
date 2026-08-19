@@ -5,6 +5,7 @@ import { serializeBridgeSwap } from "../../utils/bridgeSwapSerialize";
 import { BtcOnchainIndexerService } from "../../services/BtcOnchainIndexerService";
 import { buildFixSwapStatuses } from "../../utils/statusFixers";
 import { EvmBridgeIndexer } from "../../services/EvmBrigdeIndexer";
+import { BRIDGE_SWAP_ENABLED } from "../../config/swap-bridge";
 
 export function createGetBridgeSwapByIdHandler(logger: Logger) {
   return async function handleGetBridgeSwapById(
@@ -31,15 +32,19 @@ export function createGetBridgeSwapByIdHandler(logger: Logger) {
         return;
       }
 
-      const btcOnchainIndexerService = new BtcOnchainIndexerService(logger);
-      const evmBridgeIndexerService = new EvmBridgeIndexer(logger);
+      let resolvedSwap = bridgeSwap;
 
-      const fixSwapStatuses = buildFixSwapStatuses({
-        btcOnchainIndexerService,
-        evmBridgeIndexerService,
-      });
+      if (BRIDGE_SWAP_ENABLED) {
+        const btcOnchainIndexerService = new BtcOnchainIndexerService(logger);
+        const evmBridgeIndexerService = new EvmBridgeIndexer(logger);
 
-      const [resolvedSwap] = await fixSwapStatuses([bridgeSwap]);
+        const fixSwapStatuses = buildFixSwapStatuses({
+          btcOnchainIndexerService,
+          evmBridgeIndexerService,
+        });
+
+        [resolvedSwap] = await fixSwapStatuses([bridgeSwap]);
+      }
 
       if (resolvedSwap !== bridgeSwap) {
         await prisma.bridgeSwap.update({

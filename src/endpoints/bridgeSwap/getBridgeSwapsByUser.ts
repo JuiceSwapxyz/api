@@ -8,6 +8,7 @@ import {
   swapStatusPending,
   swapStatusSuccess,
 } from "../../types/BridgeSwapsStatus";
+import { BRIDGE_SWAP_ENABLED } from "../../config/swap-bridge";
 
 export function createGetBridgeSwapsByUserHandler(logger: Logger) {
   return async function handleGetBridgeSwapsByUser(
@@ -20,7 +21,9 @@ export function createGetBridgeSwapsByUserHandler(logger: Logger) {
     const status = req.query.status as string | string[] | undefined;
 
     try {
-      await syncBridgeSwapStatuses(userId, logger);
+      if (BRIDGE_SWAP_ENABLED) {
+        await syncBridgeSwapStatuses(userId, logger);
+      }
 
       const statusFilter = Array.isArray(status)
         ? { in: status }
