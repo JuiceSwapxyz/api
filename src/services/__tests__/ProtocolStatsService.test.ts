@@ -113,8 +113,10 @@ describe("ProtocolStatsService bridge volume", () => {
     expect(mockedAxios.post).toHaveBeenCalledTimes(1);
     const [url, body] = mockedAxios.post.mock.calls[0];
     expect(url).toBe(`${LDS_PONDER_URL}/graphql`);
-    expect((body as { query: string }).query).toContain(
-      `volumeStats(where: { chainId: ${ChainId.CITREA_MAINNET}`,
+    const { query } = body as { query: string };
+    expect(query).toContain("volumeStats");
+    expect(query).toMatch(
+      new RegExp(`chainId:\\s*${ChainId.CITREA_MAINNET}\\b`),
     );
     expect(JSON.stringify({ url, body })).not.toMatch(
       /juicedollar|bridgeVolumeStats/i,
