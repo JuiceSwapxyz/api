@@ -93,11 +93,11 @@ Returns TVL and 24h volume for the Explore page. All values are in USD.
 
 Sum of V2 + V3 + Bridge 24h volume.
 
-| Component  | Source                                                                | Method                                                             |
-| ---------- | --------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| **V3**     | `ExploreStatsService` (pre-computed `volume1Day` per pool)            | Sum of per-pool 24h USD volumes                                    |
-| **V2**     | `ExploreStatsService` (pre-computed `volume1Day` per pool)            | Sum of per-pool 24h USD volumes                                    |
-| **Bridge** | JuiceDollar Ponder (`bridgeVolumeStats`) + LDS Ponder (`volumeStats`) | Stablecoin bridges: JUSD at $1. LDS: cBTC × BTC price + JUSD at $1 |
+| Component  | Source                                                     | Method                             |
+| ---------- | ---------------------------------------------------------- | ---------------------------------- |
+| **V3**     | `ExploreStatsService` (pre-computed `volume1Day` per pool) | Sum of per-pool 24h USD volumes    |
+| **V2**     | `ExploreStatsService` (pre-computed `volume1Day` per pool) | Sum of per-pool 24h USD volumes    |
+| **Bridge** | LDS Ponder (`volumeStats`)                                 | LDS: cBTC × BTC price + JUSD at $1 |
 
 ### TVL
 
