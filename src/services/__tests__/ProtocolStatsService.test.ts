@@ -42,9 +42,22 @@ function createService() {
   );
 }
 
+const LDS_PONDER_URL = "https://lds-ponder.test/v1/claim";
+
 describe("ProtocolStatsService bridge volume", () => {
+  const originalLdsPonderUrl = process.env.LDS_PONDER_URL;
+
+  afterAll(() => {
+    if (originalLdsPonderUrl === undefined) {
+      delete process.env.LDS_PONDER_URL;
+    } else {
+      process.env.LDS_PONDER_URL = originalLdsPonderUrl;
+    }
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.LDS_PONDER_URL = LDS_PONDER_URL;
     mockedAxios.post.mockResolvedValue({
       data: {
         data: {
@@ -70,7 +83,7 @@ describe("ProtocolStatsService bridge volume", () => {
 
     expect(mockedAxios.post).toHaveBeenCalledTimes(1);
     const [url, body] = mockedAxios.post.mock.calls[0];
-    expect(url).toContain("lightning.space");
+    expect(url).toBe(`${LDS_PONDER_URL}/graphql`);
     expect(JSON.stringify({ url, body })).not.toMatch(
       /juicedollar|bridgeVolumeStats/i,
     );
