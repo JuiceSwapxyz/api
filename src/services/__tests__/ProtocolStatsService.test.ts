@@ -116,7 +116,7 @@ describe("ProtocolStatsService bridge volume", () => {
     const { query } = body as { query: string };
     expect(query).toContain("volumeStats");
     expect(query).toMatch(
-      new RegExp(`chainId\\s*:\\s*${ChainId.CITREA_MAINNET}\\b`),
+      new RegExp(`\\bchainId\\s*:\\s*${ChainId.CITREA_MAINNET}\\b`),
     );
     expect(JSON.stringify({ url, body })).not.toMatch(
       /juicedollar|bridgeVolumeStats/i,
