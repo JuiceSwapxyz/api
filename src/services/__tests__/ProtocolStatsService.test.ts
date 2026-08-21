@@ -82,6 +82,9 @@ describe("ProtocolStatsService bridge volume", () => {
             },
           };
         }
+        if (!query.includes("volumeStats")) {
+          throw new Error(`Unexpected Ponder query: ${query}`);
+        }
         return {
           data: {
             data: {
@@ -110,6 +113,9 @@ describe("ProtocolStatsService bridge volume", () => {
     expect(mockedAxios.post).toHaveBeenCalledTimes(1);
     const [url, body] = mockedAxios.post.mock.calls[0];
     expect(url).toBe(`${LDS_PONDER_URL}/graphql`);
+    expect((body as { query: string }).query).toContain(
+      `volumeStats(where: { chainId: ${ChainId.CITREA_MAINNET}`,
+    );
     expect(JSON.stringify({ url, body })).not.toMatch(
       /juicedollar|bridgeVolumeStats/i,
     );
