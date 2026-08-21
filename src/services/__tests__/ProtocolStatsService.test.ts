@@ -58,22 +58,48 @@ describe("ProtocolStatsService bridge volume", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.LDS_PONDER_URL = LDS_PONDER_URL;
-    mockedAxios.post.mockResolvedValue({
-      data: {
-        data: {
-          volumeStats: {
-            items: [
-              {
-                tokenAddress: "0x0000000000000000000000000000000000000001",
-                timestamp: "1700000000",
-                volume: ethers.utils.parseUnits("7", 18).toString(),
-                type: "1h",
+    // Answers a JuiceDollar `bridgeVolumeStats` query with a non-zero volume, so
+    // a resurrected JuiceDollar leg would show up as 5 + 7 instead of 7.
+    mockedAxios.post.mockImplementation(
+      async (_url: string, body?: unknown) => {
+        const query = (body as { query?: string })?.query ?? "";
+        if (query.includes("bridgeVolumeStats")) {
+          return {
+            data: {
+              data: {
+                bridgeVolumeStats: {
+                  items: [
+                    {
+                      stablecoinAddress:
+                        "0x0000000000000000000000000000000000000002",
+                      timestamp: "1700000000",
+                      volume: ethers.utils.parseUnits("5", 18).toString(),
+                      type: "1h",
+                    },
+                  ],
+                },
               },
-            ],
+            },
+          };
+        }
+        return {
+          data: {
+            data: {
+              volumeStats: {
+                items: [
+                  {
+                    tokenAddress: "0x0000000000000000000000000000000000000001",
+                    timestamp: "1700000000",
+                    volume: ethers.utils.parseUnits("7", 18).toString(),
+                    type: "1h",
+                  },
+                ],
+              },
+            },
           },
-        },
+        };
       },
-    });
+    );
   });
 
   it("queries only the LDS Ponder, never the JuiceDollar Ponder", async () => {
