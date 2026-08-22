@@ -44,7 +44,7 @@ interface StatsCache {
  * ProtocolStatsService - Aggregates TVL and volume across V2, V3, and bridge
  *
  * V2/V3 stats: Derived by summing per-pool data from ExploreStatsService
- * Bridge stats: Fetched directly via RPC multicall and external Ponder instances
+ * Bridge stats: Fetched directly via RPC multicall and the LDS Ponder instance
  */
 export class ProtocolStatsService {
   private logger: Logger;
@@ -162,13 +162,13 @@ export class ProtocolStatsService {
 
   /**
    * Bridge stats: TVL from StablecoinBridge minted() totals,
-   * volume from JuiceDollar Ponder + LDS Ponder GraphQL queries
+   * volume from the LDS Ponder GraphQL query
    */
   private async getBridgeStats(chainId: number): Promise<ProtocolStats> {
     try {
       const [tvlUsd, volume24hUsd] = await Promise.all([
         this.getBridgeTvl(chainId),
-        this.getBridgeVolume(chainId),
+        this.getLdsBridgeVolume(chainId),
       ]);
 
       this.logger.info(
@@ -227,57 +227,6 @@ export class ProtocolStatsService {
       return totalMinted;
     } catch (error) {
       this.logger.warn({ error }, "Failed to fetch bridge TVL via multicall");
-      return 0;
-    }
-  }
-
-  /**
-   * Bridge volume = stablecoin bridge volume + LDS bridge volume (24h).
-   */
-  private async getBridgeVolume(chainId: number): Promise<number> {
-    const [stablecoinVolume, ldsVolume] = await Promise.all([
-      this.getStablecoinBridgeVolume(),
-      this.getLdsBridgeVolume(chainId),
-    ]);
-    return stablecoinVolume + ldsVolume;
-  }
-
-  /**
-   * Query JuiceDollar Ponder for rolling 24h stablecoin bridge volume.
-   * Uses hourly buckets with a 24h-ago cutoff. All values are JUSD (18 decimals, $1).
-   */
-  private async getStablecoinBridgeVolume(): Promise<number> {
-    try {
-      const baseUrl =
-        process.env.JUICEDOLLAR_PONDER_URL || "https://ponder.juicedollar.com";
-      const cutoff = this.get24hAgoCutoff();
-      const query = `
-        query {
-          bridgeVolumeStats(where: { type: "1h", timestamp_gte: "${cutoff}" }, orderBy: "timestamp", orderDirection: "desc", limit: 200) {
-            items { stablecoinAddress, timestamp, volume, type }
-          }
-        }
-      `;
-
-      const response = await axios.post(
-        `${baseUrl}/graphql`,
-        { query },
-        { timeout: 10000 },
-      );
-
-      const items = response.data?.data?.bridgeVolumeStats?.items || [];
-      let totalVolume = 0;
-      for (const item of items) {
-        totalVolume += parseFloat(
-          ethers.utils.formatUnits(item.volume || "0", 18),
-        );
-      }
-      return totalVolume;
-    } catch (error) {
-      this.logger.warn(
-        { error },
-        "Failed to fetch stablecoin bridge volume from JuiceDollar Ponder",
-      );
       return 0;
     }
   }
