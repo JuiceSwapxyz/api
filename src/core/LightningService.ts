@@ -59,32 +59,4 @@ export class LightningService {
 
     throw new Error("Invalid Lightning address or LNURL format");
   }
-
-  async createInvoice(amount: string, lnLikeAddress: string) {
-    const validated = this.validateLnLikeAddress(lnLikeAddress);
-
-    if (validated.type === LnLikeAddressType.LIGHTNING_ADDRESS) {
-      const lightningAddress = new LightningAddress(validated.value, {
-        proxy: false,
-      });
-      await lightningAddress.fetch();
-      const invoice = await lightningAddress.requestInvoice({
-        satoshi: Number(amount),
-      });
-      return invoice;
-    }
-    if (validated.type === LnLikeAddressType.LNURL) {
-      const lnurlAddress = new LightningAddress(validated.value, {
-        proxy: false,
-      });
-      lnurlAddress.lnurlpUrl = () => validated.decoded!;
-      await lnurlAddress.fetchLnurlData();
-      const invoice = await lnurlAddress.requestInvoice({
-        satoshi: Number(amount),
-      });
-      return invoice;
-    }
-
-    throw new Error("Invalid Lightning address or LNURL format");
-  }
 }

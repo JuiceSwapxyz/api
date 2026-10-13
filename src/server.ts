@@ -78,7 +78,6 @@ import {
   LaunchpadRecentTradesQuerySchema,
   LaunchpadCandlesQuerySchema,
   LaunchpadTokenAddressParamsSchema,
-  LightningInvoiceRequestSchema,
   LightningAddressRequestSchema,
   LaunchpadUploadMetadataSchema,
   PositionInfoQuerySchema,
@@ -96,7 +95,6 @@ import {
 } from "./validation/schemas";
 import packageJson from "../package.json";
 import { createSwapApproveHandler } from "./endpoints/swapApprove";
-import { createLightningInvoiceHandler } from "./endpoints/lightningInvoice";
 import { createValidateLightningAddressHandler } from "./endpoints/validateLightningAddress";
 import { createPositionInfoHandler } from "./endpoints/positionInfo";
 import { createPositionsOwnerHandler } from "./endpoints/positionsOwner";
@@ -334,7 +332,6 @@ async function bootstrap() {
   const handleNFTSignature = createNFTSignatureHandler(logger);
   const handleFirstSqueezerEligibility =
     createFirstSqueezerEligibilityHandler(logger);
-  const handleLightningInvoice = createLightningInvoiceHandler(logger);
   const handleValidateLightningAddress =
     createValidateLightningAddressHandler(logger);
   const handlePositionInfo = createPositionInfoHandler(routerService, logger);
@@ -541,13 +538,7 @@ async function bootstrap() {
   // svJUSD share price endpoint (for frontend price calculations)
   app.get("/v1/svjusd/sharePrice", generalLimiter, handleSvJusdSharePrice);
 
-  // Lightning invoice endpoint
-  app.post(
-    "/v1/lightning/invoice",
-    generalLimiter,
-    validateBody(LightningInvoiceRequestSchema, logger),
-    handleLightningInvoice,
-  );
+  // Lightning address validation endpoint
   app.post(
     "/v1/lightning/validate",
     generalLimiter,

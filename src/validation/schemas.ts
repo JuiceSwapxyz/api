@@ -417,27 +417,6 @@ export type LightningAddressRequest = z.infer<
   typeof LightningAddressRequestSchema
 >;
 
-// Lightning invoice request schema
-export const LightningInvoiceRequestSchema = z.object({
-  amount: AmountSchema,
-  lnLikeAddress: z
-    .string()
-    .min(1, "lnLikeAddress is required")
-    .refine((val) => {
-      // Lightning address format: user@domain.com
-      if (val.includes("@")) {
-        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-        return emailRegex.test(val);
-      }
-      // LNURL format: starts with lnurl
-      return val.toLowerCase().startsWith("lnurl");
-    }, "Must be a valid Lightning address (user@domain.com) or LNURL"),
-});
-
-export type LightningInvoiceRequest = z.infer<
-  typeof LightningInvoiceRequestSchema
->;
-
 // Launchpad metadata upload schemas
 export const LaunchpadUploadMetadataSchema = z.object({
   name: z
