@@ -8,25 +8,44 @@ interface LightningAddressRequestBody {
 
 /**
  * @swagger
- * /v1/lightning/invoice:
+ * /v1/lightning/validate:
  *   post:
  *     tags: [Lightning]
- *     summary: Lightning invoice endpoint
+ *     summary: Validate a Lightning address or LNURL
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/LightningInvoiceRequest'
+ *             type: object
+ *             required: [lnLikeAddress]
+ *             properties:
+ *               lnLikeAddress:
+ *                 type: string
+ *                 description: Lightning address (user@domain.com) or LNURL
  *           example:
- *             amount: "1000000"
- *             lnLikeAddress: "ln1..."
+ *             lnLikeAddress: "user@domain.com"
  *     responses:
  *       200:
+ *         description: Address format is valid
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/LightningInvoiceResponse'
+ *               type: object
+ *               properties:
+ *                 requestId:
+ *                   type: string
+ *                 validated:
+ *                   type: object
+ *                   properties:
+ *                     type:
+ *                       type: string
+ *                       enum: [lightning-address, lnurl]
+ *                     value:
+ *                       type: string
+ *                     decoded:
+ *                       type: string
+ *                       description: Decoded URL, only present for LNURL
  *       default:
  *         content:
  *           application/json:
@@ -34,7 +53,7 @@ interface LightningAddressRequestBody {
  *               $ref: '#/components/schemas/Error'
  */
 export function createValidateLightningAddressHandler(logger: Logger) {
-  return async function handleLightningInvoice(
+  return async function handleValidateLightningAddress(
     req: Request,
     res: Response,
   ): Promise<void> {
